@@ -22,8 +22,8 @@ Three transcript shapes are accepted, because that is what the tools export:
 Consecutive lines from one speaker are merged. Transcripts fragment a single
 thought across five lines, and five fragments embed far worse than one sentence.
 
-    python3 meetings.py --transcript data/raw/standup.vtt --title "Daily 14 Aug"
-    python3 meetings.py --transcript notes.txt --merge-into data/processed/messages.json
+    python3 -m tam.ingest.meetings --transcript data/raw/standup.vtt --title "Daily 14 Aug"
+    python3 -m tam.ingest.meetings --transcript notes.txt --merge-into data/processed/messages.json
 """
 
 from __future__ import annotations
@@ -219,7 +219,7 @@ def to_records(
     meeting is one conversation to signals.py and one guaranteed-cohesive group
     to graph.py — the same guarantee a Slack thread gives.
     """
-    from prepare_messages import is_useful, normalize_text
+    from tam.ingest.prepare_messages import is_useful, normalize_text
 
     slug = meeting_slug(title, started)
     thread_ts = f"{started.timestamp():.6f}"
@@ -329,8 +329,8 @@ def main() -> None:
     for record in records[:4]:
         print(f"  [{record['user']}] {' '.join(str(record['text']).split())[:96]}")
     print(f"\nNow searchable with everything else:")
-    print(f"  python3 retrieve.py --records {args.merge_into or args.out} -q \"...\"")
-    print(f"  python3 graph.py    --records {args.merge_into or args.out}")
+    print(f"  python3 -m tam.retrieval.retrieve --records {args.merge_into or args.out} -q \"...\"")
+    print(f"  python3 -m tam.analysis.graph    --records {args.merge_into or args.out}")
 
 
 if __name__ == "__main__":

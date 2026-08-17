@@ -20,9 +20,9 @@ Slack threads are ground truth for "same topic", so the clustering is scored
 against them with the adjusted Rand index — a real number for how well an
 unsupervised grouping recovers the conversations it was never told about.
 
-    python3 graph.py
-    python3 graph.py --resolution 1.4 --knn 8
-    python3 graph.py --clusters data/processed/clusters.json
+    python3 -m tam.analysis.graph
+    python3 -m tam.analysis.graph --resolution 1.4 --knn 8
+    python3 -m tam.analysis.graph --clusters data/processed/clusters.json
 """
 
 from __future__ import annotations
@@ -41,10 +41,10 @@ import numpy as np
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
-from embeddings import apply_transform, fit_transform, model_name, quiet_third_party_logs, set_model
-from semantic_search import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
-from signals import SignalIndex
-from visualize import (
+from tam.retrieval.embeddings import apply_transform, fit_transform, model_name, quiet_third_party_logs, set_model
+from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
+from tam.retrieval.signals import SignalIndex
+from tam.report.visualize import (
     BLUE_SCALE,
     GRID,
     INK_MUTED,

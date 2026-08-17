@@ -15,9 +15,9 @@ Everything here is deterministic and inspectable. summarize.py is the optional
 layer that turns a `Topic` into a sentence a human wants to read; the state, the
 participants, and the blocked-since date are computed here and never invented.
 
-    python3 digest.py --records data/processed/combined.json --days 7
-    python3 digest.py --blockers
-    python3 digest.py --item 2
+    python3 -m tam.analysis.digest --records data/processed/combined.json --days 7
+    python3 -m tam.analysis.digest --blockers
+    python3 -m tam.analysis.digest --item 2
 """
 
 from __future__ import annotations
@@ -33,11 +33,11 @@ from typing import Any, Sequence
 import numpy as np
 from dotenv import load_dotenv
 
-from embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
-from graph import EdgeWeights, build_graph, cluster_label, detect_communities
-from relations import Relation, extract_relations
-from semantic_search import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
-from signals import SignalIndex, timestamp
+from tam.retrieval.embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
+from tam.analysis.graph import EdgeWeights, build_graph, cluster_label, detect_communities
+from tam.analysis.relations import Relation, extract_relations
+from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
+from tam.retrieval.signals import SignalIndex, timestamp
 
 # A "day" of standup usually means "since the last one", which is rarely 24h.
 DEFAULT_WINDOW_DAYS = 7

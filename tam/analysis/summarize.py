@@ -20,8 +20,8 @@ summary left with none is flagged `unverified`. A model can write a confident
 sentence about a message that does not exist; it cannot fake an id that is in the
 corpus, so the check is worth more than any instruction in the prompt.
 
-    SUMMARIZER=template python3 summarize.py --records data/processed/combined.json
-    SUMMARIZER=claude   python3 summarize.py --days 7 --language th
+    SUMMARIZER=template python3 -m tam.analysis.summarize --records data/processed/combined.json
+    SUMMARIZER=claude   python3 -m tam.analysis.summarize --days 7 --language th
 """
 
 from __future__ import annotations
@@ -37,9 +37,9 @@ from typing import Any, Sequence
 import numpy as np
 from dotenv import load_dotenv
 
-from digest import DEFAULT_WINDOW_DAYS, Digest, Topic, build_digest, window_start
-from embeddings import quiet_third_party_logs, set_model
-from semantic_search import DEFAULT_RECORDS, format_timestamp, load_records
+from tam.analysis.digest import DEFAULT_WINDOW_DAYS, Digest, Topic, build_digest, window_start
+from tam.retrieval.embeddings import quiet_third_party_logs, set_model
+from tam.core import DEFAULT_RECORDS, format_timestamp, load_records
 
 DEFAULT_BACKEND = "template"  # nothing leaves the machine unless asked
 DEFAULT_MODEL = "claude-opus-5"

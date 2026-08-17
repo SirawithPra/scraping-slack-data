@@ -1,7 +1,7 @@
 """รายงานผลแบบอ่านง่าย ภาษาไทย -> output/report_th.html
 
-    python3 report_th.py
-    python3 report_th.py --records data/processed/demo_messages.json \
+    python3 -m tam.report.report_th
+    python3 -m tam.report.report_th --records data/processed/demo_messages.json \
                          --eval-file data/eval_queries.demo.json
 
 ต่างจาก visualize.py ที่รายงานเป็นตัวเลข metric ไฟล์นี้เล่าเป็นภาษาคน:
@@ -20,10 +20,10 @@ import numpy as np
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
-from embeddings import cosine_scores, embed_texts, model_name, quiet_third_party_logs, set_model
-from evaluate import DEFAULT_EVAL_FILE, load_eval_set
-from semantic_search import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
-from visualize import (
+from tam.retrieval.embeddings import cosine_scores, embed_texts, model_name, quiet_third_party_logs, set_model
+from tam.evaluation.evaluate import DEFAULT_EVAL_FILE, load_eval_set
+from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
+from tam.report.visualize import (
     DE_EMPHASIS,
     INK_MUTED,
     INK_SECONDARY,

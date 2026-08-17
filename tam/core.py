@@ -1,7 +1,7 @@
 """Interactive semantic search over prepared Slack records.
 
-    python3 semantic_search.py --top-k 10
-    python3 semantic_search.py -q "FE sorting เสร็จแล้วแต่ยังรอ BE API"
+    python3 -m tam.core --top-k 10
+    python3 -m tam.core -q "FE sorting เสร็จแล้วแต่ยังรอ BE API"
 """
 
 from __future__ import annotations
@@ -16,7 +16,7 @@ from typing import Any
 import numpy as np
 from dotenv import load_dotenv
 
-from embeddings import cosine_top_k, embed_texts, embed_with_cache, model_name, quiet_third_party_logs, set_model
+from tam.retrieval.embeddings import cosine_top_k, embed_texts, embed_with_cache, model_name, quiet_third_party_logs, set_model
 
 DEFAULT_RECORDS = Path("data/processed/messages.json")
 PREVIEW_LIMIT = 400

@@ -28,10 +28,10 @@ Two properties matter more than the accuracy of any single tier:
 key from the two messages that typed it to the eight that did not, without
 asking anyone to type it again.
 
-    python3 linker.py --records data/processed/combined.json
-    python3 linker.py --records data/processed/syn.json --no-cluster
-    python3 linker.py --explain msg_C0DEMOCHAN1_1786630933.931999
-    python3 linker.py --overrides data/link_overrides.json --json
+    python3 -m tam.analysis.linker --records data/processed/combined.json
+    python3 -m tam.analysis.linker --records data/processed/syn.json --no-cluster
+    python3 -m tam.analysis.linker --explain msg_C0DEMOCHAN1_1786630933.931999
+    python3 -m tam.analysis.linker --overrides data/link_overrides.json --json
 """
 
 from __future__ import annotations
@@ -47,10 +47,10 @@ from typing import Any, Sequence
 
 from dotenv import load_dotenv
 
-from embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
-from graph import EdgeWeights, build_graph, cluster_label, detect_communities
-from semantic_search import DEFAULT_RECORDS, embed_records, load_records
-from signals import ANCHOR_PATTERNS, SignalIndex
+from tam.retrieval.embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
+from tam.analysis.graph import EdgeWeights, build_graph, cluster_label, detect_communities
+from tam.core import DEFAULT_RECORDS, embed_records, load_records
+from tam.retrieval.signals import ANCHOR_PATTERNS, SignalIndex
 
 # One definition of a ticket key, shared with the anchor extractor. Importing the
 # pattern instead of restating it means a fix to either one fixes both.

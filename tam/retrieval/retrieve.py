@@ -17,10 +17,10 @@ any other instead of being argued about:
 everywhere (search, evaluation, model comparison, reports) so the numbers in one
 place mean the same thing in another.
 
-    python3 retrieve.py -q "bug ใน Profile module แก้แล้วยัง"
-    python3 retrieve.py -q "..." --preset hybrid --explain
-    python3 retrieve.py --related msg_C0DEMOCHAN1_1786630937.113809
-    python3 retrieve.py --list-presets
+    python3 -m tam.retrieval.retrieve -q "bug ใน Profile module แก้แล้วยัง"
+    python3 -m tam.retrieval.retrieve -q "..." --preset hybrid --explain
+    python3 -m tam.retrieval.retrieve --related msg_C0DEMOCHAN1_1786630937.113809
+    python3 -m tam.retrieval.retrieve --list-presets
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ from typing import Any, Sequence
 import numpy as np
 from dotenv import load_dotenv
 
-from embeddings import (
+from tam.retrieval.embeddings import (
     SpaceTransform,
     apply_transform,
     cosine_scores,
@@ -45,10 +45,10 @@ from embeddings import (
     quiet_third_party_logs,
     set_model,
 )
-from fusion import jaccard_rerank, minmax, rrf_fuse, zscore_fuse
-from lexical import Bm25Index
-from signals import SignalIndex
-from semantic_search import DEFAULT_RECORDS, embed_records, format_timestamp, load_records, preview
+from tam.retrieval.fusion import jaccard_rerank, minmax, rrf_fuse, zscore_fuse
+from tam.retrieval.lexical import Bm25Index
+from tam.retrieval.signals import SignalIndex
+from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records, preview
 
 log = logging.getLogger(__name__)
 
@@ -262,7 +262,7 @@ class Retriever:
 
         cross: dict[int, float] = {}
         if config.rerank_depth:
-            from rerank import rerank_top  # imported late: it downloads a model
+            from tam.retrieval.rerank import rerank_top  # imported late: it downloads a model
 
             fused, candidates, raw = rerank_top(query, self.texts, fused, depth=config.rerank_depth)
             cross = {int(index): float(score) for index, score in zip(candidates, raw)}
@@ -379,7 +379,7 @@ def main() -> None:
         return
 
     if args.reranker:
-        from rerank import set_reranker
+        from tam.retrieval.rerank import set_reranker
 
         set_reranker(args.reranker)
     set_model(args.model)

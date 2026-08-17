@@ -15,7 +15,7 @@ turns a whole clause into one token that matches nothing. `word_tokenize` from
 PyThaiNLP is used when installed; otherwise Thai runs fall back to overlapping
 character n-grams, which is dictionary-free and works well enough for retrieval.
 
-    python3 lexical.py -q "bug ใน Profile module"
+    python3 -m tam.retrieval.lexical -q "bug ใน Profile module"
 """
 
 from __future__ import annotations
@@ -188,7 +188,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Run BM25 on its own, so its behaviour can be seen without the dense side."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    from semantic_search import load_records  # local import keeps the module import-light
+    from tam.core import load_records  # local import keeps the module import-light
 
     args = parse_args()
     records: list[dict[str, Any]] = load_records(args.records)

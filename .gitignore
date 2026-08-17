@@ -1,30 +1,42 @@
-.venv/
+# --- secrets -----------------------------------------------------------------
+# `.env` with no slash matches at every depth, so this one line covers the repo
+# root, apps/meowtam/, and anything added later. Only *.example files are tracked.
 .env
+*.env
+!.env.example
+!**/.env.example
+
+# --- python ------------------------------------------------------------------
+.venv/
 __pycache__/
 *.py[cod]
+
+# --- node --------------------------------------------------------------------
+node_modules/
+
+# --- os ----------------------------------------------------------------------
 .DS_Store
 
-# Private Slack exports, generated records, and embedding caches
+# --- private data ------------------------------------------------------------
+# Real Slack exports and everything derived from them. The pipeline can rebuild
+# all of it; none of it belongs in a public repo. data/sample/ is the exception:
+# it is committed on purpose so the repo runs with no Slack access at all.
 data/raw/*.json
 data/processed/*.json
 data/processed/*.npz
 data/eval_queries*.json
+apps/meowtam/data/raw-slack.json
 output/*
+*_export.json
 !.gitkeep
 !data/sample/*.json
 !data/eval_queries.example.json
 
-# Private scraped Slack exports dropped in the project root
-*_export.json
-
-# Fine-tuned model weights (too large for GitHub; rebuild with finetune.py)
+# --- large artefacts ---------------------------------------------------------
+# Fine-tuned weights run ~450MB, over GitHub's 100MB file limit.
+# Rebuild with: python3 -m tam.evaluation.finetune
 models/
 
-# Internal business proposal - not for the public repo
+# --- internal documents ------------------------------------------------------
+# Business proposal naming a real client contact. Never publish.
 tam-proposal.md
-
-# meowtam (Slack bot, TypeScript)
-node_modules/
-meowtam/.env
-meowtam/data/raw-slack.json
-

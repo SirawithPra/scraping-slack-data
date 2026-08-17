@@ -1,7 +1,7 @@
 """The prototype web app: daily digest, blockers, work-item timelines, grounding.
 
-    python3 server.py                 # http://127.0.0.1:8000
-    python3 server.py --records data/processed/combined.json --days 7
+    python3 -m tam.web.server                 # http://127.0.0.1:8000
+    python3 -m tam.web.server --records data/processed/combined.json --days 7
 
 Four pages, each backed by a JSON endpoint so a real frontend can replace the
 HTML later without touching the logic:
@@ -39,13 +39,13 @@ from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
-from digest import DEFAULT_WINDOW_DAYS, Digest, build_digest, timeline, window_start
-from embeddings import model_name, quiet_third_party_logs
-from meetings import merge_into, merge_utterances, parse_timestamp, parse_transcript, to_records
-from retrieve import DEFAULT_PRESET, Hit, build_retriever
-from semantic_search import DEFAULT_RECORDS, format_timestamp, load_records
-from summarize import TopicSummary, backend_name, summarize_digest
-from visualize import GRID, INK, INK_MUTED, INK_SECONDARY, SERIES_1, SERIES_2, SURFACE, build_page, stat_tile
+from tam.analysis.digest import DEFAULT_WINDOW_DAYS, Digest, build_digest, timeline, window_start
+from tam.retrieval.embeddings import model_name, quiet_third_party_logs
+from tam.ingest.meetings import merge_into, merge_utterances, parse_timestamp, parse_transcript, to_records
+from tam.retrieval.retrieve import DEFAULT_PRESET, Hit, build_retriever
+from tam.core import DEFAULT_RECORDS, format_timestamp, load_records
+from tam.analysis.summarize import TopicSummary, backend_name, summarize_digest
+from tam.report.visualize import GRID, INK, INK_MUTED, INK_SECONDARY, SERIES_1, SERIES_2, SURFACE, build_page, stat_tile
 
 log = logging.getLogger("server")
 
@@ -417,7 +417,7 @@ def api_search(q: str = Query(...), k: int = Query(default=10, ge=1, le=50), pre
         raise HTTPException(status_code=503, detail="Index is still building.")
     retriever = state.retriever
     if preset and preset != state.preset:
-        from retrieve import PRESETS
+        from tam.retrieval.retrieve import PRESETS
 
         if preset not in PRESETS:
             raise HTTPException(status_code=400, detail=f"Unknown preset {preset}")

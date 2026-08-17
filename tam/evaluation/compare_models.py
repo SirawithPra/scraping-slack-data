@@ -1,8 +1,8 @@
 """Score embedding models, space transforms, and CSLS on one labelled set.
 
-    python3 compare_models.py
-    python3 compare_models.py --models intfloat/multilingual-e5-base --transforms none abtt
-    python3 compare_models.py --records data/processed/messages.json --eval-file data/eval_queries.json
+    python3 -m tam.evaluation.compare_models
+    python3 -m tam.evaluation.compare_models --models intfloat/multilingual-e5-base --transforms none abtt
+    python3 -m tam.evaluation.compare_models --records data/processed/messages.json --eval-file data/eval_queries.json
 
 Writes output/model_comparison.html and prints the same numbers as a table.
 
@@ -33,7 +33,7 @@ import numpy as np
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
-from embeddings import (
+from tam.retrieval.embeddings import (
     apply_transform,
     cosine_scores,
     csls_scores,
@@ -43,7 +43,7 @@ from embeddings import (
     quiet_third_party_logs,
     set_model,
 )
-from evaluate import (
+from tam.evaluation.evaluate import (
     DEFAULT_EVAL_FILE,
     first_hit_rank,
     load_eval_set,
@@ -52,9 +52,9 @@ from evaluate import (
     recall_ceiling,
     usable_cases,
 )
-from fusion import fuse_rankings
-from semantic_search import DEFAULT_RECORDS, embed_records, load_records
-from visualize import BLUE_SCALE, INK_MUTED, SERIES_1, SURFACE, base_layout, build_page, shorten, stat_tile
+from tam.retrieval.fusion import fuse_rankings
+from tam.core import DEFAULT_RECORDS, embed_records, load_records
+from tam.report.visualize import BLUE_SCALE, INK_MUTED, SERIES_1, SURFACE, base_layout, build_page, shorten, stat_tile
 
 # Everything worth trying on Thai/English mixed chat, with the size that decides
 # whether it is practical. Prefixes and remote-code flags per family live in

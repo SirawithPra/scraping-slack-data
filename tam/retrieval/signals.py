@@ -19,7 +19,7 @@ stronger than any wording similarity:
 Each signal is a score in 0-1 so fusion.py can weight them alongside the
 retrievers. `pair_signals` exposes them per pair for the graph and the reports.
 
-    python3 signals.py --anchors        # what the anchor extractor actually finds
+    python3 -m tam.retrieval.signals --anchors        # what the anchor extractor actually finds
 """
 
 from __future__ import annotations
@@ -233,7 +233,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Inspect the extractor: anchors are only useful if they are the right strings."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    from semantic_search import load_records
+    from tam.core import load_records
 
     args = parse_args()
     records = load_records(args.records)

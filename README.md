@@ -11,41 +11,81 @@ Each of those is a different kind of evidence, and this repo now combines them.
 
 ```text
 Slack channel
-→ export messages + threads       (export_slack.py)
+→ export messages + threads       (tam/ingest/export_slack.py)
 → data/raw/slack_messages.json
-→ clean / normalize               (prepare_messages.py)
+→ clean / normalize               (tam/ingest/prepare_messages.py)
 → data/processed/messages.json
 │
-├─ retrieval ─────────────────────────────────────────────  (retrieve.py)
-│    dense cosine     embeddings.py   meaning, across languages
-│  + BM25             lexical.py      exact ids, names, error codes
-│  + anchor overlap   signals.py      shared concrete strings
-│  + thread/time/author signals.py    Slack's own structure
-│  → fuse (RRF or z-score)   fusion.py
-│  → cross-encoder rerank     rerank.py
+├─ retrieval ─────────────────────────────  (tam/retrieval/retrieve.py)
+│    dense cosine       embeddings.py  meaning, across languages
+│  + BM25               lexical.py     exact ids, names, error codes
+│  + anchor overlap     signals.py     shared concrete strings
+│  + thread/time/author signals.py     Slack's own structure
+│  → fuse (RRF or z-score)  fusion.py
+│  → cross-encoder rerank   rerank.py
 │  → Top 10 related messages
 │
-├─ topics ────────────────────────────────────────────────  (graph.py)
+├─ topics ────────────────────────────────  (tam/analysis/graph.py)
 │    one graph, every signal → Louvain communities → clusters
 │
-└─ typed relations ───────────────────────────────────────  (relations.py)
+├─ work-item identity ────────────────────  (tam/analysis/linker.py)
+│    ticket key > thread > cluster consensus, each link naming its evidence
+│
+└─ typed relations ───────────────────────  (tam/analysis/relations.py)
      resolves / blocked_by / duplicates / answers / follows_up, directed
 ```
 
-No frontend, no database, no YouTrack/Notion. Every model runs locally; nothing
-is sent to an API.
+Every model runs locally and nothing is sent to an API, unless you explicitly set
+`SUMMARIZER=claude`.
 
-The Slack-facing side lives separately in [meowtam/](meowtam/) — a TypeScript
-Bolt app (Socket Mode, slash commands, scheduled digest) built during a
-hackathon. It is a second surface over the same idea, not a port: it keeps its
-own ledger and does not import anything from the Python pipeline yet.
+## Three surfaces, one idea
+
+The repo grew two front ends over that pipeline. They are deliberately separate
+processes — a crash in one cannot take the other down — and they do not import
+each other:
+
+| Surface | Stack | What it is for | Entry point |
+| --- | --- | --- | --- |
+| **CLI** | Python | Building and measuring the pipeline itself | `python3 -m tam.retrieval.retrieve` |
+| **Dashboard** | Python · FastAPI | Reading the day: digest, blockers, one work item's timeline | `python3 -m tam.web.server` |
+| **Slack bot** | TypeScript · Bolt | Where the work is actually discussed | `cd apps/meowtam && npm start` |
+
+The honest state of the seam: the bot keeps **its own ledger** under
+`apps/meowtam/data/ledger.json` and does not call the Python pipeline. Both read
+Slack and both compute work items, by different code. Joining them is real work,
+not a config change — see [Known limitations](#known-limitations).
+
+## Layout
+
+```text
+tam/                    the Python package — import it, or run any module with -m
+├── core.py             records in, matches out: load_records, embed_records, search
+├── ingest/             Slack export, markup cleanup, meeting transcripts
+├── retrieval/          embeddings · lexical · signals · fusion · rerank · retrieve
+├── analysis/           graph · relations · linker · digest · summarize
+├── evaluation/         evaluate · weak_labels · compare_models · finetune
+├── report/             visualize (Plotly HTML) · report_th (plain Thai)
+└── web/                server.py — the FastAPI dashboard
+
+apps/meowtam/           the Slack bot, a separate npm project
+├── src/                app.ts + Block Kit builders per surface
+├── scripts/            export-slack → raw-slack.json → build-ledger → ledger.json
+└── slack-app-manifest.yaml
+
+data/   raw/ (private) · processed/ (generated) · sample/ (committed, runs offline)
+docs/   design brief, concept doc, API response fixtures
+deploy/ export-app-manifest.json — the read-only Slack app used by the exporter
+```
+
+Nothing sits at the repo root any more. Every module is reachable as
+`python3 -m tam.<area>.<module>`, and `--help` works on all twenty of them.
 
 **Start here:**
 
 ```bash
-python3 retrieve.py -q "bug ใน Profile module แก้แล้วยัง" --explain
-python3 retrieve.py --list-presets
-python3 evaluate.py --presets dense hybrid hybrid-rerank full
+python3 -m tam.retrieval.retrieve -q "bug ใน Profile module แก้แล้วยัง" --explain
+python3 -m tam.retrieval.retrieve --list-presets
+python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full
 ```
 
 ## Setup
@@ -70,9 +110,9 @@ cp .env.example .env
 ## Run
 
 ```bash
-python3 export_slack.py           # Slack  -> data/raw/slack_messages.json
-python3 prepare_messages.py       # clean  -> data/processed/messages.json
-python3 semantic_search.py        # interactive search, top 10
+python3 -m tam.ingest.export_slack           # Slack  -> data/raw/slack_messages.json
+python3 -m tam.ingest.prepare_messages       # clean  -> data/processed/messages.json
+python3 -m tam.core        # interactive search, top 10
 ```
 
 Then type a Thai / English / mixed message:
@@ -91,13 +131,13 @@ Top Matches:
 Useful flags:
 
 ```bash
-python3 semantic_search.py --top-k 10
-python3 semantic_search.py -q "BE sorting API พร้อมแล้ว"   # one-shot, no prompt
-python3 semantic_search.py --include-threads               # also match whole threads
-python3 semantic_search.py --no-cache                      # ignore the embedding cache
+python3 -m tam.core --top-k 10
+python3 -m tam.core -q "BE sorting API พร้อมแล้ว"   # one-shot, no prompt
+python3 -m tam.core --include-threads               # also match whole threads
+python3 -m tam.core --no-cache                      # ignore the embedding cache
 
-python3 export_slack.py --channel C0123ABCDEF --max-messages 100
-python3 prepare_messages.py --raw data/raw/slack_messages.json
+python3 -m tam.ingest.export_slack --channel C0123ABCDEF --max-messages 100
+python3 -m tam.ingest.prepare_messages --raw data/raw/slack_messages.json
 ```
 
 ### Try it without Slack credentials
@@ -106,11 +146,11 @@ A small Thai/English sample export is committed, so the pipeline can be checked
 before any real token exists. Writing to its own path keeps a real export intact:
 
 ```bash
-python3 prepare_messages.py --raw data/sample/slack_messages.sample.json \
+python3 -m tam.ingest.prepare_messages --raw data/sample/slack_messages.sample.json \
                             --out data/processed/sample_messages.json
-python3 semantic_search.py --records data/processed/sample_messages.json \
+python3 -m tam.core --records data/processed/sample_messages.json \
                            -q "FE sorting เสร็จแล้วแต่ยังรอ BE API"
-python3 evaluate.py --records data/processed/sample_messages.json \
+python3 -m tam.evaluation.evaluate --records data/processed/sample_messages.json \
                     --eval-file data/eval_queries.example.json
 ```
 
@@ -129,13 +169,13 @@ Slack hands out several token shapes and only some can read messages:
 | `xoxe-` | Refresh / app-configuration token | no — `apps.*` manifest APIs only |
 | `xapp-` | App-level token | no — Socket Mode only |
 
-`export_slack.py` rejects the last two up front, and calls `auth.test` before
-paging so a bad token fails in one request instead of mid-export.
+`tam/ingest/export_slack.py` rejects the last two up front, and calls `auth.test`
+before paging so a bad token fails in one request instead of mid-export.
 
 Fastest way to create the app with the right scopes: api.slack.com/apps →
 **Create New App** → **From a manifest** → pick the workspace → paste
-[slack_app_manifest.json](slack_app_manifest.json) → Create → **Install to
-Workspace**, then copy the `xoxb-` token. That manifest also sets
+[deploy/export-app-manifest.json](deploy/export-app-manifest.json) → Create →
+**Install to Workspace**, then copy the `xoxb-` token. That manifest also sets
 `token_rotation_enabled: false`, so the token stays valid instead of expiring
 every 12 hours.
 
@@ -171,7 +211,7 @@ Why this one for the first experiment:
 ### The model catalog
 
 ```bash
-python3 compare_models.py --catalog
+python3 -m tam.evaluation.compare_models --catalog
 ```
 
 | Model | Size · dim · ctx | Notes |
@@ -193,7 +233,7 @@ uninitialised ids) on both MPS and CPU. Verified on this machine, not assumed.
 They stay in the catalog so a later transformers release can be retried.
 
 Every family wants its input prepared differently, and getting this wrong costs
-several points of recall silently. `MODEL_SPECS` in [embeddings.py](embeddings.py)
+several points of recall silently. `MODEL_SPECS` in [embeddings.py](tam/retrieval/embeddings.py)
 holds one entry per family — E5 prefixes both sides, Qwen3 puts an instruction on
 the query only, EmbeddingGemma has its own two prompts, jina-v3 selects a LoRA
 adapter by argument, BGE-M3 and GTE want the text untouched.
@@ -201,9 +241,9 @@ adapter by argument, BGE-M3 and GTE want the text untouched.
 ### Comparing models, transforms, and CSLS
 
 ```bash
-python3 compare_models.py                       # 5 models × 5 post-processings + fusion
-python3 compare_models.py --transforms none abtt --no-csls
-python3 compare_models.py --models BAAI/bge-m3 intfloat/multilingual-e5-large
+python3 -m tam.evaluation.compare_models                       # 5 models × 5 post-processings + fusion
+python3 -m tam.evaluation.compare_models --transforms none abtt --no-csls
+python3 -m tam.evaluation.compare_models --models BAAI/bge-m3 intfloat/multilingual-e5-large
 open output/model_comparison.html
 ```
 
@@ -224,8 +264,8 @@ everything in 0.80–1.00, so averaging raw cosine would let it dominate.
 Any single run can also switch model without editing `.env`:
 
 ```bash
-python3 semantic_search.py --model intfloat/multilingual-e5-base -q "…"
-python3 evaluate.py --model sentence-transformers/paraphrase-multilingual-mpnet-base-v2
+python3 -m tam.core --model intfloat/multilingual-e5-base -q "…"
+python3 -m tam.evaluation.evaluate --model sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 ```
 
 Models are cached by Hugging Face under `~/.cache/huggingface/hub` (about 2.6 GB
@@ -237,7 +277,7 @@ network checks entirely — measured 12.7s → 4.2s per run.
 ### Measured model comparison
 
 Five models on the committed 33-message sample corpus and its 4 labelled queries
-(`python3 compare_models.py --transforms none abtt whiten --no-csls`):
+(`python3 -m tam.evaluation.compare_models --transforms none abtt whiten --no-csls`):
 
 | Model | dim | nDCG@10 | thread separation | score spread |
 | --- | --- | --- | --- | --- |
@@ -257,7 +297,7 @@ Five models on the committed 33-message sample corpus and its 4 labelled queries
 **The nDCG column separates nothing.** Four queries cannot: every model is inside
 0.01 of every other, which is one message changing place. That is not a finding
 about the models, it is a finding about the label set — see
-[weak_labels.py](weak_labels.py).
+[weak_labels.py](tam/evaluation/weak_labels.py).
 
 **The separation column does separate them**, and it ranks `e5-large` (1.85) >
 `bge-m3` (1.71) > `e5-base` (1.55) > MiniLM (1.49) > mpnet (1.25).
@@ -293,7 +333,7 @@ large fraction of the signal in a 33-message corpus. **Both transforms need a
 real export before they can be judged.** They are kept, off by default.
 
 Swap models with `EMBEDDING_MODEL` in `.env` or `--model` on any script. All
-model access is behind `embed_texts()` in [embeddings.py](embeddings.py), so
+model access is behind `embed_texts()` in [embeddings.py](tam/retrieval/embeddings.py), so
 moving to a hosted embedding API later means replacing that one function.
 
 ## How the embedding cache works
@@ -312,14 +352,14 @@ moving to a hosted embedding API later means replacing that one function.
 
 ## Beyond cosine: the retrieval pipeline
 
-Cosine is one kind of evidence. [retrieve.py](retrieve.py) composes several, and
+Cosine is one kind of evidence. [retrieve.py](tam/retrieval/retrieve.py) composes several, and
 `--preset` names each combination so the same pipeline can be searched with,
 evaluated, and charted.
 
 ```bash
-python3 retrieve.py --list-presets
-python3 retrieve.py -q "bug ใน Profile module แก้แล้วยัง" --preset hybrid --explain
-python3 retrieve.py --related msg_C0DEMOCHAN1_1786630932.425409
+python3 -m tam.retrieval.retrieve --list-presets
+python3 -m tam.retrieval.retrieve -q "bug ใน Profile module แก้แล้วยัง" --preset hybrid --explain
+python3 -m tam.retrieval.retrieve --related msg_C0DEMOCHAN1_1786630932.425409
 ```
 
 | Preset | What it adds | Why |
@@ -347,21 +387,21 @@ anchors that actually matched:
 
 **Why each stage exists**
 
-- **BM25** ([lexical.py](lexical.py)) catches what embeddings blur: `REV-1421`,
+- **BM25** ([lexical.py](tam/retrieval/lexical.py)) catches what embeddings blur: `REV-1421`,
   `getUserProfile`, `Omega, Inc.`, error codes. These carry little semantic
   content but are near-proof of the same work item. Thai has no spaces between
   words, so tokenisation uses PyThaiNLP's `newmm` when installed and overlapping
   character n-grams otherwise.
-- **Anchors** ([signals.py](signals.py)) are the same idea as a symmetric,
+- **Anchors** ([signals.py](tam/retrieval/signals.py)) are the same idea as a symmetric,
   IDF-weighted overlap rather than a query-document score.
-- **Thread / time / author** ([signals.py](signals.py)) are the signals Slack
+- **Thread / time / author** ([signals.py](tam/retrieval/signals.py)) are the signals Slack
   hands over for free. Thread membership is *ground truth*, not a guess. Time
   matters because "fixed, deploying now" has no topic at all — its timestamp does.
-- **Cross-encoder** ([rerank.py](rerank.py)) reads query and message together in
+- **Cross-encoder** ([rerank.py](tam/retrieval/rerank.py)) reads query and message together in
   one forward pass. It is the only stage that can tell "the sorting API is ready"
   from "waiting on the sorting API" — same words, opposite meaning, near-identical
   embeddings. It cannot be indexed, so it runs over the top 50 only.
-- **Fusion** ([fusion.py](fusion.py)) is RRF by default because the stages score
+- **Fusion** ([fusion.py](tam/retrieval/fusion.py)) is RRF by default because the stages score
   on wildly different scales. `zscore` keeps magnitudes when that is wanted.
 
 **Some alternatives are not worth trying.** Vectors are L2-normalised, so
@@ -370,7 +410,7 @@ produce *exactly* the same ranking. Changing the metric there is a no-op.
 
 ### Measured preset comparison
 
-`python3 evaluate.py --presets dense hybrid hybrid-rerank full`, on the 33-message
+`python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full`, on the 33-message
 sample corpus and its 4 hand-labelled queries:
 
 | Preset | nDCG@3 | nDCG@10 | MRR | MAP | worst first hit |
@@ -397,11 +437,11 @@ distinct topics in this channel". That is a question about the whole set, and a
 threshold on a pairwise score is a bad way to ask it.
 
 ```bash
-python3 graph.py --clusters data/processed/clusters.json
+python3 -m tam.analysis.graph --clusters data/processed/clusters.json
 open output/graph.html
 ```
 
-[graph.py](graph.py) builds one sparse graph whose edges combine dense
+[graph.py](tam/analysis/graph.py) builds one sparse graph whose edges combine dense
 similarity, thread membership, temporal proximity and shared anchors, then runs
 Louvain community detection. On the sample corpus:
 
@@ -425,11 +465,11 @@ the clustering against Slack threads, which are ground truth it was never shown.
 say *how*. The relations a team needs are directed and typed:
 
 ```bash
-python3 relations.py --relations data/processed/relations.json
-python3 relations.py --method nli --typed-only
+python3 -m tam.analysis.relations --relations data/processed/relations.json
+python3 -m tam.analysis.relations --method nli --typed-only
 ```
 
-[relations.py](relations.py) types every candidate pair as `resolves`,
+[relations.py](tam/analysis/relations.py) types every candidate pair as `resolves`,
 `blocked_by`, `duplicates`, `answers`, `follows_up` or `same_topic`, with the
 earlier message pointing at the later one — in a channel it is the later message
 that answers or resolves.
@@ -448,9 +488,9 @@ model that has *seen* how this channel says "the sorting API" learns something n
 public checkpoint contains.
 
 ```bash
-python3 finetune.py --dry-run          # how many pairs the corpus yields
-python3 finetune.py --epochs 2
-python3 evaluate.py --model models/finetuned --presets dense hybrid
+python3 -m tam.evaluation.finetune --dry-run          # how many pairs the corpus yields
+python3 -m tam.evaluation.finetune --epochs 2
+python3 -m tam.evaluation.evaluate --model models/finetuned --presets dense hybrid
 ```
 
 The training signal is already in the export: two messages in one thread are a
@@ -490,13 +530,13 @@ untouched: the meeting is clustered, searched, and related to Slack with no new
 code. A meeting is a conversation that happened out loud.
 
 ```bash
-python3 meetings.py --transcript data/sample/standup.vtt --title "Daily standup" \
+python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt --title "Daily standup" \
                     --started 2026-08-14T09:30 --merge-into data/processed/combined.json
 
-python3 digest.py    --records data/processed/combined.json --days 3   # what moved
-python3 digest.py    --records data/processed/combined.json --blockers # what is stuck
-python3 summarize.py --records data/processed/combined.json --days 3   # the same, in prose
-python3 server.py    --records data/processed/combined.json            # the web app
+python3 -m tam.analysis.digest    --records data/processed/combined.json --days 3   # what moved
+python3 -m tam.analysis.digest    --records data/processed/combined.json --blockers # what is stuck
+python3 -m tam.analysis.summarize --records data/processed/combined.json --days 3   # the same, in prose
+python3 -m tam.web.server    --records data/processed/combined.json            # the web app
 ```
 
 The payoff is that a work item spans both sources. On the sample corpus the
@@ -525,8 +565,8 @@ the message that proves it — is computed by `digest.py` from the typed relatio
 *state* is a bad standup, so the state never passes through a model.
 
 ```bash
-SUMMARIZER=template python3 summarize.py   # default: no model, no network
-SUMMARIZER=claude   python3 summarize.py   # Anthropic API writes the prose
+SUMMARIZER=template python3 -m tam.analysis.summarize   # default: no model, no network
+SUMMARIZER=claude   python3 -m tam.analysis.summarize   # Anthropic API writes the prose
 ```
 
 The backend switches on an env var exactly like `EMBEDDING_MODEL`, and
@@ -537,12 +577,127 @@ in that work item is dropped, and a summary left with none is flagged
 `unverified` in the UI. A model can write a confident sentence about a message
 that does not exist; it cannot fake an id that is in the corpus.
 
+## The dashboard
+
+`tam/web/server.py` is a FastAPI app that serves both HTML and JSON from the same
+computed digest — the HTML is generated in Python, so there is no build step, no
+`node_modules`, and no separate frontend to keep in sync.
+
+```bash
+python3 -m tam.web.server --records data/processed/combined.json --port 8899
+```
+
+It prints what it built before it serves anything, which is the fastest way to
+tell whether your corpus is actually loaded:
+
+```text
+INFO Building index from data/processed/combined.json
+INFO Reused 42 cached embedding(s) from data/processed/embeddings_….npz
+INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template
+```
+
+| Page | Shows |
+| --- | --- |
+| `/` | The digest: what moved, per work item, most recent first |
+| `/blockers` | Only what is stuck, with the message that proves it |
+| `/item/{key}` | One work item — full timeline across Slack and meetings |
+| `/search` | Ground a note: paste a sentence, get the messages behind it |
+| `/upload` | Drop a `.vtt` / `.srt` transcript and merge it into the corpus |
+
+The same data is available as JSON, so the bot or any other client can read it
+without scraping HTML:
+
+```bash
+curl localhost:8899/api/digest          # every work item, with evidence ids
+curl localhost:8899/api/blockers
+curl localhost:8899/api/item/1
+curl "localhost:8899/api/search?q=Android&k=10"
+curl -X POST localhost:8899/api/reindex # re-read records + rebuild, no restart
+```
+
+Startup cost is embedding the corpus. It reuses `data/processed/embeddings_*.npz`
+when the model and texts match, so a second start is seconds rather than minutes
+— see [How the embedding cache works](#how-the-embedding-cache-works).
+
+### Pointing it at real data
+
+There is nothing to configure. `--records` takes any file
+`tam.ingest.prepare_messages` or `tam.ingest.meetings` produced:
+
+```bash
+# Slack only
+python3 -m tam.ingest.export_slack
+python3 -m tam.ingest.prepare_messages
+python3 -m tam.web.server --records data/processed/messages.json
+
+# Slack + meetings in one corpus, which is what the digest is for
+python3 -m tam.ingest.meetings --transcript standup.vtt --title "Daily standup" \
+                    --started 2026-08-14T09:30 --merge-into data/processed/combined.json
+python3 -m tam.web.server --records data/processed/combined.json
+```
+
+With no Slack access at all, the committed sample runs the whole thing — see
+[Try it without Slack credentials](#try-it-without-slack-credentials).
+
+## The Slack bot
+
+[apps/meowtam/](apps/meowtam/) is where the pipeline's ideas meet the place work
+is actually discussed. It is a Bolt app in **Socket Mode**, which matters
+practically: no public URL, no ngrok, no inbound firewall rule. It dials out to
+Slack, so it runs from a laptop.
+
+```bash
+cd apps/meowtam
+cp .env.example .env     # SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_SIGNING_SECRET
+npm install
+npm start
+```
+
+Create the app by pasting
+[apps/meowtam/slack-app-manifest.yaml](apps/meowtam/slack-app-manifest.yaml) into
+api.slack.com/apps → **From an app manifest**. That sets every scope, command and
+shortcut at once; a missing scope surfaces as a confusing runtime error hours
+later, so do not hand-configure them.
+
+### What it does in Slack
+
+| In Slack | What happens |
+| --- | --- |
+| `/meowtam` or `/mt` | The board — every work item, blocked first |
+| `/meowtam blocked` | Only what is stuck |
+| `/meowtam digest` | The standup digest, on demand |
+| `/meowtam recall <ข้อความ>` | Search, including Thai, plus the decision chain behind a topic |
+| `/meowtam PROJ-1` | One work item by ticket key |
+| `/meowtam @someone` | What that person is on |
+| Message shortcut **ผูกกับ ticket** | Attach any message to a work item |
+| Message shortcut **บันทึกเป็นการตัดสินใจ** | File it in the decision log, findable via `recall` |
+| Reaction on a message | `reaction_added` is an input — emoji as a command |
+| Scheduled | 08:45 standup DM, 09:25 channel digest — **off unless `ENABLE_SCHEDULE=1`** |
+
+The schedules are off by default on purpose: a stray `npm start` should never
+post into a real channel.
+
+### Running it on your real channel
+
+```bash
+# EXPORT_CHANNELS=C0DEMOCHAN1,… and DIGEST_CHANNEL in .env, then:
+npm run export     # channel history via the bot token you already have
+npm run ledger     # → data/ledger.json: work items, states, evidence
+```
+
+`npm run ledger` reports an unassigned rate; under 25% is healthy.
+`/meowtam reload` re-reads the ledger without a restart. Remember `/invite
+@Meowtam` — a bot token cannot read a channel it is not in.
+
+[apps/meowtam/README.md](apps/meowtam/README.md) has the rest: the demo
+choreography, which parts are real versus mocked, and the design rules.
+
 ## Evaluation
 
 ```bash
 cp data/eval_queries.example.json data/eval_queries.json   # then edit the ids
-python3 evaluate.py --presets dense hybrid hybrid-rerank full
-python3 evaluate.py --eval-file data/eval_queries.weak.json --per-query
+python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full
+python3 -m tam.evaluation.evaluate --eval-file data/eval_queries.weak.json --per-query
 ```
 
 Four metrics, because Recall@K alone hides where in the list the answer landed:
@@ -567,11 +722,11 @@ message changing place moves Recall@1 by 0.25. `evaluate.py` prints a warning
 saying so whenever there are fewer than 20 queries.
 
 ```bash
-python3 weak_labels.py                 # threads → a labelled set, free
-python3 evaluate.py --eval-file data/eval_queries.weak.json --presets dense hybrid
+python3 -m tam.evaluation.weak_labels                 # threads → a labelled set, free
+python3 -m tam.evaluation.evaluate --eval-file data/eval_queries.weak.json --presets dense hybrid
 ```
 
-[weak_labels.py](weak_labels.py) takes the labels Slack already contains: one
+[weak_labels.py](tam/evaluation/weak_labels.py) takes the labels Slack already contains: one
 message from a thread becomes the query, its thread-mates become the relevant
 set, and the message itself is excluded from its own ranking. It scales with the
 export and regenerates whenever the corpus does.
@@ -587,8 +742,8 @@ Numbers like `Recall@1 = 0.44` are hard to read. `visualize.py` renders the same
 results as a self-contained HTML page (Plotly is inlined, so it works offline):
 
 ```bash
-python3 visualize.py
-python3 visualize.py --query "เปลี่ยนชื่อไฟล์ตอน export" --top-k 10
+python3 -m tam.report.visualize
+python3 -m tam.report.visualize --query "เปลี่ยนชื่อไฟล์ตอน export" --top-k 10
 open output/report.html
 ```
 
@@ -610,7 +765,7 @@ counts rather than ratios — "เจอ 7 จาก 10 ข้อความท
 `Recall@10 = 0.70` — for teammates who do not work with retrieval metrics:
 
 ```bash
-python3 report_th.py
+python3 -m tam.report.report_th
 open output/report_th.html
 ```
 
@@ -623,41 +778,54 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
 
 | File | Role |
 | --- | --- |
-| [export_slack.py](export_slack.py) | Paginated `conversations.history` + `conversations.replies`, 429-aware |
-| [prepare_messages.py](prepare_messages.py) | Slack markup cleanup, noise filtering, message + thread records |
+| [export_slack.py](tam/ingest/export_slack.py) | Paginated `conversations.history` + `conversations.replies`, 429-aware |
+| [prepare_messages.py](tam/ingest/prepare_messages.py) | Slack markup cleanup, noise filtering, message + thread records |
 | **Retrieval** | |
-| [embeddings.py](embeddings.py) | `embed_texts()`, per-family prefixes, SHA-256 cache, space transforms, CSLS |
-| [lexical.py](lexical.py) | BM25 with a Thai-aware tokenizer, and `matched_terms` for explanations |
-| [signals.py](signals.py) | Anchors (ticket ids, identifiers, names) + thread / time / author signals |
-| [fusion.py](fusion.py) | RRF, z-score fusion, neighbourhood (k-reciprocal) rerank |
-| [rerank.py](rerank.py) | Cross-encoder reranking over the top candidates |
-| [retrieve.py](retrieve.py) | **The pipeline.** Composes every stage; `--preset`, `--explain`, `--related` |
-| [semantic_search.py](semantic_search.py) | The original dense-only search; still the simplest entry point |
+| [embeddings.py](tam/retrieval/embeddings.py) | `embed_texts()`, per-family prefixes, SHA-256 cache, space transforms, CSLS |
+| [lexical.py](tam/retrieval/lexical.py) | BM25 with a Thai-aware tokenizer, and `matched_terms` for explanations |
+| [signals.py](tam/retrieval/signals.py) | Anchors (ticket ids, identifiers, names) + thread / time / author signals |
+| [fusion.py](tam/retrieval/fusion.py) | RRF, z-score fusion, neighbourhood (k-reciprocal) rerank |
+| [rerank.py](tam/retrieval/rerank.py) | Cross-encoder reranking over the top candidates |
+| [retrieve.py](tam/retrieval/retrieve.py) | **The pipeline.** Composes every stage; `--preset`, `--explain`, `--related` |
+| [core.py](tam/core.py) | The original dense-only search; still the simplest entry point |
 | **Relations** | |
-| [graph.py](graph.py) | Message graph + Louvain communities, scored against threads with ARI/NMI |
-| [relations.py](relations.py) | Typed directed relations, by cue rules or by NLI |
+| [graph.py](tam/analysis/graph.py) | Message graph + Louvain communities, scored against threads with ARI/NMI |
+| [relations.py](tam/analysis/relations.py) | Typed directed relations, by cue rules or by NLI |
 | **Measurement** | |
-| [evaluate.py](evaluate.py) | Recall / nDCG / MRR / MAP over presets |
-| [weak_labels.py](weak_labels.py) | Turns threads into a labelled eval set, no hand labelling |
-| [compare_models.py](compare_models.py) | Models × space transforms × CSLS + Reciprocal Rank Fusion |
-| [finetune.py](finetune.py) | Contrastive fine-tune on same-thread pairs |
+| [evaluate.py](tam/evaluation/evaluate.py) | Recall / nDCG / MRR / MAP over presets |
+| [weak_labels.py](tam/evaluation/weak_labels.py) | Turns threads into a labelled eval set, no hand labelling |
+| [compare_models.py](tam/evaluation/compare_models.py) | Models × space transforms × CSLS + Reciprocal Rank Fusion |
+| [finetune.py](tam/evaluation/finetune.py) | Contrastive fine-tune on same-thread pairs |
 | **Standup / meetings** | |
-| [meetings.py](meetings.py) | Transcript (VTT / SRT / `Name:` lines / JSON) → the same records Slack produces |
-| [digest.py](digest.py) | Work items, blocked/resolved state, blockers, timelines — all derived, no LLM |
-| [summarize.py](summarize.py) | Prose for a work item; `SUMMARIZER=template` (offline) or `claude` |
-| [server.py](server.py) | FastAPI prototype: digest, blockers, item timeline, grounding search, upload |
+| [meetings.py](tam/ingest/meetings.py) | Transcript (VTT / SRT / `Name:` lines / JSON) → the same records Slack produces |
+| [digest.py](tam/analysis/digest.py) | Work items, blocked/resolved state, blockers, timelines — all derived, no LLM |
+| [summarize.py](tam/analysis/summarize.py) | Prose for a work item; `SUMMARIZER=template` (offline) or `claude` |
+| [server.py](tam/web/server.py) | FastAPI prototype: digest, blockers, item timeline, grounding search, upload |
 | **Reports** | |
-| [visualize.py](visualize.py) | Plotly HTML report of a search run, into `output/` |
-| [report_th.py](report_th.py) | Plain-Thai version of the results, for non-ML readers |
+| [visualize.py](tam/report/visualize.py) | Plotly HTML report of a search run, into `output/` |
+| [report_th.py](tam/report/report_th.py) | Plain-Thai version of the results, for non-ML readers |
 | `data/sample/` | Committed Thai/English sample export for testing without Slack |
-| **Slack app (TypeScript)** | |
-| [meowtam/src/app.ts](meowtam/src/app.ts) | Bolt app: slash commands, shortcuts, modals, scheduled digest |
-| [meowtam/src/blocks/](meowtam/src/blocks/) | Block Kit builders per surface (digest, item card, drift, recall) |
-| [meowtam/scripts/](meowtam/scripts/) | `export-slack.ts` → `raw-slack.json` → `build-ledger.ts` → `data/ledger.json` |
-| [meowtam/slack-app-manifest.yaml](meowtam/slack-app-manifest.yaml) | Every scope, command and shortcut in one paste |
+| **Slack bot (TypeScript)** | |
+| [app.ts](apps/meowtam/src/app.ts) | Bolt app: slash commands, shortcuts, modals, scheduled digest |
+| [src/blocks/](apps/meowtam/src/blocks/) | Block Kit builders per surface (digest, item card, drift, recall) |
+| [src/search.ts](apps/meowtam/src/search.ts) | Recall: trigram + literal-term hybrid, Thai-safe, no API key |
+| [scripts/](apps/meowtam/scripts/) | `export-slack.ts` → `raw-slack.json` → `build-ledger.ts` → `data/ledger.json` |
+| [slack-app-manifest.yaml](apps/meowtam/slack-app-manifest.yaml) | Every scope, command and shortcut in one paste |
+| **Config** | |
+| [.env.example](.env.example) | Every variable the Python side reads, and what it costs you |
+| [apps/meowtam/.env.example](apps/meowtam/.env.example) | The eight the bot reads |
+| [deploy/export-app-manifest.json](deploy/export-app-manifest.json) | Read-only Slack app for the exporter — history scopes only |
 
 ## Known limitations
 
+- **The bot and the pipeline are not joined.** This is the largest one. Both read
+  Slack and both decide what a work item is, in different languages, by different
+  rules: the Python side clusters embeddings with a Louvain graph, the bot matches
+  character trigrams in `apps/meowtam/scripts/build-ledger.ts`. So the same
+  channel can produce two different sets of work items. Closing it means picking
+  one owner of that definition — most likely having the bot read
+  `tam.web.server`'s `/api/digest` instead of building its own ledger — and it is
+  a design decision, not a merge.
 - **Brute-force search.** Every query scores every record with a NumPy dot
   product. Fine for thousands of messages, not for millions — that is what a
   vector database would be for later.

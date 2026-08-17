@@ -24,8 +24,8 @@ So read weak-label numbers as *relative* — good for ranking pipelines against 
 other, not for quoting an absolute recall figure. Keep a small hand-labelled set
 alongside it, and check the two agree on which pipeline wins.
 
-    python3 weak_labels.py
-    python3 weak_labels.py --per-thread 2 --min-thread 3 --out data/eval_queries.weak.json
+    python3 -m tam.evaluation.weak_labels
+    python3 -m tam.evaluation.weak_labels --per-thread 2 --min-thread 3 --out data/eval_queries.weak.json
 """
 
 from __future__ import annotations
@@ -37,7 +37,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from semantic_search import DEFAULT_RECORDS, load_records
+from tam.core import DEFAULT_RECORDS, load_records
 
 DEFAULT_OUTPUT = Path("data/eval_queries.weak.json")
 # Below this, a "thread" is one message plus an acknowledgement and the label set
@@ -133,7 +133,7 @@ def main() -> None:
 
     log.info("Wrote %d case(s) from %d thread(s), %d label(s) total, to %s", len(cases), threads, labels, args.out)
     print(f"\n{len(cases)} weak-labelled queries, {labels / len(cases):.1f} relevant messages each on average.")
-    print(f"Use them with:  python3 evaluate.py --eval-file {args.out}")
+    print(f"Use them with:  python3 -m tam.evaluation.evaluate --eval-file {args.out}")
     print("Read the numbers as relative — see this module's docstring for why.")
 
 

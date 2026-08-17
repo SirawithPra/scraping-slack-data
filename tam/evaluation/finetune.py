@@ -27,9 +27,9 @@ Two honest limits:
   by message would put one half of a conversation in train and the other in test,
   and the score would be meaningless.
 
-    python3 finetune.py --dry-run          # how many pairs the corpus yields
-    python3 finetune.py --epochs 2
-    python3 evaluate.py --model models/finetuned --presets dense hybrid
+    python3 -m tam.evaluation.finetune --dry-run          # how many pairs the corpus yields
+    python3 -m tam.evaluation.finetune --epochs 2
+    python3 -m tam.evaluation.evaluate --model models/finetuned --presets dense hybrid
 """
 
 from __future__ import annotations
@@ -42,9 +42,9 @@ from typing import Any, Sequence
 
 from dotenv import load_dotenv
 
-from embeddings import model_name, model_spec, prepared_text, quiet_third_party_logs, set_model
-from semantic_search import DEFAULT_RECORDS, load_records
-from weak_labels import thread_groups
+from tam.retrieval.embeddings import model_name, model_spec, prepared_text, quiet_third_party_logs, set_model
+from tam.core import DEFAULT_RECORDS, load_records
+from tam.evaluation.weak_labels import thread_groups
 
 DEFAULT_OUTPUT = Path("models/finetuned")
 # Below this the run is fitting noise. Not a hard law, but the point where a
@@ -183,8 +183,8 @@ def main() -> None:
     model.save(str(args.out))
     log.info("Saved the fine-tuned model to %s", args.out)
     print(f"\nCompare it against the base model on the same labels:")
-    print(f"  python3 compare_models.py --models {model_name()} {args.out}")
-    print(f"  python3 evaluate.py --model {args.out} --presets dense hybrid")
+    print(f"  python3 -m tam.evaluation.compare_models --models {model_name()} {args.out}")
+    print(f"  python3 -m tam.evaluation.evaluate --model {args.out} --presets dense hybrid")
     print("\nIf it does not beat the base model, the corpus was too small — that is the usual outcome")
     print("on one channel, and it is information, not a failure.")
 

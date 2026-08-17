@@ -24,9 +24,9 @@ prior no general similarity measure has access to.
 Candidate pairs come from graph.py's edges, so the same tuned combination of
 signals decides what is worth typing at all.
 
-    python3 relations.py
-    python3 relations.py --method nli --min-score 0.6
-    python3 relations.py --relations data/processed/relations.json
+    python3 -m tam.analysis.relations
+    python3 -m tam.analysis.relations --method nli --min-score 0.6
+    python3 -m tam.analysis.relations --relations data/processed/relations.json
 """
 
 from __future__ import annotations
@@ -44,11 +44,11 @@ import numpy as np
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
-from embeddings import apply_transform, fit_transform, model_name, quiet_third_party_logs, set_model
-from graph import EdgeWeights, build_graph
-from semantic_search import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
-from signals import SignalIndex
-from visualize import INK_MUTED, INK_SECONDARY, SERIES_1, SURFACE, base_layout, build_page, shorten, stat_tile
+from tam.retrieval.embeddings import apply_transform, fit_transform, model_name, quiet_third_party_logs, set_model
+from tam.analysis.graph import EdgeWeights, build_graph
+from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
+from tam.retrieval.signals import SignalIndex
+from tam.report.visualize import INK_MUTED, INK_SECONDARY, SERIES_1, SURFACE, base_layout, build_page, shorten, stat_tile
 
 DEFAULT_OUTPUT = Path("output/relations.html")
 # XNLI covers Thai, and this checkpoint is the standard multilingual zero-shot one.
@@ -188,7 +188,7 @@ class Relation:
 
 def order_by_time(records: Sequence[dict[str, Any]], left: int, right: int) -> tuple[int, int]:
     """(earlier, later). Ties fall back to corpus order, which is export order."""
-    from signals import timestamp
+    from tam.retrieval.signals import timestamp
 
     left_time, right_time = timestamp(records[left]), timestamp(records[right])
     if np.isfinite(left_time) and np.isfinite(right_time) and right_time != left_time:

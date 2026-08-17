@@ -1,9 +1,9 @@
 """Score retrieval pipelines on a labelled query set.
 
     cp data/eval_queries.example.json data/eval_queries.json  # then edit the ids
-    python3 evaluate.py
-    python3 evaluate.py --presets dense hybrid hybrid-rerank full
-    python3 evaluate.py --eval-file data/eval_queries.weak.json --presets dense hybrid
+    python3 -m tam.evaluation.evaluate
+    python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full
+    python3 -m tam.evaluation.evaluate --eval-file data/eval_queries.weak.json --presets dense hybrid
 
 Four metrics, because Recall@K alone hides the thing that matters most — *where*
 in the list the answer landed:
@@ -39,8 +39,8 @@ from typing import Any, Sequence
 import numpy as np
 from dotenv import load_dotenv
 
-from embeddings import model_name, quiet_third_party_logs, set_model
-from semantic_search import DEFAULT_RECORDS, load_records
+from tam.retrieval.embeddings import model_name, quiet_third_party_logs, set_model
+from tam.core import DEFAULT_RECORDS, load_records
 
 DEFAULT_EVAL_FILE = Path("data/eval_queries.json")
 DEFAULT_KS = (1, 3, 5, 10)
@@ -52,7 +52,7 @@ def load_eval_set(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         raise SystemExit(
             f"Missing {path}. Copy data/eval_queries.example.json to {path} and label your own ids, "
-            "or generate a set with: python3 weak_labels.py"
+            "or generate a set with: python3 -m tam.evaluation.weak_labels"
         )
     try:
         cases = json.loads(path.read_text(encoding="utf-8"))
@@ -179,7 +179,7 @@ def usable_cases(
     for weak labels, where the query *is* one of the messages and would otherwise
     rank first against itself.
     """
-    from visualize import shorten
+    from tam.report.visualize import shorten
 
     queries: list[str] = []
     relevant_sets: list[set[str]] = []
@@ -249,8 +249,8 @@ def main() -> None:
     quiet_third_party_logs()
     load_dotenv()
     args = parse_args()
-    from retrieve import DEFAULT_PRESET, PRESETS, Retriever, build_retriever
-    from visualize import shorten
+    from tam.retrieval.retrieve import DEFAULT_PRESET, PRESETS, Retriever, build_retriever
+    from tam.report.visualize import shorten
 
     set_model(args.model)
     ks = tuple(sorted({k for k in args.ks if k > 0}))
@@ -291,7 +291,7 @@ def main() -> None:
     if len(queries) < 20:
         print(
             f"WARNING: {len(queries)} queries is too few to separate pipelines — one message changing "
-            f"place moves R@{ks[0]} by {1 / len(queries):.2f}. Generate more with: python3 weak_labels.py"
+            f"place moves R@{ks[0]} by {1 / len(queries):.2f}. Generate more with: python3 -m tam.evaluation.weak_labels"
         )
 
 

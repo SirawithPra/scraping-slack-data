@@ -1,7 +1,7 @@
 """Render the search and evaluation results as an HTML report.
 
-    python3 visualize.py
-    python3 visualize.py --query "แอป Android ล่มตอนกดเข้าหน้าโปรไฟล์" --top-k 10
+    python3 -m tam.report.visualize
+    python3 -m tam.report.visualize --query "แอป Android ล่มตอนกดเข้าหน้าโปรไฟล์" --top-k 10
 
 Writes output/report.html -- open it in a browser. Embeddings come from the
 same cache the search uses, so this recomputes nothing.
@@ -19,9 +19,9 @@ import numpy as np
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
-from embeddings import cosine_scores, embed_texts, model_name, quiet_third_party_logs, set_model
-from evaluate import DEFAULT_EVAL_FILE, first_hit_rank, load_eval_set, recall_at_k
-from semantic_search import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
+from tam.retrieval.embeddings import cosine_scores, embed_texts, model_name, quiet_third_party_logs, set_model
+from tam.evaluation.evaluate import DEFAULT_EVAL_FILE, first_hit_rank, load_eval_set, recall_at_k
+from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
 
 DEFAULT_OUTPUT = Path("output/report.html")
 DEFAULT_KS = (1, 3, 5, 10)

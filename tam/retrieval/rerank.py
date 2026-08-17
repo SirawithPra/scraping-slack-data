@@ -11,8 +11,8 @@ The cost is that it cannot be indexed: N messages means N forward passes per
 query. So it runs only over the top candidates from the cheap stages. That
 retrieve-then-rerank split is why it is worth having both.
 
-    python3 rerank.py -q "bug ใน Profile module แก้แล้วยัง"
-    RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual python3 rerank.py -q "..."
+    python3 -m tam.retrieval.rerank -q "bug ใน Profile module แก้แล้วยัง"
+    RERANKER_MODEL=jinaai/jina-reranker-v2-base-multilingual python3 -m tam.retrieval.rerank -q "..."
 """
 
 from __future__ import annotations
@@ -154,8 +154,8 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Rerank the whole corpus for one query, to see the cross-encoder alone."""
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
-    from embeddings import quiet_third_party_logs
-    from semantic_search import load_records
+    from tam.retrieval.embeddings import quiet_third_party_logs
+    from tam.core import load_records
 
     quiet_third_party_logs()
     args = parse_args()
