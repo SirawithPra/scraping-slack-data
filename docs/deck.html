@@ -178,7 +178,7 @@
         <div class="stat"><div class="v">0</div><div class="l">ข้อมูลที่ออกนอกเครื่อง (ค่า default)</div></div>
       </div>
       <p>ต้นแบบใช้งานได้จริงแล้วทั้งสามผิว โค้ดทั้งหมดเปิดอยู่ที่ <a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a></p>
-      <div class="rail"><span><b>ผู้จัดทำ</b> Sirawith P.</span><span><b>สถานะ</b> Working prototype</span><span><b>เอกสาร</b> README · USER_MANUAL</span></div>
+      <div class="rail"><span><b>ผู้จัดทำ</b> Sirawith P.</span><span><b>สถานะ</b> Working prototype</span><span><b>เอกสาร</b> README · USER_MANUAL · architecture</span></div>
     </div>
   </section>
 
@@ -278,7 +278,7 @@
 ├── evaluation/ วัดผล recall/nDCG · fine-tune
 └── web/        server.py — dashboard
 
-apps/meowtam/   Slack bot — npm project แยก</pre>
+slack-bot/   Slack bot — npm project แยก</pre>
       <div class="rail"><span><b>โครงเดิม</b> 25 ไฟล์ .py กองที่ root</span><span><b>ปัจจุบัน</b> root ไม่มีไฟล์ .py เลย</span></div>
     </div>
   </section>
@@ -343,7 +343,7 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
         <table>
           <thead><tr><th>สิ่งของ</th><th>อยู่ที่ไหน</th><th>ขึ้น Git</th></tr></thead>
           <tbody>
-            <tr><td>token ทั้งหมด</td><td><code>.env</code>, <code>apps/meowtam/.env</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>token ทั้งหมด</td><td><code>.env</code>, <code>slack-bot/.env</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>export จริงจาก Slack</td><td><code>data/raw/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>records + embedding cache</td><td><code>data/processed/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>โมเดล fine-tune (~450 MB)</td><td><code>models/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>

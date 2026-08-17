@@ -56,8 +56,13 @@ cd scraping-slack-data
 
 python3 -m venv .venv
 source .venv/bin/activate
+
+cd pipeline
 python3 -m pip install -r requirements.txt
 ```
+
+**คำสั่ง Python ทุกคำสั่งในคู่มือนี้รันจากโฟลเดอร์ `pipeline/`** และคำสั่ง `npm` ทุกคำสั่ง
+รันจาก `slack-bot/` — สองฝั่งเข้าแบบเดียวกัน
 
 ใช้เวลา ~2 นาที ติดตั้งแล้วตรวจว่าทุกโมดูลเรียกได้:
 
@@ -70,10 +75,10 @@ python3 -m tam.retrieval.retrieve --help
 ### 3.2 ตั้งค่า
 
 ```bash
-cp .env.example .env
+cp .env.example .env          # อยู่ใน pipeline/
 ```
 
-เปิด `.env` แก้ค่า ทุกตัวมีคำอธิบายกำกับอยู่ในไฟล์ ที่สำคัญคือ:
+เปิด `pipeline/.env` แก้ค่า ทุกตัวมีคำอธิบายกำกับอยู่ในไฟล์ ที่สำคัญคือ:
 
 | ตัวแปร | ต้องใส่ไหม | คืออะไร |
 |---|---|---|
@@ -82,7 +87,7 @@ cp .env.example .env
 | `EMBEDDING_MODEL` | ไม่ | มีค่า default อยู่แล้ว |
 | `SUMMARIZER` | ไม่ | `template` (default, ออฟไลน์) หรือ `claude` |
 
-> **`.env` ถูก gitignore ไว้แล้ว** อย่า commit และอย่าส่ง token ทางแชทหรืออีเมล
+> **`pipeline/.env` ถูก gitignore ไว้แล้ว** อย่า commit และอย่าส่ง token ทางแชทหรืออีเมล
 > ถ้าเคยส่งไปแล้ว ให้ revoke แล้วออกใหม่ที่ <https://api.slack.com/apps>
 
 ---
@@ -120,7 +125,7 @@ python3 -m tam.web.server --records data/processed/combined.json --port 8899
 ### 5.1 สร้าง Slack app สำหรับดึงข้อมูล
 
 ไปที่ <https://api.slack.com/apps> → **Create New App** → **From a manifest** →
-เลือก workspace → วางเนื้อหาไฟล์ `deploy/export-app-manifest.json` → **Create** →
+เลือก workspace → วางเนื้อหาไฟล์ `pipeline/slack-app-manifest.json` → **Create** →
 **Install to Workspace** → คัดลอก **Bot User OAuth Token** (`xoxb-...`)
 
 manifest นี้ขอ scope แค่ที่จำเป็นต่อการอ่านประวัติ และตั้ง `token_rotation_enabled: false`
@@ -203,7 +208,7 @@ curl -X POST localhost:8899/api/reindex    # อ่านข้อมูลใ�
 ```
 
 > **เปิดครั้งแรกช้า** เพราะต้อง embed ทั้ง corpus ครั้งถัดไปมันใช้ cache ใน
-> `data/processed/embeddings_*.npz` ถ้าโมเดลและข้อความเดิม จะเหลือไม่กี่วินาที
+> `pipeline/data/processed/embeddings_*.npz` ถ้าโมเดลและข้อความเดิม จะเหลือไม่กี่วินาที
 
 ---
 
@@ -212,7 +217,7 @@ curl -X POST localhost:8899/api/reindex    # อ่านข้อมูลใ�
 ### 7.1 สร้างแอป
 
 <https://api.slack.com/apps> → **Create New App** → **From an app manifest** →
-วางเนื้อหา `apps/meowtam/slack-app-manifest.yaml`
+วางเนื้อหา `slack-bot/slack-app-manifest.yaml`
 
 manifest ตั้ง scope, slash command และ shortcut ให้ครบในครั้งเดียว
 **อย่าตั้งเองทีละอัน** — scope ที่ขาดไปจะโผล่เป็น error ตอน runtime ซึ่งหายากกว่ามาก
@@ -228,7 +233,7 @@ manifest ตั้ง scope, slash command และ shortcut ให้ครบ
 ### 7.2 ติดตั้งและรัน
 
 ```bash
-cd apps/meowtam
+cd slack-bot
 cp .env.example .env      # ใส่สามค่าข้างบน + DIGEST_CHANNEL
 npm install
 npm start
@@ -286,6 +291,35 @@ driftModal, recall, recallEmpty) โดยไม่ต่อเน็ต
 
 ---
 
+## 7.6 ให้บอทอ่านจาก pipeline (แนะนำ)
+
+ค่าเริ่มต้นบอทใช้ ledger ของตัวเอง ถ้าอยากให้ใช้ผลจาก pipeline — ซึ่งเป็นตัวที่ใช้โมเดล
+embedding จริง — ตั้ง `TAM_API_URL` ใน `slack-bot/.env`
+
+```bash
+# เทอร์มินัลที่ 1
+cd pipeline
+python3 -m tam.web.server --records data/processed/combined.json --port 8899
+
+# เทอร์มินัลที่ 2
+cd slack-bot
+TAM_API_URL=http://127.0.0.1:8899 npm run check-api   # พิสูจน์ว่าต่อได้ ไม่ต้องมี Slack
+TAM_API_URL=http://127.0.0.1:8899 npm start
+```
+
+`check-api` ไล่ทั้งเส้นทางที่บอทใช้ตอน boot แล้วพิมพ์ผลออกมา ใช้ตรวจก่อนเดโมได้
+
+**ตั้งแล้วจะไม่มี fallback** ถ้า pipeline ตอบไม่ได้ บอทจะไม่สตาร์ตและบอกวิธีแก้ —
+เพราะการแอบเสิร์ฟข้อมูลเก่าที่หน้าตาเหมือนของจริงอันตรายกว่าการไม่สตาร์ต
+
+| มาจาก pipeline | บอทเติมเอง |
+|---|---|
+| work item · สถานะ · หลักฐาน · timeline · ข้อความ · ประโยคสรุป · recall | decision (คนกดบันทึก) · standup draft (คำนวณจาก item) · drift (ยังไม่มี) |
+
+ดูภาพประกอบทั้งหมดได้ที่ [architecture.html](architecture.html)
+
+---
+
 ## 8. คำสั่งที่ใช้บ่อย
 
 ```bash
@@ -318,13 +352,13 @@ python3 -m tam.report.report_th
 
 | อาการ | สาเหตุและวิธีแก้ |
 |---|---|
-| `SLACK_TOKEN missing` | ยังไม่ได้ `cp .env.example .env` หรือยังไม่ได้ใส่ค่า |
+| `SLACK_TOKEN missing` | ยังไม่ได้ `cp .env.example .env` ใน `pipeline/` หรือยังไม่ได้ใส่ค่า |
 | `invalid_auth` / `not_authed` | token ผิดแบบ — ต้องเป็น `xoxb-` หรือ `xoxp-` ไม่ใช่ `xoxe-` / `xapp-` |
 | `not_in_channel` | ยังไม่ได้ `/invite` บอทเข้าช่อง |
 | `missing_scope` | scope ไม่ครบ — สร้างแอปใหม่จาก manifest จะได้ครบทันที |
 | ดึงข้อมูลช้ามาก | rate limit ของแอปใหม่ ไม่ใช่บั๊ก ปล่อยให้รันต่อ |
 | เปิด dashboard ครั้งแรกช้า | กำลัง embed corpus ครั้งถัดไปใช้ cache |
-| `ModuleNotFoundError: tam` | ต้องรันจากโฟลเดอร์รากของรีโป และ activate venv แล้ว |
+| `ModuleNotFoundError: tam` | ต้องรันจากโฟลเดอร์ `pipeline/` และ activate venv แล้ว |
 | bot ไม่ตอบ slash command | `SLACK_APP_TOKEN` ต้องมี scope `connections:write` |
 | ไม่มีอะไรใน digest | corpus ว่างหรือ `--days` แคบไป ลองเพิ่มเป็น `--days 30` |
 
@@ -334,14 +368,14 @@ python3 -m tam.report.report_th
 
 | ที่ | อะไร | ขึ้น Git ไหม |
 |---|---|---|
-| `data/raw/` | ข้อมูล export ดิบจาก Slack | **ไม่** |
-| `data/processed/` | records + embedding cache ที่สร้างขึ้น | **ไม่** |
-| `data/sample/` | ตัวอย่างไทย/อังกฤษ | ขึ้น (ตั้งใจ) |
-| `apps/meowtam/data/ledger.json` | ledger ตัวอย่าง | ขึ้น (ข้อมูลสังเคราะห์) |
-| `apps/meowtam/data/raw-slack.json` | export จริงของบอท | **ไม่** |
-| `.env`, `apps/meowtam/.env` | token ทั้งหมด | **ไม่** |
-| `models/` | โมเดลที่ fine-tune แล้ว (~450 MB) | **ไม่** — เกิน limit GitHub |
-| `output/` | รายงาน HTML | **ไม่** |
+| `pipeline/data/raw/` | ข้อมูล export ดิบจาก Slack | **ไม่** |
+| `pipeline/data/processed/` | records + embedding cache ที่สร้างขึ้น | **ไม่** |
+| `pipeline/data/sample/` | ตัวอย่างไทย/อังกฤษ | ขึ้น (ตั้งใจ) |
+| `slack-bot/data/ledger.json` | ledger ตัวอย่าง | ขึ้น (ข้อมูลสังเคราะห์) |
+| `slack-bot/data/raw-slack.json` | export จริงของบอท | **ไม่** |
+| `pipeline/.env`, `slack-bot/.env` | token ทั้งหมด | **ไม่** |
+| `pipeline/models/` | โมเดลที่ fine-tune แล้ว (~450 MB) | **ไม่** — เกิน limit GitHub |
+| `pipeline/output/` | รายงาน HTML | **ไม่** |
 
 ข้อมูลจริงและ token ทุกชิ้นอยู่แค่ในเครื่อง สิ่งที่อยู่ในรีโปคือโค้ดกับข้อมูลตัวอย่าง
 ที่สังเคราะห์ขึ้นเท่านั้น
@@ -362,4 +396,4 @@ python3 -m tam.report.report_th
 - **การกรอง noise เป็น word list** ไม่ได้เข้าใจประชด คำพูดอ้างอิง หรือบทสนทนานอกเรื่องยาวๆ
 
 รายละเอียดเชิงเทคนิคทั้งหมด ผลการวัด และเหตุผลเบื้องหลังการออกแบบแต่ละอย่าง
-อยู่ใน [README.md](../README.md)
+อยู่ใน [pipeline/README.md](../pipeline/README.md)

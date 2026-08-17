@@ -1,0 +1,526 @@
+<title>ตาม (Tam) — Flow</title>
+<style>
+  :root{
+    --ground:#F2F5F6; --surface:#FFFFFF; --surface-2:#E9EFF1; --surface-3:#DCE6E9;
+    --ink:#16242E; --ink-2:#47606D; --ink-3:#76909D;
+    --rule:#CBD9DE;
+    --accent:#0E7C86; --accent-soft:#D9EDEF;
+    --warn:#A85B08; --warn-soft:#F7E9D6;
+    --good:#17694A; --good-soft:#DCEDE4;
+    --f-body:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --f-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --s-1:.8rem; --s0:.95rem; --s1:1.05rem; --s2:1.3rem; --s3:1.7rem;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
+      --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
+      --rule:#2A3E48;
+      --accent:#4FC5CE; --accent-soft:#16333A;
+      --warn:#E0A048; --warn-soft:#33260F;
+      --good:#5FC79B; --good-soft:#122E23;
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
+    --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
+    --rule:#2A3E48;
+    --accent:#4FC5CE; --accent-soft:#16333A;
+    --warn:#E0A048; --warn-soft:#33260F;
+    --good:#5FC79B; --good-soft:#122E23;
+  }
+
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--f-body);
+       font-size:var(--s1);line-height:1.7;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:900px;margin:0 auto;padding:32px 20px 80px;display:flex;flex-direction:column;gap:34px}
+
+  header h1{font-size:var(--s3);font-weight:800;letter-spacing:-.015em;margin:0 0 6px;text-wrap:balance}
+  header p{margin:0;color:var(--ink-2);max-width:64ch}
+  .eyebrow{font-family:var(--f-mono);font-size:var(--s-1);text-transform:uppercase;
+           letter-spacing:.09em;color:var(--ink-3)}
+
+  section{display:flex;flex-direction:column;gap:12px;border-top:1px solid var(--rule);padding-top:26px}
+  h2{font-size:var(--s2);font-weight:750;margin:0;letter-spacing:-.01em;text-wrap:balance}
+  p{margin:0;color:var(--ink-2);max-width:68ch}
+  p strong,li strong{color:var(--ink)}
+  ul{margin:0;padding-left:1.15em;display:flex;flex-direction:column;gap:6px;color:var(--ink-2)}
+  li{max-width:66ch}
+  code{font-family:var(--f-mono);font-size:.88em;background:var(--surface-3);
+       padding:1px 5px;border-radius:3px}
+
+  figure{margin:0;background:var(--surface);border:1px solid var(--rule);border-radius:6px;
+         padding:20px 18px 14px;overflow-x:auto}
+  figure svg{display:block;max-width:100%;height:auto;margin:0 auto;color:var(--ink)}
+  figcaption{margin-top:14px;padding-top:12px;border-top:1px dashed var(--rule);
+             font-size:var(--s0);color:var(--ink-2)}
+  figcaption b{color:var(--ink)}
+
+  /* SVG primitives, driven by the page tokens so both themes work */
+  .box{fill:var(--surface-2);stroke:var(--rule);stroke-width:1}
+  .box-hi{fill:var(--accent-soft);stroke:var(--accent);stroke-width:1.5}
+  .box-warn{fill:var(--warn-soft);stroke:var(--warn);stroke-width:1.5}
+  .box-good{fill:var(--good-soft);stroke:var(--good);stroke-width:1.5}
+  .band{fill:none;stroke:var(--rule);stroke-width:1;stroke-dasharray:3 4}
+  .t{fill:currentColor;font-family:var(--f-body);font-size:12.5px}
+  .tb{fill:currentColor;font-family:var(--f-body);font-size:12.5px;font-weight:700}
+  .tm{fill:currentColor;font-family:var(--f-mono);font-size:11.5px}
+  .tdim{fill:var(--ink-3);font-family:var(--f-mono);font-size:11px}
+  .tacc{fill:var(--accent);font-family:var(--f-mono);font-size:11.5px;font-weight:600}
+  .twarn{fill:var(--warn);font-family:var(--f-mono);font-size:11.5px;font-weight:600}
+  .tgood{fill:var(--good);font-family:var(--f-mono);font-size:11.5px;font-weight:600}
+  .flow{stroke:currentColor;stroke-width:1.4;fill:none}
+  .flow-acc{stroke:var(--accent);stroke-width:1.8;fill:none}
+  .flow-warn{stroke:var(--warn);stroke-width:1.8;fill:none;stroke-dasharray:5 4}
+
+  @media (max-width:640px){ .wrap{padding:22px 14px 60px} :root{--s3:1.4rem;--s2:1.15rem} }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">ตาม (Tam) · สถาปัตยกรรมและ flow</p>
+  <h1>ข้อความหนึ่งข้อความ เดินทางไปเป็นการ์ดใน Slack ได้อย่างไร</h1>
+  <p>ห้าภาพ ภาพละหนึ่งเรื่อง — เส้นทางข้อมูลทั้งเส้น, การให้คะแนน query หนึ่งครั้ง, ใครเป็นเจ้าของนิยาม
+  “งานหนึ่งชิ้น”, การเขียนกลับเมื่อคนแก้, และเหตุผลที่ recall ต้องยิงสองครั้ง
+  ทุกชื่อโมดูลในภาพคือไฟล์ที่มีอยู่จริงในรีโป</p>
+</header>
+
+<!-- ============ 1 ============ -->
+<section>
+  <h2>1 · เส้นทางทั้งเส้น</h2>
+  <p>เรื่องสำคัญที่สุดของภาพนี้อยู่กลางภาพ: <strong>Slack กับบันทึกการประชุมถูกแปลงเป็น record
+  รูปแบบเดียวกัน</strong> ตั้งแต่ต้น ทุกขั้นหลังจากนั้นจึงไม่ต้องรู้ว่าข้อความมาจากไหน
+  งานหนึ่งชิ้นข้ามสองแหล่งได้โดยไม่มีโค้ดพิเศษ</p>
+
+  <figure>
+    <svg viewBox="0 0 740 690" role="img"
+         aria-label="ผังการไหลจากช่อง Slack และบันทึกการประชุม ผ่าน tam.ingest เป็น record รูปแบบเดียว แล้วเข้า tam.retrieval, tam.analysis, tam.web.server และไปสิ้นสุดที่ Slack bot พร้อมเส้นเขียนกลับจากบอทไปที่ไฟล์ override">
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="a1w" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--warn)"/>
+        </marker>
+      </defs>
+
+      <!-- row 1: sources -->
+      <rect class="box" x="80" y="14" width="200" height="46" rx="4"/>
+      <text class="tb" x="180" y="34" text-anchor="middle">ช่อง Slack</text>
+      <text class="tdim" x="180" y="50" text-anchor="middle">ข้อความ + เธรด</text>
+
+      <rect class="box" x="440" y="14" width="200" height="46" rx="4"/>
+      <text class="tb" x="540" y="34" text-anchor="middle">บันทึกการประชุม</text>
+      <text class="tdim" x="540" y="50" text-anchor="middle">.vtt · .srt · Name:</text>
+
+      <path class="flow" d="M180,60 L180,96" marker-end="url(#a1)"/>
+      <path class="flow" d="M540,60 L540,96" marker-end="url(#a1)"/>
+
+      <!-- row 2: ingest -->
+      <rect class="box" x="80" y="96" width="560" height="74" rx="4"/>
+      <text class="tacc" x="96" y="114">tam.ingest</text>
+      <text class="tm" x="180" y="136" text-anchor="middle">export_slack.py</text>
+      <text class="tdim" x="180" y="152" text-anchor="middle">429-aware paging</text>
+      <text class="tm" x="540" y="136" text-anchor="middle">meetings.py</text>
+      <text class="tdim" x="540" y="152" text-anchor="middle">1 ประโยค = 1 record</text>
+      <text class="tm" x="360" y="136" text-anchor="middle">prepare_messages.py</text>
+      <text class="tdim" x="360" y="152" text-anchor="middle">ล้าง markup · กรอง noise</text>
+
+      <path class="flow" d="M360,170 L360,200" marker-end="url(#a1)"/>
+
+      <!-- row 3: records -->
+      <rect class="box-hi" x="180" y="200" width="360" height="48" rx="4"/>
+      <text class="tb" x="360" y="220" text-anchor="middle">record รูปแบบเดียว</text>
+      <text class="tm" x="360" y="238" text-anchor="middle">id · ts · user · text · source · thread_ts</text>
+
+      <path class="flow" d="M360,248 L360,278" marker-end="url(#a1)"/>
+
+      <!-- row 4: retrieval -->
+      <rect class="box" x="80" y="278" width="560" height="86" rx="4"/>
+      <text class="tacc" x="96" y="296">tam.retrieval</text>
+      <text class="tm" x="150" y="322" text-anchor="middle">embeddings</text>
+      <text class="tm" x="290" y="322" text-anchor="middle">lexical (BM25)</text>
+      <text class="tm" x="430" y="322" text-anchor="middle">signals</text>
+      <text class="tm" x="570" y="322" text-anchor="middle">fusion → rerank</text>
+      <text class="tdim" x="150" y="340" text-anchor="middle">ความหมาย</text>
+      <text class="tdim" x="290" y="340" text-anchor="middle">คำตรงตัว · ไทย</text>
+      <text class="tdim" x="430" y="340" text-anchor="middle">เธรด เวลา คนพูด</text>
+      <text class="tdim" x="570" y="340" text-anchor="middle">รวมคะแนน</text>
+      <text class="tdim" x="360" y="358" text-anchor="middle">แคชเวกเตอร์ไว้ที่ data/processed/embeddings_*.npz</text>
+
+      <path class="flow" d="M360,364 L360,394" marker-end="url(#a1)"/>
+
+      <!-- row 5: analysis -->
+      <rect class="box" x="80" y="394" width="560" height="96" rx="4"/>
+      <text class="tacc" x="96" y="412">tam.analysis</text>
+      <text class="tm" x="160" y="438" text-anchor="middle">graph.py</text>
+      <text class="tdim" x="160" y="454" text-anchor="middle">จับกลุ่ม Louvain</text>
+      <text class="tm" x="300" y="438" text-anchor="middle">relations.py</text>
+      <text class="tdim" x="300" y="454" text-anchor="middle">resolves · blocked_by</text>
+      <text class="tm" x="440" y="438" text-anchor="middle">linker.py</text>
+      <text class="tdim" x="440" y="454" text-anchor="middle">ระบุตัวตนงาน</text>
+      <text class="tm" x="575" y="438" text-anchor="middle">digest.py</text>
+      <text class="tdim" x="575" y="454" text-anchor="middle">สถานะ + หลักฐาน</text>
+      <text class="tdim" x="360" y="478" text-anchor="middle">summarize.py เขียนเฉพาะประโยค · สถานะไม่ผ่านโมเดล</text>
+
+      <path class="flow" d="M360,490 L360,520" marker-end="url(#a1)"/>
+
+      <!-- row 6: serving -->
+      <rect class="box" x="80" y="520" width="560" height="64" rx="4"/>
+      <text class="tacc" x="96" y="538">tam.web.server</text>
+      <text class="tm" x="210" y="562" text-anchor="middle">HTML 5 หน้า</text>
+      <text class="tdim" x="210" y="578" text-anchor="middle">/ · /blockers · /item · /search · /upload</text>
+      <text class="tm" x="500" y="562" text-anchor="middle">JSON /api/*</text>
+      <text class="tdim" x="500" y="578" text-anchor="middle">digest · blockers · item · search</text>
+
+      <path class="flow" d="M500,584 L500,616" marker-end="url(#a1)"/>
+      <text class="tdim" x="512" y="604">HTTP</text>
+
+      <!-- row 7: bot -->
+      <rect class="box" x="330" y="616" width="310" height="56" rx="4"/>
+      <text class="tacc" x="346" y="634">slack-bot</text>
+      <text class="tm" x="485" y="656" text-anchor="middle">Block Kit · slash · shortcut · DM</text>
+
+      <!-- write-back -->
+      <path class="flow-warn" d="M330,644 L110,644 L110,225 L180,225" marker-end="url(#a1w)"/>
+      <text class="twarn" x="120" y="430" transform="rotate(-90 120 430)" text-anchor="middle">คนแก้ → link_overrides.json</text>
+    </svg>
+    <figcaption><b>ทุกขั้นอ่าน record รูปแบบเดียวกัน</b> ทำให้การประชุมไม่ต้องมี pipeline ที่สอง
+    เส้นประสีส้มคือทางเดียวที่ข้อมูลไหลย้อนกลับ — คนแก้การผูก ticket ใน Slack แล้ว
+    <code>linker.py</code> อ่านเป็นชั้นสูงสุดในรอบถัดไป (ภาพที่ 4)</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 2 ============ -->
+<section>
+  <h2>2 · query หนึ่งครั้ง ได้คะแนนมาอย่างไร</h2>
+  <p>cosine ตัวเดียวตอบไม่ครบ เพราะมันสมมาตร มองไม่เห็นสตริงตรงตัวอย่าง <code>REV-1421</code>
+  และไม่รู้ว่าสองข้อความอยู่เธรดเดียวกันห่างกันห้านาที <strong>แต่ละอย่างเป็นหลักฐานต่างชนิดกัน</strong>
+  ภาพนี้คือลำดับที่มันถูกรวม</p>
+
+  <figure>
+    <svg viewBox="0 0 740 330" role="img"
+         aria-label="query เข้าไปหาสี่สัญญาณขนานกัน คือ dense embeddings, BM25, anchor overlap และสัญญาณโครงสร้าง แล้วรวมด้วย RRF หรือ z-score จากนั้นส่งต่อให้ cross-encoder จัดอันดับใหม่ ได้ผลลัพธ์ที่อธิบายได้">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect class="box-hi" x="14" y="132" width="118" height="52" rx="4"/>
+      <text class="tb" x="73" y="154" text-anchor="middle">query</text>
+      <text class="tdim" x="73" y="172" text-anchor="middle">ไทย/อังกฤษ ผสมได้</text>
+
+      <!-- four signals -->
+      <rect class="box" x="186" y="14" width="196" height="56" rx="4"/>
+      <text class="tm" x="200" y="34">dense cosine</text>
+      <text class="tdim" x="200" y="52">ความหมาย ข้ามภาษา</text>
+
+      <rect class="box" x="186" y="92" width="196" height="56" rx="4"/>
+      <text class="tm" x="200" y="112">BM25</text>
+      <text class="tdim" x="200" y="130">ticket key · error code</text>
+
+      <rect class="box" x="186" y="170" width="196" height="56" rx="4"/>
+      <text class="tm" x="200" y="190">anchor overlap</text>
+      <text class="tdim" x="200" y="208">สตริงเฉพาะที่ใช้ร่วมกัน</text>
+
+      <rect class="box" x="186" y="248" width="196" height="56" rx="4"/>
+      <text class="tm" x="200" y="268">thread · time · author</text>
+      <text class="tdim" x="200" y="286">โครงสร้างของ Slack เอง</text>
+
+      <path class="flow" d="M132,152 C160,152 160,42 186,42" marker-end="url(#a2)"/>
+      <path class="flow" d="M132,156 C160,156 160,120 186,120" marker-end="url(#a2)"/>
+      <path class="flow" d="M132,160 C160,160 160,198 186,198" marker-end="url(#a2)"/>
+      <path class="flow" d="M132,164 C160,164 160,276 186,276" marker-end="url(#a2)"/>
+
+      <!-- fuse -->
+      <rect class="box" x="436" y="132" width="120" height="52" rx="4"/>
+      <text class="tm" x="496" y="154" text-anchor="middle">fusion</text>
+      <text class="tdim" x="496" y="172" text-anchor="middle">RRF · z-score</text>
+
+      <path class="flow" d="M382,42 C412,42 412,150 436,150" marker-end="url(#a2)"/>
+      <path class="flow" d="M382,120 C412,120 412,154 436,154" marker-end="url(#a2)"/>
+      <path class="flow" d="M382,198 C412,198 412,162 436,162" marker-end="url(#a2)"/>
+      <path class="flow" d="M382,276 C412,276 412,166 436,166" marker-end="url(#a2)"/>
+
+      <rect class="box" x="600" y="98" width="126" height="52" rx="4"/>
+      <text class="tm" x="663" y="120" text-anchor="middle">rerank</text>
+      <text class="tdim" x="663" y="138" text-anchor="middle">cross-encoder</text>
+
+      <rect class="box-hi" x="600" y="176" width="126" height="52" rx="4"/>
+      <text class="tb" x="663" y="198" text-anchor="middle">ผลลัพธ์</text>
+      <text class="tdim" x="663" y="216" text-anchor="middle">+ why ต่อ stage</text>
+
+      <path class="flow" d="M556,148 C578,148 578,124 600,124" marker-end="url(#a2)"/>
+      <path class="flow" d="M663,150 L663,176" marker-end="url(#a2)"/>
+      <text class="tdim" x="672" y="167">top-k</text>
+    </svg>
+    <figcaption><b>คะแนนแต่ละ stage ถูกเก็บไว้ ไม่ได้ทิ้ง</b> จึงตอบได้ว่าอะไรทำให้ผลนี้ขึ้นมา —
+    ในภาพที่ 5 คุณจะเห็นว่าคะแนนรวมหลัง RRF <em>บอกไม่ได้</em> ว่า “ไม่เจออะไรเลย” และแก้อย่างไร</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 3 ============ -->
+<section>
+  <h2>3 · ใครเป็นเจ้าของนิยาม “งานหนึ่งชิ้น”</h2>
+  <p>เดิมสองฝั่งอ่าน Slack เองและจับกลุ่มด้วยกฎต่างกัน ช่องเดียวกันจึงได้ work item ไม่เท่ากัน
+  และคำตอบที่ทีมเห็นขึ้นอยู่กับว่าเปิดที่ไหน ตั้ง <code>TAM_API_URL</code> แล้วเหลือเจ้าของเดียว</p>
+
+  <figure>
+    <svg viewBox="0 0 740 400" role="img"
+         aria-label="เทียบก่อนและหลัง ก่อนหน้านี้ pipeline และบอทอ่าน Slack แยกกันและได้ work item ไม่ตรงกัน หลังจากนั้นบอทอ่านจาก API ของ pipeline ฝ่ายเดียว และเติมเฉพาะสามอย่างที่ pipeline ไม่มี">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+        <marker id="a3g" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--good)"/>
+        </marker>
+      </defs>
+
+      <!-- before -->
+      <text class="twarn" x="14" y="18">ก่อน — สองเจ้าของ</text>
+      <rect class="band" x="14" y="28" width="330" height="150" rx="5"/>
+      <rect class="box" x="128" y="42" width="104" height="38" rx="4"/>
+      <text class="tm" x="180" y="66" text-anchor="middle">ช่อง Slack</text>
+
+      <rect class="box-warn" x="30" y="112" width="128" height="52" rx="4"/>
+      <text class="tm" x="94" y="132" text-anchor="middle">pipeline</text>
+      <text class="tdim" x="94" y="150" text-anchor="middle">Louvain + embeddings</text>
+
+      <rect class="box-warn" x="200" y="112" width="128" height="52" rx="4"/>
+      <text class="tm" x="264" y="132" text-anchor="middle">bot</text>
+      <text class="tdim" x="264" y="150" text-anchor="middle">character trigram</text>
+
+      <path class="flow" d="M160,80 L104,112" marker-end="url(#a3)"/>
+      <path class="flow" d="M200,80 L254,112" marker-end="url(#a3)"/>
+      <text class="twarn" x="179" y="196" text-anchor="middle">ได้ work item ไม่เท่ากัน</text>
+
+      <!-- after -->
+      <text class="tgood" x="396" y="18">หลัง — เจ้าของเดียว</text>
+      <rect class="band" x="396" y="28" width="330" height="150" rx="5"/>
+      <rect class="box" x="510" y="42" width="104" height="38" rx="4"/>
+      <text class="tm" x="562" y="66" text-anchor="middle">ช่อง Slack</text>
+
+      <rect class="box-good" x="470" y="112" width="184" height="52" rx="4"/>
+      <text class="tm" x="562" y="132" text-anchor="middle">pipeline เท่านั้น</text>
+      <text class="tdim" x="562" y="150" text-anchor="middle">/api/digest · /api/item · /api/search</text>
+
+      <path class="flow" d="M562,80 L562,112" marker-end="url(#a3g)"/>
+      <text class="tgood" x="561" y="196" text-anchor="middle">บอทเป็นตัวเรนเดอร์</text>
+
+      <!-- split table -->
+      <line x1="14" y1="228" x2="726" y2="228" stroke="var(--rule)" stroke-width="1"/>
+      <text class="tacc" x="14" y="252">มาจาก API</text>
+      <text class="t" x="14" y="274">work item · สถานะ · หลักฐาน · อายุ</text>
+      <text class="t" x="14" y="294">timeline · ข้อความ · ประโยคสรุป</text>
+      <text class="t" x="14" y="314">recall (embeddings + BM25)</text>
+
+      <line x1="366" y1="240" x2="366" y2="330" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
+
+      <text class="tacc" x="396" y="252">บอทเติมเอง — pipeline ยังไม่มี</text>
+      <text class="t" x="396" y="274">decision · จากที่คนกดบันทึก (เขียนลงไฟล์จริง)</text>
+      <text class="t" x="396" y="294">standup draft · คำนวณจาก item ที่ได้มา</text>
+      <text class="t" x="396" y="314">drift · ไม่มี จนกว่าจะต่อ ticket system</text>
+
+      <rect class="box-warn" x="14" y="344" width="712" height="44" rx="4"/>
+      <text class="twarn" x="30" y="364">ไม่มี fallback</text>
+      <text class="t" x="30" y="380">ถ้าตั้ง TAM_API_URL แล้ว pipeline ตอบไม่ได้ → บอทไม่สตาร์ต ไม่แอบเสิร์ฟ fixture ที่หน้าตาเหมือนของจริง</text>
+    </svg>
+    <figcaption><b>ที่แบ่งไม่ได้แบ่งตามใจ แต่แบ่งตามว่าฝั่งไหนคำนวณจริง</b>
+    สามอย่างขวามือไม่มีของเทียบใน pipeline ถ้าปล่อยว่างคือลบฟีเจอร์ที่ทำงานอยู่ทิ้ง
+    จึงเติมจากแหล่งที่เป็นของจริงของมันเอง และ drift ที่ยังไม่มีแหล่งก็คือ “ไม่มี”</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 4 ============ -->
+<section>
+  <h2>4 · คนแก้แล้วระบบจำ — วงเขียนกลับ</h2>
+  <p>การจับกลุ่มอัตโนมัติผิดได้ และเมื่อคนแก้ ระบบต้องไม่เดาทับรอบหน้า
+  <code>linker.py</code> มีชั้น <code>override</code> ที่ชนะทุกชั้นอยู่แล้ว และ
+  <code>load_overrides</code> ของมันเขียนไว้ว่ารับ <em>“the list-of-events shape a UI would append to”</em>
+  — วงนี้จึงปิดที่จุดที่ถูกออกแบบเผื่อไว้</p>
+
+  <figure>
+    <svg viewBox="0 0 740 250" role="img"
+         aria-label="คนกดคลิกขวาที่ข้อความใน Slack เลือกผูกกับ ticket บอทเขียนลงไฟล์ link_overrides.json แล้ว linker อ่านเป็นชั้น override ซึ่งชนะทุกชั้น ผลคือ digest รอบถัดไปใช้การผูกที่คนแก้">
+      <defs>
+        <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect class="box" x="14" y="60" width="150" height="62" rx="4"/>
+      <text class="tb" x="89" y="82" text-anchor="middle">คนใน Slack</text>
+      <text class="tdim" x="89" y="100" text-anchor="middle">คลิกขวา → ผูกกับ ticket</text>
+      <text class="tdim" x="89" y="115" text-anchor="middle">เลือก TAM-2</text>
+
+      <path class="flow" d="M164,91 L208,91" marker-end="url(#a4)"/>
+
+      <rect class="box" x="208" y="60" width="150" height="62" rx="4"/>
+      <text class="tm" x="283" y="82" text-anchor="middle">store.ts</text>
+      <text class="tdim" x="283" y="100" text-anchor="middle">saveOverride()</text>
+      <text class="tdim" x="283" y="115" text-anchor="middle">แก้ใหม่ทับของเดิม</text>
+
+      <path class="flow" d="M358,91 L402,91" marker-end="url(#a4)"/>
+
+      <rect class="box-hi" x="402" y="52" width="176" height="78" rx="4"/>
+      <text class="tb" x="490" y="72" text-anchor="middle">link_overrides.json</text>
+      <text class="tm" x="490" y="92" text-anchor="middle">[{record_id, key,</text>
+      <text class="tm" x="490" y="108" text-anchor="middle">by, at}]</text>
+      <text class="tdim" x="490" y="124" text-anchor="middle">ไฟล์เดียว ไม่ปนกับ record</text>
+
+      <path class="flow" d="M578,91 L622,91" marker-end="url(#a4)"/>
+
+      <rect class="box" x="622" y="60" width="104" height="62" rx="4"/>
+      <text class="tm" x="674" y="82" text-anchor="middle">linker.py</text>
+      <text class="tdim" x="674" y="100" text-anchor="middle">--overrides</text>
+      <text class="tdim" x="674" y="115" text-anchor="middle">รอบถัดไป</text>
+
+      <!-- tier ladder -->
+      <line x1="14" y1="156" x2="726" y2="156" stroke="var(--rule)" stroke-width="1"/>
+      <text class="tacc" x="14" y="178">ชั้นของหลักฐานใน linker — บนสุดชนะ</text>
+      <rect class="box-hi" x="14" y="188" width="128" height="26" rx="3"/>
+      <text class="tm" x="78" y="205" text-anchor="middle">override</text>
+      <rect class="box" x="154" y="188" width="128" height="26" rx="3"/>
+      <text class="tm" x="218" y="205" text-anchor="middle">explicit ticket key</text>
+      <rect class="box" x="294" y="188" width="128" height="26" rx="3"/>
+      <text class="tm" x="358" y="205" text-anchor="middle">thread</text>
+      <rect class="box" x="434" y="188" width="128" height="26" rx="3"/>
+      <text class="tm" x="498" y="205" text-anchor="middle">consensus</text>
+      <rect class="box" x="574" y="188" width="152" height="26" rx="3"/>
+      <text class="tm" x="650" y="205" text-anchor="middle">cluster / unassigned</text>
+      <text class="tdim" x="14" y="234">“คนแก้เอง” ถูกเก็บเป็นเหตุผลกำกับ ทำให้ override ที่ผิดตามกลับไปหาคนได้</text>
+    </svg>
+    <figcaption><b>ทดสอบครบวงแล้ว</b> เขียน override ในรูปแบบที่บอทเขียน แล้วรัน
+    <code>linker.py</code> ได้ผล <code>REV-9999 · 1 msg · [override 1]</code> พร้อมเหตุผล
+    <code>คนแก้เอง</code> — ไม่ใช่การต่อบนกระดาษ</figcaption>
+  </figure>
+</section>
+
+<!-- ============ 5 ============ -->
+<section>
+  <h2>5 · ทำไม recall ต้องยิงสองครั้ง</h2>
+  <p>คะแนนรวมหลัง RRF คิดจาก<strong>อันดับ</strong> ไม่ใช่ความคล้าย มันจึงบอกไม่ได้ว่า “ไม่เจออะไรเลย” —
+  วัดบนคลังนี้ query ขยะได้ <code>0.0301</code> ของจริงได้ <code>0.0306</code> ถ้าไม่มีด่าน
+  recall จะตอบทุก query ด้วยผลลัพธ์ห้าแถวที่ดูน่าเชื่อ ซึ่งเป็นพฤติกรรมกล่องดำที่โปรดักต์นี้มีอยู่เพื่อไม่ให้เกิด</p>
+
+  <figure>
+    <svg viewBox="0 0 740 300" role="img"
+         aria-label="recall ยิง preset dense เพื่อถามว่าสิ่งที่ใกล้ที่สุดใกล้แค่ไหน ถ้าต่ำกว่าเกณฑ์จะตอบว่าไม่เจอโดยไม่ยิงต่อ ถ้าผ่านจึงยิง preset hybrid เพื่อจัดอันดับ ด้านล่างเทียบคะแนนของสองโมเดล">
+      <defs>
+        <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+
+      <rect class="box" x="14" y="56" width="130" height="46" rx="4"/>
+      <text class="tb" x="79" y="78" text-anchor="middle">/meowtam recall</text>
+      <text class="tdim" x="79" y="94" text-anchor="middle">ข้อความที่พิมพ์มา</text>
+
+      <path class="flow" d="M144,79 L196,79" marker-end="url(#a5)"/>
+
+      <rect class="box-hi" x="196" y="48" width="164" height="62" rx="4"/>
+      <text class="tb" x="278" y="68" text-anchor="middle">คอลที่ 1 · preset=dense</text>
+      <text class="tm" x="278" y="86" text-anchor="middle">k=1 · cosine ดิบ</text>
+      <text class="tdim" x="278" y="102" text-anchor="middle">ใกล้ที่สุดใกล้แค่ไหน</text>
+
+      <!-- decision: one junction, two branches -->
+      <path class="flow" d="M360,79 L384,79"/>
+      <path class="flow" d="M384,79 L384,37 L412,37" marker-end="url(#a5)"/>
+      <path class="flow" d="M384,79 L384,121 L412,121" marker-end="url(#a5)"/>
+      <circle cx="384" cy="79" r="2.5" fill="currentColor"/>
+
+      <rect class="box" x="412" y="14" width="150" height="46" rx="4"/>
+      <text class="tm" x="487" y="34" text-anchor="middle">&lt; TAM_MIN_COSINE</text>
+      <text class="tdim" x="487" y="50" text-anchor="middle">ค่าเริ่มต้น 0.45</text>
+
+      <rect class="box" x="412" y="98" width="150" height="46" rx="4"/>
+      <text class="tm" x="487" y="118" text-anchor="middle">&ge; เกณฑ์</text>
+      <text class="tdim" x="487" y="134" text-anchor="middle">มีของใกล้จริง</text>
+
+      <rect class="box-warn" x="600" y="14" width="126" height="46" rx="4"/>
+      <text class="tm" x="663" y="34" text-anchor="middle">ตอบว่าไม่เจอ</text>
+      <text class="tdim" x="663" y="50" text-anchor="middle">ไม่ยิงคอลที่ 2</text>
+
+      <rect class="box-good" x="600" y="98" width="126" height="46" rx="4"/>
+      <text class="tm" x="663" y="118" text-anchor="middle">คอลที่ 2 · hybrid</text>
+      <text class="tdim" x="663" y="134" text-anchor="middle">จัดอันดับ</text>
+
+      <path class="flow" d="M562,37 L600,37" marker-end="url(#a5)"/>
+      <path class="flow" d="M562,121 L600,121" marker-end="url(#a5)"/>
+
+      <!-- measurement -->
+      <line x1="14" y1="176" x2="726" y2="176" stroke="var(--rule)" stroke-width="1"/>
+      <text class="tacc" x="14" y="198">ด่านดีได้เท่าโมเดลที่เสิร์ฟ — cosine ที่วัดได้จริง</text>
+
+      <text class="tdim" x="14" y="222">โมเดล</text>
+      <text class="tdim" x="330" y="222" text-anchor="middle">query ขยะ</text>
+      <text class="tdim" x="470" y="222" text-anchor="middle">ของจริง (EN)</text>
+      <text class="tdim" x="610" y="222" text-anchor="middle">แยกออกไหม</text>
+
+      <text class="t" x="14" y="248">MiniLM (ค่าเริ่มต้น)</text>
+      <text class="tgood" x="330" y="248" text-anchor="middle">0.375</text>
+      <text class="tm" x="470" y="248" text-anchor="middle">0.723</text>
+      <text class="tgood" x="610" y="248" text-anchor="middle">แยกได้</text>
+
+      <text class="t" x="14" y="274">models/syn_finetuned</text>
+      <text class="twarn" x="330" y="274" text-anchor="middle">0.743</text>
+      <text class="tm" x="470" y="274" text-anchor="middle">0.725</text>
+      <text class="twarn" x="610" y="274" text-anchor="middle">แยกไม่ได้</text>
+
+      <text class="tdim" x="14" y="294">โมเดลที่ fine-tune วางข้อความขยะไว้ใกล้กว่า query อังกฤษที่ตรงจริง — ไม่มีเกณฑ์ไหนแยกได้ npm run check-api รายงานให้เห็น</text>
+    </svg>
+    <figcaption><b>สองคอลทำตามลำดับ ไม่ขนานกัน</b> ตอนยิงขนาน server โหลดโมเดลพร้อมกันสองครั้ง
+    หน่วยความจำพุ่งเท่าตัวแล้ว process ตาย — และทำตามลำดับยังได้เปรียบด้วย เพราะ query
+    ที่ไม่ผ่านด่านไม่ต้องเสียคอลจัดอันดับเลย</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>โครงโฟลเดอร์</h2>
+  <p>สองฝั่งเป็นคู่กัน อยู่ระดับเดียวกัน และเข้าแบบเดียวกัน — <code>cd pipeline</code> กับ
+  <code>cd slack-bot</code> แต่ละฝั่งมี <code>.env.example</code>, Slack app manifest และ
+  <code>data/</code> ของตัวเอง</p>
+  <figure>
+    <svg viewBox="0 0 740 260" role="img"
+         aria-label="โครงโฟลเดอร์สองฝั่งระดับเดียวกัน pipeline สำหรับ Python และ slack-bot สำหรับ TypeScript โดยมี docs แยกไว้เก็บเอกสารเท่านั้น">
+      <rect class="box" x="14" y="14" width="348" height="196" rx="5"/>
+      <text class="tacc" x="30" y="36">pipeline/</text>
+      <text class="tdim" x="30" y="54">Python · เครื่องยนต์ + dashboard</text>
+      <text class="tm" x="40" y="80">tam/</text>
+      <text class="tdim" x="120" y="80">ingest · retrieval · analysis</text>
+      <text class="tdim" x="120" y="96">evaluation · report · web</text>
+      <text class="tm" x="40" y="120">data/</text>
+      <text class="tdim" x="120" y="120">raw · processed · sample</text>
+      <text class="tm" x="40" y="140">fixtures/</text>
+      <text class="tdim" x="120" y="140">ตัวอย่าง API response</text>
+      <text class="tm" x="40" y="160">models/</text>
+      <text class="tdim" x="120" y="160">น้ำหนักที่ fine-tune (ไม่ขึ้น git)</text>
+      <text class="tm" x="40" y="180">.env.example</text>
+      <text class="tm" x="40" y="200">slack-app-manifest.json</text>
+
+      <rect class="box" x="378" y="14" width="348" height="196" rx="5"/>
+      <text class="tacc" x="394" y="36">slack-bot/</text>
+      <text class="tdim" x="394" y="54">TypeScript · Bolt · Socket Mode</text>
+      <text class="tm" x="404" y="80">src/</text>
+      <text class="tdim" x="484" y="80">app · data · search · store</text>
+      <text class="tdim" x="484" y="96">standups · tam-api · blocks/</text>
+      <text class="tm" x="404" y="120">scripts/</text>
+      <text class="tdim" x="484" y="120">export · ledger · preview · check-api</text>
+      <text class="tm" x="404" y="140">data/</text>
+      <text class="tdim" x="484" y="140">ledger · decisions (เขียนเอง)</text>
+      <text class="tm" x="404" y="180">.env.example</text>
+      <text class="tm" x="404" y="200">slack-app-manifest.yaml</text>
+
+      <rect class="box" x="14" y="226" width="712" height="26" rx="4"/>
+      <text class="tm" x="30" y="243">docs/</text>
+      <text class="tdim" x="100" y="243">USER_MANUAL · DESIGN_BRIEF · concept · deck · หน้านี้ — เอกสารเท่านั้น ไม่มีข้อมูลทดสอบปน</text>
+    </svg>
+    <figcaption>เดิม <code>tam/</code> อยู่ระดับ 0 แต่บอทอยู่ลึกสองชั้นใน <code>apps/meowtam/</code>
+    และ <code>apps/</code> ห่อของไว้ตัวเดียว <code>deploy/</code> มีไฟล์เดียว — ทั้งสองอย่างถูกยุบทิ้ง</figcaption>
+  </figure>
+</section>
+
+</div>

@@ -48,7 +48,7 @@ each other:
 | --- | --- | --- | --- |
 | **CLI** | Python | Building and measuring the pipeline itself | `python3 -m tam.retrieval.retrieve` |
 | **Dashboard** | Python · FastAPI | Reading the day: digest, blockers, one work item's timeline | `python3 -m tam.web.server` |
-| **Slack bot** | TypeScript · Bolt | Where the work is actually discussed | `cd apps/meowtam && npm start` |
+| **Slack bot** | TypeScript · Bolt | Where the work is actually discussed | `cd ../slack-bot && npm start` |
 
 **The seam is closed.** Set `TAM_API_URL` and the bot stops deciding what a work
 item is: items, states, evidence, timelines and recall all come from
@@ -58,7 +58,7 @@ fixture exactly as before.
 
 ```bash
 python3 -m tam.web.server --records data/processed/combined.json --port 8899
-cd apps/meowtam && TAM_API_URL=http://127.0.0.1:8899 npm run check-api
+cd ../slack-bot && TAM_API_URL=http://127.0.0.1:8899 npm run check-api
 ```
 
 `check-api` exercises the whole boot path without Slack in the loop and prints
@@ -78,7 +78,7 @@ tam/                    the Python package — import it, or run any module with
 ├── report/             visualize (Plotly HTML) · report_th (plain Thai)
 └── web/                server.py — the FastAPI dashboard
 
-apps/meowtam/           the Slack bot, a separate npm project
+../slack-bot/           the Slack bot, a separate npm project
 ├── src/                app.ts + Block Kit builders per surface
 ├── scripts/            export-slack → raw-slack.json → build-ledger → ledger.json
 └── slack-app-manifest.yaml
@@ -91,10 +91,10 @@ deploy/ export-app-manifest.json — the read-only Slack app used by the exporte
 Nothing sits at the repo root any more. Every module is reachable as
 `python3 -m tam.<area>.<module>`, and `--help` works on all twenty of them.
 
-**New here?** [docs/USER_MANUAL.md](docs/USER_MANUAL.md) is the install-and-use
+**New here?** [../docs/USER_MANUAL.md](../docs/USER_MANUAL.md) is the install-and-use
 guide in Thai: prerequisites, both Slack apps, every command, and a
 troubleshooting table. This README is the reasoning behind the design and the
-measurements behind the claims. [docs/deck.html](docs/deck.html) is the ten-slide
+measurements behind the claims. [../docs/deck.html](../docs/deck.html) is the ten-slide
 summary.
 
 **Start here:**
@@ -191,7 +191,7 @@ before paging so a bad token fails in one request instead of mid-export.
 
 Fastest way to create the app with the right scopes: api.slack.com/apps →
 **Create New App** → **From a manifest** → pick the workspace → paste
-[deploy/export-app-manifest.json](deploy/export-app-manifest.json) → Create →
+[slack-app-manifest.json](slack-app-manifest.json) → Create →
 **Install to Workspace**, then copy the `xoxb-` token. That manifest also sets
 `token_rotation_enabled: false`, so the token stays valid instead of expiring
 every 12 hours.
@@ -658,20 +658,20 @@ With no Slack access at all, the committed sample runs the whole thing — see
 
 ## The Slack bot
 
-[apps/meowtam/](apps/meowtam/) is where the pipeline's ideas meet the place work
+[../slack-bot/](../slack-bot/) is where the pipeline's ideas meet the place work
 is actually discussed. It is a Bolt app in **Socket Mode**, which matters
 practically: no public URL, no ngrok, no inbound firewall rule. It dials out to
 Slack, so it runs from a laptop.
 
 ```bash
-cd apps/meowtam
+cd ../slack-bot
 cp .env.example .env     # SLACK_BOT_TOKEN, SLACK_APP_TOKEN, SLACK_SIGNING_SECRET
 npm install
 npm start
 ```
 
 Create the app by pasting
-[apps/meowtam/slack-app-manifest.yaml](apps/meowtam/slack-app-manifest.yaml) into
+[../slack-bot/slack-app-manifest.yaml](../slack-bot/slack-app-manifest.yaml) into
 api.slack.com/apps → **From an app manifest**. That sets every scope, command and
 shortcut at once; a missing scope surfaces as a confusing runtime error hours
 later, so do not hand-configure them.
@@ -706,7 +706,7 @@ npm run ledger     # → data/ledger.json: work items, states, evidence
 `/meowtam reload` re-reads the ledger without a restart. Remember `/invite
 @Meowtam` — a bot token cannot read a channel it is not in.
 
-[apps/meowtam/README.md](apps/meowtam/README.md) has the rest: the demo
+[../slack-bot/README.md](../slack-bot/README.md) has the rest: the demo
 choreography, which parts are real versus mocked, and the design rules.
 
 ### Reading from the pipeline
@@ -717,7 +717,7 @@ Python side the only owner of that definition:
 
 ```bash
 python3 -m tam.web.server --records data/processed/combined.json --port 8899
-cd apps/meowtam
+cd ../slack-bot
 TAM_API_URL=http://127.0.0.1:8899 npm run check-api    # prove it, no Slack needed
 TAM_API_URL=http://127.0.0.1:8899 npm start
 ```
@@ -735,7 +735,7 @@ The right-hand column has no counterpart in the pipeline yet. Emptying it would
 have deleted working features, so it is carried over from `data/ledger.json`
 rather than silently dropped.
 
-Two translations happen in [tam-api.ts](apps/meowtam/src/tam-api.ts), and both
+Two translations happen in [tam-api.ts](../slack-bot/src/tam-api.ts), and both
 are worth knowing about because they are the bot adding something the pipeline
 did not say:
 
@@ -865,15 +865,15 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
 | [report_th.py](tam/report/report_th.py) | Plain-Thai version of the results, for non-ML readers |
 | `data/sample/` | Committed Thai/English sample export for testing without Slack |
 | **Slack bot (TypeScript)** | |
-| [app.ts](apps/meowtam/src/app.ts) | Bolt app: slash commands, shortcuts, modals, scheduled digest |
-| [src/blocks/](apps/meowtam/src/blocks/) | Block Kit builders per surface (digest, item card, drift, recall) |
-| [src/search.ts](apps/meowtam/src/search.ts) | Recall: trigram + literal-term hybrid, Thai-safe, no API key |
-| [scripts/](apps/meowtam/scripts/) | `export-slack.ts` → `raw-slack.json` → `build-ledger.ts` → `data/ledger.json` |
-| [slack-app-manifest.yaml](apps/meowtam/slack-app-manifest.yaml) | Every scope, command and shortcut in one paste |
+| [app.ts](../slack-bot/src/app.ts) | Bolt app: slash commands, shortcuts, modals, scheduled digest |
+| [src/blocks/](../slack-bot/src/blocks/) | Block Kit builders per surface (digest, item card, drift, recall) |
+| [src/search.ts](../slack-bot/src/search.ts) | Recall: trigram + literal-term hybrid, Thai-safe, no API key |
+| [scripts/](../slack-bot/scripts/) | `export-slack.ts` → `raw-slack.json` → `build-ledger.ts` → `data/ledger.json` |
+| [slack-app-manifest.yaml](../slack-bot/slack-app-manifest.yaml) | Every scope, command and shortcut in one paste |
 | **Config** | |
 | [.env.example](.env.example) | Every variable the Python side reads, and what it costs you |
-| [apps/meowtam/.env.example](apps/meowtam/.env.example) | The eight the bot reads |
-| [deploy/export-app-manifest.json](deploy/export-app-manifest.json) | Read-only Slack app for the exporter — history scopes only |
+| [../slack-bot/.env.example](../slack-bot/.env.example) | The eight the bot reads |
+| [slack-app-manifest.json](slack-app-manifest.json) | Read-only Slack app for the exporter — history scopes only |
 
 ## Known limitations
 
