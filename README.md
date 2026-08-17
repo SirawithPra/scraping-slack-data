@@ -50,10 +50,21 @@ each other:
 | **Dashboard** | Python · FastAPI | Reading the day: digest, blockers, one work item's timeline | `python3 -m tam.web.server` |
 | **Slack bot** | TypeScript · Bolt | Where the work is actually discussed | `cd apps/meowtam && npm start` |
 
-The honest state of the seam: the bot keeps **its own ledger** under
-`apps/meowtam/data/ledger.json` and does not call the Python pipeline. Both read
-Slack and both compute work items, by different code. Joining them is real work,
-not a config change — see [Known limitations](#known-limitations).
+**The seam is closed.** Set `TAM_API_URL` and the bot stops deciding what a work
+item is: items, states, evidence, timelines and recall all come from
+`tam.web.server`, so the trained embedding model — not character trigrams — is
+what groups and ranks. Leave it unset and the bot runs offline against its own
+fixture exactly as before.
+
+```bash
+python3 -m tam.web.server --records data/processed/combined.json --port 8899
+cd apps/meowtam && TAM_API_URL=http://127.0.0.1:8899 npm run check-api
+```
+
+`check-api` exercises the whole boot path without Slack in the loop and prints
+what came back. Decisions, drifts and standup drafts stay local, because the
+pipeline has no counterpart for them yet — see [Reading from the
+pipeline](#reading-from-the-pipeline).
 
 ## Layout
 
@@ -698,6 +709,48 @@ npm run ledger     # → data/ledger.json: work items, states, evidence
 [apps/meowtam/README.md](apps/meowtam/README.md) has the rest: the demo
 choreography, which parts are real versus mocked, and the design rules.
 
+### Reading from the pipeline
+
+Two processes that both read Slack will eventually disagree about what a work
+item is, and the one the team sees is then a coin flip. `TAM_API_URL` makes the
+Python side the only owner of that definition:
+
+```bash
+python3 -m tam.web.server --records data/processed/combined.json --port 8899
+cd apps/meowtam
+TAM_API_URL=http://127.0.0.1:8899 npm run check-api    # prove it, no Slack needed
+TAM_API_URL=http://127.0.0.1:8899 npm start
+```
+
+The bot then prints its source at boot and on `/meowtam reload`, so nobody has to
+guess which half answered.
+
+| Comes from the API | Stays local |
+| --- | --- |
+| work items, states, evidence, ages | decisions and their supersession chains |
+| timelines, messages, summaries | drift detections and proposed diffs |
+| recall (embeddings + BM25 + signals) | standup drafts |
+
+The right-hand column has no counterpart in the pipeline yet. Emptying it would
+have deleted working features, so it is carried over from `data/ledger.json`
+rather than silently dropped.
+
+Two translations happen in [tam-api.ts](apps/meowtam/src/tam-api.ts), and both
+are worth knowing about because they are the bot adding something the pipeline
+did not say:
+
+- **`stalled`** does not exist upstream — the pipeline has `active`, `blocked`,
+  `resolved`. An active item quiet for longer than `TAM_STALE_DAYS` is rendered
+  stalled.
+- **Evidence for an active item.** The pipeline only writes an evidence sentence
+  for a state *change*. Rather than render a blank claim, active items are
+  anchored on their newest message, which keeps the "every claim is clickable"
+  rule intact.
+
+Permalinks are rebuilt from message ids (`msg_<channel>_<ts>` → an
+`/archives/…` link), so evidence buttons work even though the pipeline does not
+store them. Meeting utterances have no Slack message and correctly get none.
+
 ## Evaluation
 
 ```bash
@@ -824,14 +877,15 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
 
 ## Known limitations
 
-- **The bot and the pipeline are not joined.** This is the largest one. Both read
-  Slack and both decide what a work item is, in different languages, by different
-  rules: the Python side clusters embeddings with a Louvain graph, the bot matches
-  character trigrams in `apps/meowtam/scripts/build-ledger.ts`. So the same
-  channel can produce two different sets of work items. Closing it means picking
-  one owner of that definition — most likely having the bot read
-  `tam.web.server`'s `/api/digest` instead of building its own ledger — and it is
-  a design decision, not a merge.
+- **Recall's relevance gate depends on the served model.** The hybrid score is
+  rank-derived (RRF), so it cannot express "nothing matched" — measured here, a
+  nonsense query scores 0.0301 and a good one 0.0306. Recall therefore gates on a
+  raw cosine from the `dense` preset, and that only works if the model puts
+  gibberish far from the corpus. `paraphrase-multilingual-MiniLM` scores
+  nonsense at 0.375 against 0.72 for a real query; `models/syn_finetuned` scores
+  it at **0.743**, above a genuine English query, so with that model no threshold
+  separates them. `npm run check-api` reports this. It is a property of the
+  model, not of the wiring.
 - **Brute-force search.** Every query scores every record with a NumPy dot
   product. Fine for thousands of messages, not for millions — that is what a
   vector database would be for later.

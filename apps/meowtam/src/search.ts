@@ -21,16 +21,25 @@
  * the UI can keep showing *why* something matched.
  */
 
-import { ledger } from './data.js';
+import { ledger, itemKeyForMessage } from './data.js';
+import { apiConfig, hitToMessage, searchViaApi } from './tam-api.js';
 import type { Message } from './types.js';
 
 export interface Hit {
   message: Message;
   item_key?: string;
   score: number;
-  why: { ngram: number; terms: number; recency: number };
+  /**
+   * Per-stage scores, keyed by stage name. Open-ended because the stages differ
+   * by engine: the local one reports ngram/terms/recency, the pipeline reports
+   * dense/bm25/anchor/thread/…. The UI renders whatever is present so it keeps
+   * showing *why* something matched either way.
+   */
+  why: Record<string, number>;
   /** Literal tokens that matched — rendered as chips so the reader can judge the match. */
   terms: string[];
+  /** Which engine produced this hit. Rendered, so the reader is never misled. */
+  engine: 'local' | 'pipeline';
 }
 
 const NGRAM = 3;
@@ -104,13 +113,50 @@ export function search(query: string, k = 8): Hit[] {
 
     const content = 0.65 * ngram + 0.35 * terms;
     const score = content < CONTENT_FLOOR ? 0 : content * (0.9 + 0.1 * recency);
-    return { message: m, item_key: item, score, why: { ngram, terms, recency }, terms: shared };
+    return {
+      message: m,
+      item_key: item,
+      score,
+      why: { ngram, terms, recency },
+      terms: shared,
+      engine: 'local' as const,
+    };
   });
 
   return hits
     .filter((h) => h.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, k);
+}
+
+/**
+ * Recall through the Python pipeline when it is configured, else locally.
+ *
+ * This is the swap the header comment above anticipated: the pipeline scores
+ * with a trained embedding model fused with BM25 and Slack's own structural
+ * signals, which the trigram engine cannot approximate — it has no notion of
+ * two differently-worded messages meaning the same thing.
+ *
+ * Falling back rather than erroring is deliberate. Recall degrading to trigrams
+ * is a worse answer; recall returning nothing is a broken command.
+ */
+export async function searchBest(query: string, k = 8): Promise<Hit[]> {
+  const cfg = apiConfig();
+  if (!cfg) return search(query, k);
+
+  try {
+    const hits = await searchViaApi(cfg, query, k);
+    return hits.map((h) => ({
+      message: hitToMessage(h, cfg),
+      item_key: itemKeyForMessage(h.id),
+      score: h.score,
+      why: h.why ?? {},
+      terms: h.terms ?? [],
+      engine: 'pipeline' as const,
+    }));
+  } catch {
+    return search(query, k);
+  }
 }
 
 /** Decisions whose statement matches the query, for the supersession chain in recall. */

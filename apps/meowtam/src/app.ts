@@ -2,9 +2,10 @@ import 'dotenv/config';
 import { App, LogLevel } from '@slack/bolt';
 
 import {
-  ledger, reload, sortedItems, itemsByState, findItem, findMessage,
+  ledger, hydrate, reload, ledgerOrigin, sortedItems, itemsByState, findItem, findMessage,
   itemsFor, standupFor, driftFor,
 } from './data.js';
+import { apiConfig } from './tam-api.js';
 import { digestBlocks } from './blocks/digest.js';
 import { standupDmBlocks } from './blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
@@ -82,14 +83,15 @@ app.command(/^\/(meowtam|mt)$/, async ({ command, ack, respond, client, body }) 
 
     // /meowtam reload     → re-read ledger.json without restarting mid-demo
     if (lower === 'reload') {
-      const l = reload();
-      await respond({ text: `โหลดใหม่แล้ว: ${l.items.length} items, ${l.corpus_size} ข้อความ` });
+      const l = await reload();
+      const from = ledgerOrigin() === 'pipeline' ? 'pipeline' : 'fixture';
+      await respond({ text: `โหลดใหม่แล้ว (${from}): ${l.items.length} items, ${l.corpus_size} ข้อความ` });
       return;
     }
 
     // /meowtam recall <paragraph>
     if (lower.startsWith('recall ')) {
-      await respond({ blocks: recallBlocks(arg.slice(7).trim()), text: 'recall' });
+      await respond({ blocks: await recallBlocks(arg.slice(7).trim()), text: 'recall' });
       return;
     }
 
@@ -109,7 +111,7 @@ app.command(/^\/(meowtam|mt)$/, async ({ command, ack, respond, client, body }) 
 
     // Anything else is treated as a recall query. People will type questions;
     // failing with "unknown command" would be hostile.
-    await respond({ blocks: recallBlocks(arg), text: 'recall' });
+    await respond({ blocks: await recallBlocks(arg), text: 'recall' });
   } catch (err) {
     console.error('command error', err);
     await respond({ text: `พัง: ${(err as Error).message}` });
@@ -415,7 +417,7 @@ async function runDemo(
       await client.chat.postMessage({
         channel: DIGEST_CHANNEL || channel,
         text: 'recall',
-        blocks: recallBlocks(q) as any,
+        blocks: (await recallBlocks(q)) as any,
       });
       await respond({ text: `▶ beat 4 — recall: “${q}”` });
       return;
@@ -464,7 +466,16 @@ if (env('ENABLE_SCHEDULE') === '1') {
   });
 }
 
+// Load before accepting traffic, so the first command never races the fetch.
+const boot = await hydrate();
+if (boot.error) {
+  console.warn(`⚠  pipeline ไม่ตอบ (${boot.error}) — ใช้ fixture ต่อ`);
+}
+
 await app.start();
 const l = ledger();
+const cfg = apiConfig();
+const src = ledgerOrigin() === 'pipeline' ? `pipeline ${cfg?.baseUrl}` : 'fixture data/ledger.json';
 console.log(`🐾 Meowtam พร้อมแล้ว — ${l.items.length} work items, ${l.corpus_size} ข้อความ`);
+console.log(`   แหล่งข้อมูล: ${src}`);
 console.log(`   ลอง: /meowtam demo   (beats: ${BEATS.join(' → ')})`);

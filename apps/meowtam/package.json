@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "export": "tsx scripts/export-slack.ts",
     "ledger": "tsx scripts/build-ledger.ts",
-    "preview": "tsx scripts/preview.ts"
+    "preview": "tsx scripts/preview.ts",
+    "check-api": "tsx scripts/check-api.ts"
   },
   "dependencies": {
     "@slack/bolt": "^4.2.1",

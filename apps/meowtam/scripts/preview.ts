@@ -27,8 +27,8 @@ const payloads: Record<string, any[]> = {
   board: boardBlocks('งานของ @ake', sortedItems().filter((i) => i.state !== 'done')),
   drift: drift && driftItem ? driftNudgeBlocks(drift, driftItem) : [],
   driftModal: drift && driftItem ? (driftModal(drift, driftItem).blocks as any[]) : [],
-  recall: recallBlocks('ตอนนั้นเราสรุปเรื่อง export encoding ว่ายังไงนะ'),
-  recallEmpty: recallBlocks('qqqzzzxxx wvwvwv jjjkkk'),
+  recall: await recallBlocks('ตอนนั้นเราสรุปเรื่อง export encoding ว่ายังไงนะ'),
+  recallEmpty: await recallBlocks('qqqzzzxxx wvwvwv jjjkkk'),
 };
 
 /** Slack's documented limits. Exceeding any of these is a runtime 400. */

@@ -1,7 +1,33 @@
 import type { KnownBlock } from '@slack/types';
-import { search, searchDecisions } from '../search.js';
+import { searchBest, searchDecisions, type Hit } from '../search.js';
 import { decisionChain, findMessage } from '../data.js';
 import { SOURCE_ICON, clamp, context, divider, esc, header, section } from './common.js';
+
+/**
+ * Thai labels for the scoring stages either engine can report. Unknown keys fall
+ * back to their raw name rather than being dropped — a stage the reader cannot
+ * see is a stage they cannot judge.
+ */
+const STAGE_LABEL: Record<string, string> = {
+  ngram: 'n-gram',
+  terms: 'คำตรงตัว',
+  recency: 'ความใหม่',
+  dense: 'ความหมาย',
+  bm25: 'BM25',
+  anchor: 'คำเฉพาะ',
+  thread: 'เธรด',
+  time: 'เวลา',
+  author: 'ผู้เขียน',
+  rerank: 'จัดอันดับใหม่',
+};
+
+function whyLine(h: Hit): string {
+  const parts = Object.entries(h.why)
+    .filter(([, v]) => Number.isFinite(v))
+    .map(([k, v]) => `${STAGE_LABEL[k] ?? k} ${v.toFixed(2)}`);
+  const engine = h.engine === 'pipeline' ? 'pipeline (embeddings)' : 'local (trigram)';
+  return `${parts.join(' · ')} · รวม ${h.score.toFixed(3)} · เครื่องมือ: ${engine}`;
+}
 
 /**
  * Recall — the fix for "we decided this three months ago and now it's changed,
@@ -16,9 +42,9 @@ import { SOURCE_ICON, clamp, context, divider, esc, header, section } from './co
  * Scores are raw (~0.03–0.4). Never render them as a percentage or a progress
  * bar; they are not calibrated and dressing them up would be a lie.
  */
-export function recallBlocks(query: string): KnownBlock[] {
+export async function recallBlocks(query: string): Promise<KnownBlock[]> {
   const decisions = searchDecisions(query);
-  const hits = search(query, 6);
+  const hits = await searchBest(query, 6);
 
   const blocks: KnownBlock[] = [
     header('Recall'),
@@ -79,9 +105,7 @@ export function recallBlocks(query: string): KnownBlock[] {
         ),
       );
       // Showing *why* it matched is what separates this from a black box.
-      const why =
-        `ตรงกัน: n-gram ${h.why.ngram.toFixed(2)} · คำตรงตัว ${h.why.terms.toFixed(2)} · ` +
-        `ความใหม่ ${h.why.recency.toFixed(2)} · รวม ${h.score.toFixed(3)}`;
+      const why = `ตรงกัน: ${whyLine(h)}`;
       blocks.push(context(h.terms.length ? `${why}\nคำที่ตรง: ${h.terms.map((t) => `\`${t}\``).join(' ')}` : why));
     }
   }
