@@ -104,6 +104,10 @@ Nothing sits at the repo root any more. Every module is reachable as
 `python3 -m tam.<area>.<module>`, `--help` works on all 22 of them, and
 `python3 -m pytest` from `pipeline/` runs the Python tests.
 
+**Which model, and why not the fine-tune?** [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md)
+is the decision log: both training runs, the seven models compared on a real 1,102-record
+corpus, why each loser lost, and what was chosen.
+
 **New here?** [../docs/USER_MANUAL.md](../docs/USER_MANUAL.md) is the install-and-use
 guide in Thai: prerequisites, both Slack apps, every command, and a
 troubleshooting table. This README is the reasoning behind the design and the
@@ -1076,14 +1080,24 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 
   The single-probe number above is also too kind to the general model. `check-api`
   scores three gibberish strings and several real queries, and the Thai one is the
-  one that hurts: on this same 42-record corpus `ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ` reaches 0.581
-  while the weakest genuine query — an item's own label, `street, sales dashboard,
-  react` — reaches only 0.473. They overlap, so **no floor separates them on this
-  corpus either**, and 0.45 lets that one probe through. A floor has to clear the
-  weakest real question, not the strongest, which is why the check measures both
-  and refuses to suggest a number when they cross. It is a property of the served
-  model, not of the wiring, and the fix is a better model, never a higher
-  `TAM_MIN_COSINE`.
+  one that hurts. On this same 42-record corpus `ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ` reaches 0.581
+  while the weakest genuine query — an item's own label — reaches only 0.473. They
+  overlap, so **no floor separates them on this corpus either**, and 0.45 lets that
+  probe through. A floor has to clear the weakest real question, not the strongest,
+  which is why the check measures both and names no number when they cross.
+
+  Corpus size is not the lever, though it looks like one. Measured on a 936-message
+  export from four channels, subsampled with the same model and the same probes:
+
+  | records | 25 | 50 | 100 | 200 | 400 | 936 |
+  | --- | --- | --- | --- | --- | --- | --- |
+  | worst gibberish | 0.870 | 0.911 | 0.913 | 0.911 | 0.892 | 0.918 |
+
+  Flat, and not monotonic. Across *different* corpora at similar sizes the same
+  probes move much further — 0.581 on one 42-record corpus against 0.767 on a
+  27-record one — so what a corpus contains dominates how many records it has. The
+  floor is a property of one corpus and one model together, and has to be measured
+  where it runs rather than inherited from this table.
 - **Brute-force search.** Every query scores every record with a NumPy dot
   product. Fine for thousands of messages, not for millions — that is what a
   vector database would be for later.

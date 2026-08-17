@@ -24,6 +24,7 @@ own `data/`.
 | Install it and use it | [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — Thai, every command tested |
 | See how it works | [docs/architecture.html](docs/architecture.html) — five flow diagrams plus the folder layout |
 | The reasoning and the measurements | [pipeline/README.md](pipeline/README.md) |
+| Which model was chosen and why the fine-tunes lost | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) — Thai, every number re-measured |
 | A ten-slide summary | [docs/deck.html](docs/deck.html) |
 
 ## Run it in two minutes, with no Slack access
@@ -90,13 +91,23 @@ does not hold**. Three gibberish queries are scored against the corpus:
 ```
 
 Thai gibberish scores *above* a genuine query, so no floor separates them here.
-The check then scores several real queries too — because a floor has to clear the
-*weakest* genuine question, not the strongest — and on the 42-record private export
-the picture is the same shape rather than better: gibberish tops out at 0.581 while
-the weakest real query sits at 0.473, so the two overlap and raising the floor
-would start throwing away real questions. That is a property of the served
-embedding model, not of the wiring, and the response is a better model, never a
-higher `TAM_MIN_COSINE`.
+The check scores several real queries too, because a floor has to clear the
+*weakest* genuine question rather than the strongest, and on every corpus tried so
+far the two overlap:
+
+| corpus | worst gibberish | weakest real query |
+| --- | --- | --- |
+| 27-record committed sample | 0.767 | 0.726 |
+| 42-record export | 0.581 | 0.473 |
+| 936-record export, 4 channels | 0.918 | 0.529 |
+
+It is tempting to blame corpus size. Measured, size is not the driver: subsampling
+that 936-record corpus to 25 / 50 / 100 / 200 / 400 records moves the worst
+gibberish only 0.870 → 0.918, and not even monotonically. What moves it is what the
+corpus *contains* — the three corpora above differ by 0.34 at similar model and
+identical probes. So the floor is a property of one corpus and one model together;
+there is no default that is right everywhere, which is why `check-api` measures it
+where it runs instead of trusting the number in this table.
 
 The exit code answers only "is the integration sound?", so this reports loudly
 without failing the run; `--strict-gate` folds it back in, for CI against a real
