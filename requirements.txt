@@ -4,22 +4,22 @@ python-dotenv>=1.0,<2
 sentence-transformers>=3.0,<6
 slack-sdk>=3.27,<4
 
-# graph.py: message graph and Louvain communities, scored against threads with ARI/NMI
+# tam.analysis.graph: message graph and Louvain communities, scored against threads with ARI/NMI
 networkx>=3.2,<4
 scikit-learn>=1.4,<2
 
-# lexical.py: Thai has no spaces between words, so BM25 needs a real tokenizer.
+# tam.retrieval.lexical: Thai has no spaces between words, so BM25 needs a real tokenizer.
 # Optional — without it Thai falls back to character n-grams, which still works.
 pythainlp>=5.0,<6
 
-# finetune.py only. Skip these unless you are training on your own threads.
+# tam.evaluation.finetune only. Skip these unless you are training on your own threads.
 datasets>=3,<5
 accelerate>=1.0,<2
 
-# server.py: the web prototype (digest, blockers, timelines, grounding search)
+# tam.web.server: the web prototype (digest, blockers, timelines, grounding search)
 fastapi>=0.115,<1
 uvicorn[standard]>=0.30,<1
 python-multipart>=0.0.9,<1
 
-# summarize.py with SUMMARIZER=claude only. The default backend needs no network.
+# tam.analysis.summarize with SUMMARIZER=claude only. The default backend needs no network.
 anthropic>=0.69,<1

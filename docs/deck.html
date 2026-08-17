@@ -1,0 +1,402 @@
+<title>ตาม (Tam)</title>
+<style>
+  /* ---------- tokens: complete light palette on bare :root ---------- */
+  :root{
+    --ground:#F2F5F6; --surface:#FFFFFF; --surface-2:#E9EFF1; --surface-3:#DCE6E9;
+    --ink:#16242E; --ink-2:#47606D; --ink-3:#76909D;
+    --rule:#CBD9DE; --rule-strong:#A9BFC7;
+    --accent:#0E7C86; --accent-soft:#D9EDEF; --accent-ink:#FFFFFF;
+    --warn:#A85B08; --warn-soft:#F7E9D6;
+    --good:#17694A; --good-soft:#DCEDE4;
+    --shadow:0 1px 2px rgba(22,36,46,.06), 0 8px 24px -12px rgba(22,36,46,.18);
+
+    --f-display:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI","Helvetica Neue",sans-serif;
+    --f-body:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI","Helvetica Neue",sans-serif;
+    --f-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+
+    --s-1:.78rem; --s0:.94rem; --s1:1.06rem; --s2:1.35rem;
+    --s3:1.75rem; --s4:2.3rem; --s5:3.1rem;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
+      --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
+      --rule:#2A3E48; --rule-strong:#3B535F;
+      --accent:#4FC5CE; --accent-soft:#16333A; --accent-ink:#06232A;
+      --warn:#E0A048; --warn-soft:#33260F;
+      --good:#5FC79B; --good-soft:#122E23;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.6);
+    }
+  }
+  :root[data-theme="dark"]{
+    --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
+    --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
+    --rule:#2A3E48; --rule-strong:#3B535F;
+    --accent:#4FC5CE; --accent-soft:#16333A; --accent-ink:#06232A;
+    --warn:#E0A048; --warn-soft:#33260F;
+    --good:#5FC79B; --good-soft:#122E23;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.6);
+  }
+
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--ground); color:var(--ink);
+    font-family:var(--f-body); font-size:var(--s1); line-height:1.65;
+    -webkit-font-smoothing:antialiased;
+  }
+
+  /* ---------- deck shell ---------- */
+  .deck{max-width:1060px; margin:0 auto; padding:28px 20px 72px; display:flex; flex-direction:column; gap:22px}
+
+  .masthead{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 16px; padding:0 4px 2px}
+  .masthead .mark{font-family:var(--f-display); font-weight:800; font-size:var(--s2); letter-spacing:-.01em}
+  .masthead .meta{font-family:var(--f-mono); font-size:var(--s-1); color:var(--ink-3); margin-left:auto}
+
+  /* ---------- slide ---------- */
+  .slide{
+    position:relative; background:var(--surface); border:1px solid var(--rule);
+    border-radius:6px; box-shadow:var(--shadow); overflow:hidden;
+    display:flex; flex-direction:column;
+  }
+  .slide-head{
+    display:flex; align-items:center; gap:12px;
+    padding:14px 26px; border-bottom:1px solid var(--rule); background:var(--surface-2);
+  }
+  .num{
+    font-family:var(--f-mono); font-size:var(--s-1); font-weight:600;
+    color:var(--accent-ink); background:var(--accent);
+    padding:2px 8px; border-radius:3px; flex:none;
+  }
+  .eyebrow{
+    font-family:var(--f-mono); font-size:var(--s-1); text-transform:uppercase;
+    letter-spacing:.09em; color:var(--ink-2);
+  }
+  .slide-body{padding:30px 26px 26px; display:flex; flex-direction:column; gap:18px; flex:1}
+
+  h2{font-family:var(--f-display); font-weight:800; font-size:var(--s3); line-height:1.25;
+     letter-spacing:-.015em; margin:0; text-wrap:balance}
+  h3{font-family:var(--f-display); font-weight:700; font-size:var(--s1); margin:0; color:var(--ink)}
+  p{margin:0; max-width:66ch; color:var(--ink-2)}
+  p strong,li strong{color:var(--ink); font-weight:700}
+  .lede{font-size:var(--s2); line-height:1.55; color:var(--ink); max-width:60ch}
+
+  /* evidence rail — the deck's structural device: every claim carries its source */
+  .rail{
+    margin-top:auto; border-top:1px dashed var(--rule-strong);
+    padding-top:12px; display:flex; flex-wrap:wrap; gap:6px 18px;
+    font-family:var(--f-mono); font-size:var(--s-1); color:var(--ink-3);
+  }
+  .rail span{white-space:nowrap}
+  .rail b{color:var(--ink-2); font-weight:600}
+
+  /* ---------- pieces ---------- */
+  .grid{display:grid; gap:14px}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  .g3{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+
+  .card{background:var(--surface-2); border:1px solid var(--rule); border-radius:5px; padding:16px 18px;
+        display:flex; flex-direction:column; gap:7px}
+  .card .k{font-family:var(--f-mono); font-size:var(--s-1); text-transform:uppercase;
+           letter-spacing:.08em; color:var(--ink-3)}
+  .card p{font-size:var(--s0)}
+
+  .stat{background:var(--surface-2); border:1px solid var(--rule); border-radius:5px; padding:14px 16px}
+  .stat .v{font-family:var(--f-mono); font-variant-numeric:tabular-nums; font-weight:700;
+           font-size:var(--s4); line-height:1.1; letter-spacing:-.02em; color:var(--accent)}
+  .stat .l{font-size:var(--s-1); color:var(--ink-2); margin-top:4px}
+
+  ul{margin:0; padding-left:1.1em; display:flex; flex-direction:column; gap:9px; color:var(--ink-2)}
+  ul.tight{gap:5px}
+  li{max-width:64ch}
+  li::marker{color:var(--ink-3)}
+
+  .tw{overflow-x:auto; border:1px solid var(--rule); border-radius:5px}
+  table{border-collapse:collapse; width:100%; font-size:var(--s0); min-width:440px}
+  th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
+  thead th{background:var(--surface-2); font-family:var(--f-mono); font-size:var(--s-1);
+           text-transform:uppercase; letter-spacing:.07em; color:var(--ink-2); font-weight:600}
+  tbody tr:last-child td{border-bottom:0}
+  td code,th code{font-family:var(--f-mono); font-size:.9em}
+
+  pre{margin:0; background:var(--surface-3); border:1px solid var(--rule); border-radius:5px;
+      padding:14px 16px; overflow-x:auto; font-family:var(--f-mono); font-size:var(--s-1);
+      line-height:1.7; color:var(--ink)}
+  code{font-family:var(--f-mono)}
+  p code,li code,td code{background:var(--surface-3); padding:1px 5px; border-radius:3px; font-size:.88em}
+
+  /* state = icon + word, never colour alone (a design rule from the product itself) */
+  .pill{display:inline-flex; align-items:center; gap:6px; font-family:var(--f-mono);
+        font-size:var(--s-1); font-weight:600; padding:2px 9px; border-radius:3px; white-space:nowrap}
+  .pill.ok{background:var(--good-soft); color:var(--good)}
+  .pill.hold{background:var(--warn-soft); color:var(--warn)}
+  .pill.info{background:var(--accent-soft); color:var(--accent)}
+
+  .flow{display:flex; flex-direction:column; gap:0; font-family:var(--f-mono); font-size:var(--s-1)}
+  .flow div{padding:9px 14px; border:1px solid var(--rule); border-bottom:0; background:var(--surface-2)}
+  .flow div:first-child{border-radius:5px 5px 0 0}
+  .flow div:last-child{border-bottom:1px solid var(--rule); border-radius:0 0 5px 5px}
+  .flow .hi{background:var(--accent-soft); color:var(--accent); font-weight:600}
+
+  a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px}
+  a:focus-visible,.slide:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+  .foot{font-family:var(--f-mono); font-size:var(--s-1); color:var(--ink-3); text-align:center; padding-top:8px}
+
+  @media (max-width:640px){
+    .slide-body{padding:22px 18px}
+    .slide-head{padding:12px 18px}
+    :root{--s3:1.5rem; --s4:1.9rem; --s5:2.3rem}
+  }
+  @media (prefers-reduced-motion:no-preference){
+    .slide{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
+    @keyframes rise{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+  }
+  @media print{
+    body{background:#fff}
+    .slide{break-after:page; box-shadow:none; animation:none}
+    .masthead,.foot{display:none}
+  }
+</style>
+
+<div class="deck">
+
+  <header class="masthead">
+    <span class="mark">ตาม <span style="color:var(--ink-3);font-weight:600">(Tam)</span></span>
+    <span class="eyebrow">Draft deck · 10 สไลด์</span>
+    <span class="meta">17 ส.ค. 2569 · ส่ง 19 ส.ค. 2569</span>
+  </header>
+
+  <!-- 1 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">01</span><span class="eyebrow">ปก</span></div>
+    <div class="slide-body">
+      <h2>ตาม — สมุดบัญชีงานที่อยู่ใน Slack</h2>
+      <p class="lede">รู้ว่าอะไรติด ก่อนเข้า standup — และทุกคำที่ระบบพูด กดกลับไปดูข้อความที่เป็นหลักฐานได้ในคลิกเดียว</p>
+      <div class="grid g3">
+        <div class="stat"><div class="v">3</div><div class="l">ผิวการใช้งาน: CLI · Dashboard · Slack bot</div></div>
+        <div class="stat"><div class="v">100%</div><div class="l">สถานะงานคำนวณด้วยกฎ ไม่ใช่ AI เดา</div></div>
+        <div class="stat"><div class="v">0</div><div class="l">ข้อมูลที่ออกนอกเครื่อง (ค่า default)</div></div>
+      </div>
+      <p>ต้นแบบใช้งานได้จริงแล้วทั้งสามผิว โค้ดทั้งหมดเปิดอยู่ที่ <a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a></p>
+      <div class="rail"><span><b>ผู้จัดทำ</b> Sirawith P.</span><span><b>สถานะ</b> Working prototype</span><span><b>เอกสาร</b> README · USER_MANUAL</span></div>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">02</span><span class="eyebrow">ปัญหา</span></div>
+    <div class="slide-body">
+      <h2>สถานะจริงของงานอยู่ใน 4 ที่ และครบอยู่ที่เดียว — ในหัวคน</h2>
+      <p>อาการที่ทีมเจอดูเหมือนหลายเรื่อง แต่เป็นเรื่องเดียวกันในเสื้อผ้าคนละชุด</p>
+      <div class="grid g2">
+        <div class="card"><span class="k">เช้าวันจันทร์</span><p>เข้า standup แล้วต้องนึกเองว่าใครติดอะไรไว้เมื่อวันศุกร์</p></div>
+        <div class="card"><span class="k">งานที่หายไป</span><p>เรื่องที่คุยกันในเธรดแล้วไม่มีใครเปิด ticket ก็หายไปเลย</p></div>
+        <div class="card"><span class="k">requirement เปลี่ยน</span><p>ตกลงกันใหม่ใน Slack แต่ ticket ยังเป็นของเดือนพฤษภาคม</p></div>
+        <div class="card"><span class="k">ถามซ้ำ</span><p>"เรื่องนี้สรุปว่าอะไร" ถูกถามใหม่ทุกสองสัปดาห์ เพราะไม่มีที่ให้ย้อนดู</p></div>
+      </div>
+      <p><strong>เครื่องมือที่มีอยู่แก้ไม่ตรงจุด</strong> — bot รวบรวม standup ได้แต่ต้องให้คนพิมพ์เอง, dashboard สวยแต่ข้อมูลต้องกรอก, ticket system รู้แต่เรื่องที่มีคนเปิด ticket</p>
+      <div class="rail"><span><b>อ้างอิง</b> docs/DESIGN_BRIEF.md</span><span><b>ขอบเขต</b> ทีมซอฟต์แวร์ที่คุยงานใน Slack เป็นหลัก</span></div>
+    </div>
+  </section>
+
+  <!-- 3 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">03</span><span class="eyebrow">ทางแก้</span></div>
+    <div class="slide-body">
+      <h2>รวมเป็น "งานหนึ่งชิ้น" แล้วส่งให้ตอนที่คุณกำลังใช้ความจำ</h2>
+      <p class="lede">ไม่ใช่ dashboard เพิ่มอีกอัน — เป็นระบบที่อ่านสิ่งที่ทีมพิมพ์กันอยู่แล้ว แล้วเก็บเป็นบันทึกเดียวต่อหนึ่งงาน</p>
+      <div class="flow">
+        <div>ข้อความ Slack + เธรด &nbsp;+&nbsp; บันทึกการประชุม (VTT / SRT)</div>
+        <div>→ ทำความสะอาด กรอง noise ให้เป็น record รูปแบบเดียวกัน</div>
+        <div class="hi">→ จับกลุ่มเป็น work item · คำนวณสถานะ · ผูกหลักฐานทุกข้อ</div>
+        <div>→ อ่านได้ 3 ทาง: CLI · Dashboard · ในหน้าต่าง Slack เอง</div>
+      </div>
+      <p><strong>จุดที่ต่างจริง</strong> คือการประชุมไม่ได้เป็น pipeline ที่สอง — บันทึกการประชุมถูกแปลงเป็น record ชนิดเดียวกับ Slack ทำให้งานหนึ่งชิ้นข้ามสองแหล่งได้โดยไม่ต้องเขียนโค้ดใหม่</p>
+      <div class="rail"><span><b>ตัวอย่างจริง</b> บั๊ก Profile บน Android = 8 ข้อความ Slack + 2 ประโยคในที่ประชุม</span></div>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">04</span><span class="eyebrow">หลักการ</span></div>
+    <div class="slide-body">
+      <h2>สถานะงานไม่ผ่านโมเดลภาษา</h2>
+      <p>ข้อสรุปผิดเรื่องคำคุณศัพท์คือเรื่องความสวยงาม ข้อสรุปผิดเรื่อง<em>สถานะ</em>คือ standup ที่พาทีมไปผิดทาง เราจึงแยกสองอย่างนี้ออกจากกันในระดับโค้ด</p>
+      <div class="grid g2">
+        <div class="card">
+          <span class="k">คำนวณด้วยกฎ · ตรวจได้</span>
+          <p>งานชิ้นไหน ใครเกี่ยวข้อง ติดหรือไม่ติด ตั้งแต่เมื่อไหร่ และข้อความไหนเป็นหลักฐาน</p>
+          <p><span class="pill ok">✓ derived</span></p>
+        </div>
+        <div class="card">
+          <span class="k">ให้โมเดลเขียน · ติดป้ายไว้</span>
+          <p>เฉพาะประโยคสรุป และต้องอ้าง message id ที่มีอยู่จริง id ที่ไม่มีในงานนั้นถูกตัดออก</p>
+          <p><span class="pill hold">⚠ generated</span></p>
+        </div>
+      </div>
+      <ul class="tight">
+        <li><strong>ไม่มีคำกล่าวอ้างที่ไม่มีลิงก์</strong> — ทุกประโยคที่ระบบคำนวณ พาไปดูข้อความที่พิสูจน์ได้</li>
+        <li><strong>สรุปที่ไม่มีหลักฐานเหลือ ถูกติดป้าย <code>unverified</code></strong> ให้ผู้อ่านเห็น ไม่ได้ซ่อน</li>
+        <li><strong>รายงานเรื่องงาน ไม่ใช่เรื่องคน</strong> — ไม่มีกระดานจัดอันดับ ไม่นับข้อความรายคน เตือนทาง DM เท่านั้น</li>
+        <li><strong>ไม่เขียนกลับ ticket เองโดยไม่มีคนกด</strong> — ระบบร่างให้ แต่คนกดบันทึกเสมอ</li>
+      </ul>
+      <div class="rail"><span><b>ค่า default</b> SUMMARIZER=template — ไม่เรียก network เลย</span><span><b>ทางเลือก</b> SUMMARIZER=claude (ต้องตั้งเอง)</span></div>
+    </div>
+  </section>
+
+  <!-- 5 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">05</span><span class="eyebrow">สถาปัตยกรรม</span></div>
+    <div class="slide-body">
+      <h2>สามผิว หนึ่งแนวคิด แยกกันคนละ process</h2>
+      <div class="tw">
+        <table>
+          <thead><tr><th>ผิว</th><th>ใช้ตอนไหน</th><th>เทคโนโลยี</th><th>เริ่มด้วย</th></tr></thead>
+          <tbody>
+            <tr><td><strong>CLI</strong></td><td>พัฒนาและวัดผลตัวระบบ</td><td>Python</td><td><code>python3 -m tam.retrieval.retrieve</code></td></tr>
+            <tr><td><strong>Dashboard</strong></td><td>อ่านว่าวันนี้ทีมติดอะไร</td><td>FastAPI</td><td><code>python3 -m tam.web.server</code></td></tr>
+            <tr><td><strong>Slack bot</strong></td><td>ในที่ที่งานเกิดขึ้นจริง</td><td>TypeScript · Bolt</td><td><code>npm start</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p>แยกกันเป็นคนละ process โดยตั้งใจ — บอทล่มไม่ทำให้ dashboard ล่ม และกลับกัน</p>
+      <pre>tam/            แพ็กเกจ Python — 22 โมดูล, เรียกด้วย python3 -m tam.&lt;area&gt;.&lt;module&gt;
+├── ingest/     ดึง Slack · ทำความสะอาด · บันทึกการประชุม
+├── retrieval/  embeddings · BM25 · signals · fusion · rerank
+├── analysis/   graph · relations · linker · digest · summarize
+├── evaluation/ วัดผล recall/nDCG · fine-tune
+└── web/        server.py — dashboard
+
+apps/meowtam/   Slack bot — npm project แยก</pre>
+      <div class="rail"><span><b>โครงเดิม</b> 25 ไฟล์ .py กองที่ root</span><span><b>ปัจจุบัน</b> root ไม่มีไฟล์ .py เลย</span></div>
+    </div>
+  </section>
+
+  <!-- 6 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">06</span><span class="eyebrow">ต้นแบบ · Dashboard</span></div>
+    <div class="slide-body">
+      <h2>Dashboard เปิดกับข้อมูลจริงแล้ว</h2>
+      <p>HTML สร้างจาก Python ตรงๆ — ไม่มี build step ไม่มี <code>node_modules</code> ไม่มี frontend แยกให้ต้องตามให้ทัน</p>
+      <pre>$ python3 -m tam.web.server --records data/processed/combined.json --port 8899
+
+INFO Building index from data/processed/combined.json
+INFO Reused 42 cached embedding(s) from data/processed/embeddings_….npz
+INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
+      <div class="grid g2">
+        <div class="card"><span class="k">5 หน้าจอ</span><p><code>/</code> digest · <code>/blockers</code> · <code>/item/{key}</code> timeline · <code>/search</code> หาต้นทางของประโยค · <code>/upload</code> โยนไฟล์ประชุมเข้า corpus</p></div>
+        <div class="card"><span class="k">5 API</span><p>ข้อมูลชุดเดียวกันออกเป็น JSON — <code>/api/digest</code> · <code>/api/blockers</code> · <code>/api/item/{key}</code> · <code>/api/search</code> · <code>POST /api/reindex</code></p></div>
+      </div>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> ยิงทั้ง 9 endpoint คืน <code>200</code> พร้อมเนื้อหาจริงทุกตัว</p>
+      <div class="rail"><span><b>ชี้ไปข้อมูลจริง</b> --records รับไฟล์อะไรก็ได้ที่ ingest สร้าง</span><span><b>ไม่มี Slack ก็รันได้</b> data/sample/ commit ไว้แล้ว</span></div>
+    </div>
+  </section>
+
+  <!-- 7 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">07</span><span class="eyebrow">ต้นแบบ · Slack</span></div>
+    <div class="slide-body">
+      <h2>ใช้งานในหน้าต่าง Slack ไม่ต้องเปิดเว็บ</h2>
+      <p>ใช้ <strong>Socket Mode</strong> — ไม่ต้องมี public URL ไม่ต้องใช้ ngrok ไม่ต้องเปิด firewall บอทต่อออกไปหา Slack เอง รันจากโน้ตบุ๊กได้เลย</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>พิมพ์ใน Slack</th><th>ได้อะไร</th></tr></thead>
+          <tbody>
+            <tr><td><code>/meowtam</code> · <code>/mt</code></td><td>บอร์ดงานทั้งหมด เรียงงานที่ติดขึ้นก่อน</td></tr>
+            <tr><td><code>/meowtam blocked</code></td><td>เฉพาะที่ติด พร้อมข้อความที่เป็นหลักฐาน</td></tr>
+            <tr><td><code>/meowtam recall &lt;ข้อความ&gt;</code></td><td>ค้นหาไทยได้ พร้อมสายการตัดสินใจของเรื่องนั้น</td></tr>
+            <tr><td><code>/meowtam PROJ-1</code></td><td>งานชิ้นเดียวตาม ticket key</td></tr>
+            <tr><td>คลิกขวาที่ข้อความ</td><td>ผูกกับ ticket · บันทึกเป็นการตัดสินใจ</td></tr>
+            <tr><td>ใส่ emoji</td><td><code>reaction_added</code> เป็น input — emoji สั่งงานได้</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="grid g3">
+        <div class="stat"><div class="v">8</div><div class="l">work item ใน ledger ตัวอย่าง</div></div>
+        <div class="stat"><div class="v">128</div><div class="l">ข้อความที่จัดกลุ่มแล้ว</div></div>
+        <div class="stat"><div class="v">8/8</div><div class="l">หน้าจอผ่าน Slack limits</div></div>
+      </div>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>tsc --noEmit</code> ไม่มี error · <code>npm run preview</code> เรนเดอร์ทุกหน้าจอออฟไลน์ผ่านหมด</p>
+      <div class="rail"><span><b>DM 08:45 · digest 09:25</b> ปิดไว้เป็น default เปิดด้วย ENABLE_SCHEDULE=1</span></div>
+    </div>
+  </section>
+
+  <!-- 8 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">08</span><span class="eyebrow">ความปลอดภัย</span></div>
+    <div class="slide-body">
+      <h2>ข้อมูลจริงและ token อยู่แค่ในเครื่อง</h2>
+      <p>รีโปเป็น public จึงต้องแยกให้ชัดว่าอะไรเผยแพร่ได้ อะไรไม่ได้ — และตรวจจริง ไม่ใช่ตั้งใจไว้</p>
+      <div class="tw">
+        <table>
+          <thead><tr><th>สิ่งของ</th><th>อยู่ที่ไหน</th><th>ขึ้น Git</th></tr></thead>
+          <tbody>
+            <tr><td>token ทั้งหมด</td><td><code>.env</code>, <code>apps/meowtam/.env</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>export จริงจาก Slack</td><td><code>data/raw/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>records + embedding cache</td><td><code>data/processed/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>โมเดล fine-tune (~450 MB)</td><td><code>models/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>ข้อมูลตัวอย่างสังเคราะห์</td><td><code>data/sample/</code></td><td><span class="pill ok">✓ ตั้งใจ</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <ul class="tight">
+        <li><strong>ไม่เหลือ Slack ID จริงในรีโปเลย</strong> — ตรวจทุก commit ปัจจุบันเป็น placeholder 149 จุด คงความยาวเดิมไว้ให้ parser ไม่พัง</li>
+        <li><strong>ชื่อคน ชื่อบริษัท ชื่อโปรเจกต์ภายใน</strong> เปลี่ยนเป็นชื่อสมมติ ตรวจซ้ำแล้วไม่เหลือ</li>
+        <li><strong>ไม่มี token ในโค้ดเลย</strong> — อ่านจาก env ทุกจุด และ <code>.env.example</code> อธิบายครบทุกตัวแปร</li>
+      </ul>
+      <div class="rail"><span><b>ตัวอย่าง id ที่เผยแพร่</b> <code>msg_C0DEMOCHAN1_1786630932.425409</code></span></div>
+    </div>
+  </section>
+
+  <!-- 9 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">09</span><span class="eyebrow">สถานะการส่งมอบ</span></div>
+    <div class="slide-body">
+      <h2>ของที่ต้องส่ง 19 ส.ค. 2569</h2>
+      <div class="tw">
+        <table>
+          <thead><tr><th>รายการ</th><th>สถานะ</th><th>หลักฐาน</th></tr></thead>
+          <tbody>
+            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 9 endpoint คืน 200 · bot typecheck สะอาด 8/8 payload ผ่าน · 22 โมดูล import ผ่าน · 20 CLI ตอบ <code>--help</code></td></tr>
+            <tr><td><strong>User Manual</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><code>docs/USER_MANUAL.md</code> — 11 หัวข้อ ติดตั้ง ใช้งาน ต่อ Slack แก้ปัญหา ทุกคำสั่งรันผ่านจริง</td></tr>
+            <tr><td><strong>Draft Presentation</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>สไลด์นี้ 10 แผ่น</td></tr>
+            <tr><td><strong>Source Code</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a> — public</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p><strong>ทดลองเองได้โดยไม่ต้องมี Slack token</strong> — รีโปมีข้อมูลตัวอย่างไทย/อังกฤษ commit ไว้ ทำงานครบทุกขั้นตั้งแต่ ingest ถึง dashboard</p>
+      <pre>git clone https://github.com/SirawithPra/scraping-slack-data.git
+cd scraping-slack-data && python3 -m venv .venv && source .venv/bin/activate
+python3 -m pip install -r requirements.txt
+python3 -m tam.web.server --records data/processed/combined.json --port 8899</pre>
+      <div class="rail"><span><b>เวลาติดตั้ง</b> ~2 นาที</span><span><b>ทดสอบบน</b> macOS · Python 3.10.17 · Node v24.3.0</span></div>
+    </div>
+  </section>
+
+  <!-- 10 -->
+  <section class="slide">
+    <div class="slide-head"><span class="num">10</span><span class="eyebrow">ข้อจำกัด และก้าวถัดไป</span></div>
+    <div class="slide-body">
+      <h2>สิ่งที่ยังไม่เสร็จ — พูดตรงๆ</h2>
+      <p class="lede">ข้อแรกคือข้อที่ใหญ่ที่สุด และเป็นการตัดสินใจออกแบบ ไม่ใช่การแก้ config</p>
+      <div class="card" style="border-color:var(--warn); background:var(--warn-soft)">
+        <span class="k" style="color:var(--warn)">ข้อจำกัดหลัก</span>
+        <h3>บอทกับ pipeline ยังนับ "งานหนึ่งชิ้น" ไม่เหมือนกัน</h3>
+        <p style="color:var(--ink)">สองฝั่งอ่าน Slack เองและตัดสินใจด้วยกฎต่างกัน — ฝั่ง Python จับกลุ่ม embeddings ด้วย Louvain graph ฝั่งบอทจับ character trigram ช่องเดียวกันจึงอาจได้ work item ไม่เท่ากัน</p>
+        <p style="color:var(--ink)"><strong>ทางแก้ที่เสนอ</strong> ให้บอทอ่าน <code>/api/digest</code> จาก dashboard แทนการสร้าง ledger เอง เหลือเจ้าของนิยามเดียว</p>
+      </div>
+      <div class="grid g2">
+        <div class="card"><span class="k">ยังไม่มี</span><p>แปลง user id เป็นชื่อคน (ต้องเพิ่ม scope <code>users:read</code>) · export reaction ไฟล์ attachment · เขียนกลับ ticket จริง</p></div>
+        <div class="card"><span class="k">ขยายไม่ได้ถ้าโตมาก</span><p>ค้นหาแบบ brute-force ไหวระดับหลายพันข้อความ ไม่ไหวระดับล้าน — ต้องมี vector database</p></div>
+      </div>
+      <ul class="tight">
+        <li><strong>ก้าวถัดไปที่ 1</strong> รวมนิยาม work item ให้เหลือเจ้าของเดียว</li>
+        <li><strong>ก้าวถัดไปที่ 2</strong> ต่อ YouTrack แบบอ่านจริง เพื่อจับ requirement ที่เปลี่ยนใน Slack แต่ ticket ยังไม่เปลี่ยน</li>
+        <li><strong>ก้าวถัดไปที่ 3</strong> วัดผลบน corpus จริงที่ใหญ่กว่านี้ — ชุดปัจจุบันเล็กเกินกว่าจะสรุปเรื่องคุณภาพการค้นหา</li>
+      </ul>
+      <div class="rail"><span><b>เขียนไว้แล้วใน</b> README § Known limitations · USER_MANUAL § 11</span></div>
+    </div>
+  </section>
+
+  <p class="foot">ตาม (Tam) · draft deck 10 สไลด์ · ปรับปรุง 17 ส.ค. 2569</p>
+</div>

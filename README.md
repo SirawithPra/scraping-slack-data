@@ -80,6 +80,12 @@ deploy/ export-app-manifest.json — the read-only Slack app used by the exporte
 Nothing sits at the repo root any more. Every module is reachable as
 `python3 -m tam.<area>.<module>`, and `--help` works on all twenty of them.
 
+**New here?** [docs/USER_MANUAL.md](docs/USER_MANUAL.md) is the install-and-use
+guide in Thai: prerequisites, both Slack apps, every command, and a
+troubleshooting table. This README is the reasoning behind the design and the
+measurements behind the claims. [docs/deck.html](docs/deck.html) is the ten-slide
+summary.
+
 **Start here:**
 
 ```bash
