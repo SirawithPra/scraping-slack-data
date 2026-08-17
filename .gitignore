@@ -19,3 +19,6 @@ output/*
 
 # Fine-tuned model weights (too large for GitHub; rebuild with finetune.py)
 models/
+
+# Internal business proposal - not for the public repo
+tam-proposal.md

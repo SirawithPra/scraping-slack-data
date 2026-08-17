@@ -1,8 +1,8 @@
 """รายงานผลแบบอ่านง่าย ภาษาไทย -> output/report_th.html
 
     python3 report_th.py
-    python3 report_th.py --records data/processed/rever_messages.json \
-                         --eval-file data/eval_queries.rever.json
+    python3 report_th.py --records data/processed/demo_messages.json \
+                         --eval-file data/eval_queries.demo.json
 
 ต่างจาก visualize.py ที่รายงานเป็นตัวเลข metric ไฟล์นี้เล่าเป็นภาษาคน:
 แทนที่จะบอก "Recall@10 = 0.70" จะบอกว่า "เจอ 7 จาก 10 ข้อความที่ควรเจอ"

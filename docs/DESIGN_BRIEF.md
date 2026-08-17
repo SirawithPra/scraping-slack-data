@@ -94,7 +94,7 @@ the whole index rebuilds, which takes 5–60 seconds — design that wait honest
     "state": "blocked",                      // blocked | resolved | active
     "evidence": "blocked since 2026-08-14 16:31 — cue “ยังรอ”",
     "evidence_id": "mtg_20260814-0930-daily-standup_1786699865.000000",
-    "participants": ["Nok", "Tim", "U0DEMOUSER2", "U0DEMOUSER1"],
+    "participants": ["Alice", "Sam", "U0DEMOUSER2", "U0DEMOUSER1"],
     "sources": { "slack": 8, "meeting": 2 },
     "messages": 10,
     "first": "2026-08-13 21:22",
@@ -102,7 +102,7 @@ the whole index rebuilds, which takes 5–60 seconds — design that wait honest
     "age_days": 1.2,
     "summary": {
       "headline": "omega, usd, agentforce add — ติดอยู่ ยังไปต่อไม่ได้",
-      "detail": "10 ข้อความ (2 meeting + 8 slack) · ผู้เกี่ยวข้อง: Nok, Tim … ล่าสุด [Tim] ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce Add-on ค่อนข้างมาก แต่ขอดู pricing ละเอียดก่อน",
+      "detail": "10 ข้อความ (2 meeting + 8 slack) · ผู้เกี่ยวข้อง: Alice, Sam … ล่าสุด [Sam] ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce Add-on ค่อนข้างมาก แต่ขอดู pricing ละเอียดก่อน",
       "next_step": "ต้องมีคนไล่ให้ก่อน ถึงจะไปต่อได้",
       "citations": ["msg_C0DEMOCHAN1_1786630933.931999", "mtg_20260814-0930-daily-standup_1786699865.000000"],
       "unverified": false,
@@ -116,14 +116,14 @@ the whole index rebuilds, which takes 5–60 seconds — design that wait honest
   "when": "2026-08-14 16:30",
   "relation": "resolves",
   "from_user": "U0DEMOUSER1", "from_text": "Hey team, we've got a user reporting that our Android app crashes…",
-  "to_user": "Ake",           "to_text": "ผม debug แล้วครับ เจอ bug ใน Profile module … fix เสร็จแล้ว รอ patch ขึ้น release",
+  "to_user": "Bob",           "to_text": "ผม debug แล้วครับ เจอ bug ใน Profile module … fix เสร็จแล้ว รอ patch ขึ้น release",
   "evidence": "cue “เสร็จแล้ว”",
   "also_answers": 4          // this event also answers 4 earlier messages; collapsed
 }]
 
 // GET /api/search?q=…&k=10
 "hits": [{
-  "rank": 1, "score": 0.032, "id": "mtg_…", "source": "meeting", "user": "Tim",
+  "rank": 1, "score": 0.032, "id": "mtg_…", "source": "meeting", "user": "Sam",
   "when": "2026-08-14 16:31",
   "text": "ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce Add-on ค่อนข้างมาก…",
   "why": { "dense": 0.80, "bm25": 0.23, "cross": 1.00 },
@@ -133,7 +133,7 @@ the whole index rebuilds, which takes 5–60 seconds — design that wait honest
 
 Note the awkward real values a mockup would never invent, and design for them:
 - `label` is machine-extracted keywords, lowercase, sometimes `"(no shared anchor)"`.
-- `participants` mixes readable names (`"Tim"`, `"Nok"`) with raw Slack ids
+- `participants` mixes readable names (`"Sam"`, `"Alice"`) with raw Slack ids
   (`"U0DEMOUSER1"`) in the same list.
 - `score` is ~0.03, not a percentage. Never render it as a progress bar or a %.
 - `evidence` contains typographic quotes around a Thai fragment.

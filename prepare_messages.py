@@ -45,7 +45,7 @@ IGNORED_SUBTYPES = {
 
 # Slack markup -> plain text. LINK_RE is the catch-all for <target|label> and runs
 # last, so it must not swallow mentions (<@U...>), channels (<#C...>), or <!here>.
-# Slack also emits links with no scheme, e.g. <trailhead.com|@Tim Smith>.
+# Slack also emits links with no scheme, e.g. <trailhead.com|@Sam Rivera>.
 LINK_RE = re.compile(r"<(?![@#!])([^>|\s]+)(?:\|([^>]*))?>")
 SCHEME_RE = re.compile(r"^(?:https?://|mailto:|tel:)", re.IGNORECASE)
 CHANNEL_REF_RE = re.compile(r"<#[A-Z0-9]+(?:\|([^>]*))?>")

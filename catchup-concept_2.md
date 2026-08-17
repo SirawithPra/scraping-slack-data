@@ -1,7 +1,7 @@
 # 🐱 Catchup — Web App · Slack Tools · Dashboard
 
 **คอนเซปต์เล่ม 2 · ผิวสัมผัสทั้งสามชั้น และการต่อกับ backend ที่มีอยู่จริง**
-Example Company Limited · ร่างวันที่ 17 ส.ค. 2026
+ร่างวันที่ 17 ส.ค. 2026
 
 > เล่ม 1 (`catchup-concept_1.md`) ตอบว่า *บอทชื่ออะไร พูดจาแบบไหน มีคำสั่งอะไร*
 > เล่มนี้ตอบว่า *ของทั้งหมดวางอยู่บนผิวไหน ใครเห็นอะไร และโค้ดที่มีวันนี้ใช้ต่อได้แค่ไหน*
@@ -217,15 +217,15 @@ pipeline เดียวกับ export วันนี้
 │ ⚠ ติดอยู่   ติดมา 1.2 วัน                        slack 8 · mtg 2│
 │ omega, usd, agentforce add — ติดอยู่ ยังไปต่อไม่ได้            │
 │                                                              │
-│ 10 ข้อความ · Nok, Tim, +2 คนที่ยังไม่ได้จับชื่อ                 │
-│ ล่าสุด [Tim] ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce…    │
+│ 10 ข้อความ · Alice, Sam, +2 คนที่ยังไม่ได้จับชื่อ                 │
+│ ล่าสุด [Sam] ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce…    │
 │                                                              │
 │ ▸ หลักฐาน  blocked since 2026-08-14 16:31 — cue “ยังรอ”  →   │
 │ ▸ ขั้นถัดไป ต้องมีคนไล่ให้ก่อน ถึงจะไปต่อได้                    │
 │                                                              │
 │ ┄ 2 ข้อความล่าสุด ┄                                          │
-│ 2026-08-14 16:31  Tim   (meeting)  …ยังรอทีม Product ยืนยัน   │
-│ 2026-08-14 16:30  Nok   (meeting)  ดีล Omega อยู่ stage…      │
+│ 2026-08-14 16:31  Sam   (meeting)  …ยังรอทีม Product ยืนยัน   │
+│ 2026-08-14 16:30  Alice   (meeting)  ดีล Omega อยู่ stage…      │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -256,7 +256,7 @@ timeline (จาก digest.timeline())
 ─────────────────────────────────────────────────────────────
 2026-08-14 16:30   resolves        cue “เสร็จแล้ว”
   จาก [U0DEMOUSER1] Hey team, we've got a user reporting…
-   └→ [Ake] ผม debug แล้วครับ เจอ bug ใน Profile module…
+   └→ [Bob] ผม debug แล้วครับ เจอ bug ใน Profile module…
         · เหตุการณ์นี้ยัง answers อีก 4 ข้อความ (พับไว้)
 ```
 
@@ -324,7 +324,7 @@ cache ด้วย content hash เฉพาะบรรทัดใหม่ท
 
 ### เรื่อง `U0DEMOUSER1`
 
-`participants` ในข้อมูลจริงปนกันสองแบบเสมอ: `["Nok", "Tim", "U0DEMOUSER2", "U0DEMOUSER1"]`
+`participants` ในข้อมูลจริงปนกันสองแบบเสมอ: `["Alice", "Sam", "U0DEMOUSER2", "U0DEMOUSER1"]`
 ชื่ออ่านได้มาจาก transcript ประชุม (มีชื่อคนพูด) ส่วน id ดิบมาจาก Slack export
 ที่ไม่ได้เรียก `users.info`
 
@@ -639,7 +639,7 @@ Catchup ถือว่าคำตอบเป็น*วัตถุดิบ* 
 
 ```yaml
 template: daily-standup
-team: rever-cms
+team: demo-cms
 schedule:
   days: [mon, tue, wed, thu, fri]
   ask_at: "09:30"          # ถามตาม timezone ของแต่ละคน

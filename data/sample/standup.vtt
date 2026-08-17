@@ -2,52 +2,52 @@ WEBVTT
 
 1
 00:00:02.000 --> 00:00:11.500
-<v Nok>เริ่ม daily นะครับ วันนี้เอาเรื่อง Profile module ก่อน เมื่อวานที่ Customer Support แจ้งมาว่าแอป Android ล่มตอนกดเข้าหน้าโปรไฟล์
+<v Alice>เริ่ม daily นะครับ วันนี้เอาเรื่อง Profile module ก่อน เมื่อวานที่ Customer Support แจ้งมาว่าแอป Android ล่มตอนกดเข้าหน้าโปรไฟล์
 
 2
 00:00:11.500 --> 00:00:15.000
-<v Nok>ตอนนี้สถานะเป็นยังไงบ้าง
+<v Alice>ตอนนี้สถานะเป็นยังไงบ้าง
 
 3
 00:00:16.200 --> 00:00:27.800
-<v Ake>ผม debug แล้วครับ เจอ bug ใน Profile module ที่กระทบ Android บางเวอร์ชัน เป็นเรื่อง compatibility กับ data retrieval
+<v Bob>ผม debug แล้วครับ เจอ bug ใน Profile module ที่กระทบ Android บางเวอร์ชัน เป็นเรื่อง compatibility กับ data retrieval
 
 4
 00:00:28.000 --> 00:00:36.400
-<v Ake>fix เสร็จแล้ว รอ patch ขึ้น release รอบหน้า น่าจะภายในสัปดาห์นี้
+<v Bob>fix เสร็จแล้ว รอ patch ขึ้น release รอบหน้า น่าจะภายในสัปดาห์นี้
 
 5
 00:00:37.100 --> 00:00:44.900
-<v Ploy>QA ขอ build ที่ fix แล้วด้วยนะคะ จะได้ regression test หน้า Profile ก่อนปล่อยจริง
+<v Dave>QA ขอ build ที่ fix แล้วด้วยนะคะ จะได้ regression test หน้า Profile ก่อนปล่อยจริง
 
 6
 00:00:45.500 --> 00:00:52.000
-<v Ake>ได้ครับ เดี๋ยวส่ง build ให้ตอนบ่าย
+<v Bob>ได้ครับ เดี๋ยวส่ง build ให้ตอนบ่าย
 
 7
 00:00:53.000 --> 00:01:04.600
-<v Nok>โอเค ต่อเรื่อง Omega ครับ ดีล Omega Inc ตอนนี้อยู่ stage Negotiation แล้ว มูลค่า 550,000 USD
+<v Alice>โอเค ต่อเรื่อง Omega ครับ ดีล Omega Inc ตอนนี้อยู่ stage Negotiation แล้ว มูลค่า 550,000 USD
 
 8
 00:01:05.000 --> 00:01:16.200
-<v Tim>ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce Add-on ค่อนข้างมาก แต่ขอดู pricing ละเอียดก่อน
+<v Sam>ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce Add-on ค่อนข้างมาก แต่ขอดู pricing ละเอียดก่อน
 
 9
 00:01:16.500 --> 00:01:25.800
-<v Tim>ผมเลยนัด executive alignment call สัปดาห์หน้า จะได้ lock scope กับ timeline
+<v Sam>ผมเลยนัด executive alignment call สัปดาห์หน้า จะได้ lock scope กับ timeline
 
 10
 00:01:26.500 --> 00:01:38.000
-<v Tim>ติดอยู่อย่างเดียวคือ ยังรอทีม Product ยืนยัน pricing tier ของ Add-on ก่อน ถ้ายังไม่ได้ก็ส่ง proposal ไม่ได้
+<v Sam>ติดอยู่อย่างเดียวคือ ยังรอทีม Product ยืนยัน pricing tier ของ Add-on ก่อน ถ้ายังไม่ได้ก็ส่ง proposal ไม่ได้
 
 11
 00:01:38.500 --> 00:01:44.000
-<v Nok>อันนี้เป็น blocker นะ เดี๋ยวผมไล่ให้
+<v Alice>อันนี้เป็น blocker นะ เดี๋ยวผมไล่ให้
 
 12
 00:01:45.000 --> 00:01:55.500
-<v Ploy>อีกเรื่องนึงค่ะ Performance review รอบ Q4 ทำไปแล้ว 12 จาก 18 คน ที่เหลือจะนัดให้จบภายในสิ้นเดือน
+<v Dave>อีกเรื่องนึงค่ะ Performance review รอบ Q4 ทำไปแล้ว 12 จาก 18 คน ที่เหลือจะนัดให้จบภายในสิ้นเดือน
 
 13
 00:01:56.000 --> 00:02:01.000
-<v Nok>โอเคครับ เท่านี้ก่อน เดี๋ยวเจอกันพรุ่งนี้
+<v Alice>โอเคครับ เท่านี้ก่อน เดี๋ยวเจอกันพรุ่งนี้
