@@ -2,10 +2,11 @@ import 'dotenv/config';
 import { App, LogLevel } from '@slack/bolt';
 
 import {
-  ledger, hydrate, reload, ledgerOrigin, sortedItems, itemsByState, findItem, findMessage,
-  itemsFor, standupFor, driftFor,
+  ledger, hydrate, reload, ledgerOrigin, demoFixtures, sortedItems, itemsByState, findItem,
+  findMessage, itemKeyForMessage, itemsFor, standupFor, driftFor,
 } from './data.js';
 import { apiConfig } from './tam-api.js';
+import { decisionsPath, overridesPath, saveDecision, saveOverride, storeSummary } from './store.js';
 import { digestBlocks } from './blocks/digest.js';
 import { standupDmBlocks } from './blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
@@ -14,6 +15,25 @@ import { recallBlocks } from './blocks/recall.js';
 import { context, section, esc, clamp } from './blocks/common.js';
 
 const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
+
+/** 'YYYY-MM-DD HH:mm' — absolute, matching every timestamp the product renders. */
+function stamp(d = new Date()): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * The record id the pipeline gave this Slack message.
+ *
+ * `tam.ingest.prepare_messages` keys Slack records `msg_<channel>_<ts>`, so the
+ * id is reconstructible from what a shortcut payload already carries — no lookup
+ * table, and it stays correct after a reindex.
+ */
+function recordIdFor(shortcut: { channel?: { id?: string }; message?: { ts?: string } }): string {
+  const channel = shortcut.channel?.id;
+  const ts = shortcut.message?.ts;
+  return channel && ts ? `msg_${channel}_${ts}` : '';
+}
 
 // Check before constructing the App — Bolt throws its own opaque error on a
 // missing token, and at 3am you want to be told which env var is missing.
@@ -246,6 +266,7 @@ app.shortcut('link_to_ticket', async ({ ack, shortcut, client }) => {
     view: {
       type: 'modal',
       callback_id: 'link_save',
+      private_metadata: recordIdFor(shortcut as any),
       title: { type: 'plain_text', text: 'ผูกกับ ticket' },
       submit: { type: 'plain_text', text: 'ผูก' },
       close: { type: 'plain_text', text: 'ยกเลิก' },
@@ -274,26 +295,110 @@ app.shortcut('link_to_ticket', async ({ ack, shortcut, client }) => {
 app.view('link_save', async ({ ack, view, client, body }) => {
   await ack();
   const key = view.state.values['key']?.['value']?.selected_option?.value;
+  const recordId = (view.private_metadata || '').trim();
+  const who = (body as any).user.id as string;
+
+  if (!key || !recordId) {
+    await client.chat.postMessage({
+      channel: who,
+      text: 'ผูกไม่ได้',
+      blocks: [
+        section('*ผูกไม่ได้ — ไม่รู้ว่าเป็นข้อความไหน*'),
+        context('เกิดขึ้นเมื่อข้อความไม่ได้อยู่ใน corpus ที่ประมวลผลแล้ว ลองรัน export/prepare ใหม่'),
+      ] as any,
+    });
+    return;
+  }
+
+  // A real write, to the file the pipeline's linker reads as its top tier.
+  let total: number;
+  try {
+    total = saveOverride(recordId, key, who, stamp());
+  } catch (err) {
+    await client.chat.postMessage({
+      channel: who,
+      text: 'บันทึกไม่สำเร็จ',
+      blocks: [
+        section('*บันทึกไม่สำเร็จ*'),
+        context(`เขียนไฟล์ override ไม่ได้: ${esc((err as Error).message)}`),
+      ] as any,
+    });
+    return;
+  }
+
   await client.chat.postMessage({
-    channel: (body as any).user.id,
+    channel: who,
     text: `ผูกกับ ${key} แล้ว`,
     blocks: [
       section(`*🔗 ผูกกับ ${key} แล้ว*`),
-      context('การแก้ของคุณถูกเก็บเป็น override ถาวร — linker จะไม่เดาทับอีก'),
+      context(
+        `เขียนลง ${esc(overridesPath())} แล้ว (${total} รายการ) · ` +
+          'linker จะถือเป็น tier สูงสุดในรอบถัดไป ไม่เดาทับ',
+      ),
     ] as any,
   });
 });
 
 app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
   await ack();
-  const msg = (shortcut as any).message;
+  const s = shortcut as any;
+  const msg = s.message;
+  const who = s.user.id as string;
+  const recordId = recordIdFor(s);
+  const statement = (msg?.text ?? '').trim();
+
+  if (!statement) {
+    await client.chat.postMessage({
+      channel: who,
+      text: 'บันทึกไม่ได้',
+      blocks: [section('*บันทึกไม่ได้ — ข้อความว่าง*')] as any,
+    });
+    return;
+  }
+
+  // If a decision already exists for this work item, the new one replaces it and
+  // the pair is linked, which is what makes `recall` able to show the chain.
+  const itemKey = itemKeyForMessage(recordId);
+  const prior = itemKey
+    ? ledger().decisions.filter((d) => d.related_items?.includes(itemKey) && !d.superseded_by).at(-1)
+    : undefined;
+
+  let saved;
+  try {
+    saved = saveDecision({
+      statement: clamp(statement, 600),
+      when: stamp(),
+      user: msg?.user ?? who,
+      source: 'slack',
+      evidence_id: recordId,
+      supersedes: prior?.id,
+      related_items: itemKey ? [itemKey] : undefined,
+    });
+  } catch (err) {
+    await client.chat.postMessage({
+      channel: who,
+      text: 'บันทึกไม่สำเร็จ',
+      blocks: [
+        section('*บันทึกไม่สำเร็จ*'),
+        context(`เขียนไฟล์ decision ไม่ได้: ${esc((err as Error).message)}`),
+      ] as any,
+    });
+    return;
+  }
+
+  await reload();
+
   await client.chat.postMessage({
-    channel: (shortcut as any).user.id,
+    channel: who,
     text: 'บันทึกเป็นการตัดสินใจแล้ว',
     blocks: [
       section('*🧠 บันทึกเป็นการตัดสินใจแล้ว*'),
-      section(`>${esc(clamp(msg?.text ?? '', 300))}`),
-      context('หาเจอด้วย `/meowtam recall` ได้ตลอด ไม่มีวันหมดอายุ · ถ้าถูกเปลี่ยนทีหลัง จะเห็นเป็นสายว่าอะไรแทนอะไร'),
+      section(`>${esc(clamp(statement, 300))}`),
+      context(
+        `id \`${esc(saved.id)}\` · เขียนลง ${esc(decisionsPath())} แล้ว` +
+          (prior ? ` · แทน \`${esc(prior.id)}\` — recall จะเห็นเป็นสาย` : '') +
+          ' · หาเจอด้วย `/meowtam recall`',
+      ),
     ] as any,
   });
 });
@@ -369,8 +474,17 @@ async function runDemo(
   switch (n) {
     case 1: {
       // The 08:45 DM. Goes to whoever ran the command so it always lands.
-      const draft = standupFor(user) ?? ledger().standups[0];
-      if (!draft) return respond({ text: 'ไม่มี standup draft ใน ledger.json' });
+      // Drafts are derived from the live items, so this is your real standup
+      // when you are a participant. Another person's draft is not substituted.
+      const draft = standupFor(user);
+      if (!draft) {
+        return respond({
+          text:
+            'ยังไม่มี standup draft ให้คุณ — draft สร้างจาก work item ที่คุณเป็น participant\n' +
+            `ตอนนี้มี draft ${ledger().standups.length} คน (${ledger().standups.map((s) => s.slack_user_id).join(', ') || 'ไม่มีเลย'})\n` +
+            'ถ้า pipeline ยังไม่แปลง user id เป็นชื่อ draft จะมีเฉพาะคนที่ถูกบันทึกเป็น U… ในข้อความ',
+        });
+      }
       await client.chat.postMessage({
         channel: user,
         text: 'สรุปของคุณเมื่อวาน',
@@ -391,7 +505,14 @@ async function runDemo(
     case 3: {
       const drift = ledger().drifts[0];
       const item = drift ? findItem(drift.item_key) : undefined;
-      if (!drift || !item) return respond({ text: 'ไม่มี drift ใน ledger.json' });
+      if (!drift || !item) {
+        return respond({
+          text: demoFixtures()
+            ? 'ไม่มี drift ใน fixture'
+            : 'ยังไม่มี drift — การตรวจ drift ต้องเทียบ Slack กับ ticket system ซึ่งยังไม่ได้ต่อ\n' +
+              'ถ้าจะโชว์ตัวอย่างในเดโม ตั้ง DEMO_FIXTURES=1 แล้ว block จะติดป้ายว่าเป็นตัวอย่าง',
+        });
+      }
       // Post the "requirement changed" message first, then the nudge as a
       // threaded reply — that ordering is what sells it.
       const trigger = findMessage(drift.trigger_id);
@@ -467,9 +588,17 @@ if (env('ENABLE_SCHEDULE') === '1') {
 }
 
 // Load before accepting traffic, so the first command never races the fetch.
-const boot = await hydrate();
-if (boot.error) {
-  console.warn(`⚠  pipeline ไม่ตอบ (${boot.error}) — ใช้ fixture ต่อ`);
+// hydrate() throws when TAM_API_URL is set and the pipeline cannot answer: a bot
+// that starts anyway would serve stale fixture data that looks identical to live.
+try {
+  await hydrate();
+} catch (err) {
+  const cfg0 = apiConfig();
+  console.error(`✕ อ่านจาก pipeline ไม่ได้: ${(err as Error).message}`);
+  console.error(`  TAM_API_URL=${cfg0?.baseUrl} — server รันอยู่ไหม?`);
+  console.error('  cd pipeline && python3 -m tam.web.server --records data/processed/combined.json --port 8899');
+  console.error('  หรือลบ TAM_API_URL ออกถ้าจะรันกับ fixture');
+  process.exit(1);
 }
 
 await app.start();
@@ -478,4 +607,10 @@ const cfg = apiConfig();
 const src = ledgerOrigin() === 'pipeline' ? `pipeline ${cfg?.baseUrl}` : 'fixture data/ledger.json';
 console.log(`🐾 Meowtam พร้อมแล้ว — ${l.items.length} work items, ${l.corpus_size} ข้อความ`);
 console.log(`   แหล่งข้อมูล: ${src}`);
+console.log(`   เขียนเอง: ${storeSummary()}`);
+console.log(
+  `   standup draft ${l.standups.length} คน · drift ${l.drifts.length}` +
+    (l.drifts.length === 0 && !demoFixtures() ? ' (ยังไม่ได้ต่อ ticket system)' : '') +
+    (demoFixtures() ? ' · DEMO_FIXTURES=1 เปิดอยู่ — drift เป็นตัวอย่าง' : ''),
+);
 console.log(`   ลอง: /meowtam demo   (beats: ${BEATS.join(' → ')})`);

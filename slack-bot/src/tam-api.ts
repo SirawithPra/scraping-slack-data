@@ -25,12 +25,9 @@
  */
 
 import type {
-  Decision,
-  Drift,
   Ledger,
   Message,
   Source,
-  StandupDraft,
   State,
   TimelineEvent,
   WorkItem,
@@ -270,10 +267,7 @@ export interface ApiSearchHit {
  * rather than an optimisation. Requests run in parallel — the corpora this
  * targets are tens of topics, not thousands.
  */
-export async function fetchLedger(
-  cfg: ApiConfig,
-  carryOver: { decisions: Decision[]; drifts: Drift[]; standups: StandupDraft[] },
-): Promise<Ledger> {
+export async function fetchLedger(cfg: ApiConfig): Promise<Ledger> {
   const digest = await get<{
     built_at: string;
     window_days: number;
@@ -300,9 +294,10 @@ export async function fetchLedger(
     // claim the API said something it did not.
     unassigned: [],
     items: topics.map((t, i) => toWorkItem(t, details[i] ?? EMPTY_DETAIL, cfg)),
-    decisions: carryOver.decisions,
-    drifts: carryOver.drifts,
-    standups: carryOver.standups,
+    // data.ts fills these three; the pipeline has no counterpart for them.
+    decisions: [],
+    drifts: [],
+    standups: [],
   };
 }
 

@@ -137,26 +137,26 @@ export function search(query: string, k = 8): Hit[] {
  * signals, which the trigram engine cannot approximate — it has no notion of
  * two differently-worded messages meaning the same thing.
  *
- * Falling back rather than erroring is deliberate. Recall degrading to trigrams
- * is a worse answer; recall returning nothing is a broken command.
+ * It does **not** quietly fall back to trigrams when the pipeline fails. The two
+ * engines answer differently enough that silently swapping them makes recall
+ * unexplainable: the same query returns different rows on different days with no
+ * way to tell why, and the `why` breakdown on screen would name stages that did
+ * not run. A caller that wants the local engine asks for `search()` by name.
+ * Errors propagate so the command can say the pipeline is down.
  */
 export async function searchBest(query: string, k = 8): Promise<Hit[]> {
   const cfg = apiConfig();
   if (!cfg) return search(query, k);
 
-  try {
-    const hits = await searchViaApi(cfg, query, k);
-    return hits.map((h) => ({
-      message: hitToMessage(h, cfg),
-      item_key: itemKeyForMessage(h.id),
-      score: h.score,
-      why: h.why ?? {},
-      terms: h.terms ?? [],
-      engine: 'pipeline' as const,
-    }));
-  } catch {
-    return search(query, k);
-  }
+  const hits = await searchViaApi(cfg, query, k);
+  return hits.map((h) => ({
+    message: hitToMessage(h, cfg),
+    item_key: itemKeyForMessage(h.id),
+    score: h.score,
+    why: h.why ?? {},
+    terms: h.terms ?? [],
+    engine: 'pipeline' as const,
+  }));
 }
 
 /** Decisions whose statement matches the query, for the supersession chain in recall. */

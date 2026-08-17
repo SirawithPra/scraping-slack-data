@@ -1,6 +1,6 @@
 import type { KnownBlock, View } from '@slack/types';
 import type { Drift, WorkItem } from '../types.js';
-import { findMessage } from '../data.js';
+import { demoFixtures, findMessage } from '../data.js';
 import { clamp, context, divider, esc, section } from './common.js';
 
 /**
@@ -17,6 +17,12 @@ import { clamp, context, divider, esc, section } from './common.js';
 export function driftNudgeBlocks(drift: Drift, item: WorkItem): KnownBlock[] {
   const trigger = findMessage(drift.trigger_id);
   return [
+    // Drift needs a ticket system to compare against, and none is connected yet.
+    // Anything shown here therefore came from the fixture behind DEMO_FIXTURES=1,
+    // and the reader is told so on screen — not only in the server log.
+    ...(demoFixtures()
+      ? [context('⚠ ตัวอย่างจาก fixture — ยังไม่ได้ต่อ ticket system จริง (DEMO_FIXTURES=1)')]
+      : []),
     section(
       `*ดูเหมือนสโคปของ ${item.key} เปลี่ยน แต่ ticket ยังไม่ได้อัปเดต*\n` +
         `เจอคำว่า “${esc(drift.cue)}” ในเธรดนี้` +

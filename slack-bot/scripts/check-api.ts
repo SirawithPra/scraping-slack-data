@@ -36,9 +36,11 @@ try {
   process.exit(1);
 }
 
-const boot = await hydrate();
-if (boot.error) {
-  console.error(`✕ hydrate ล้ม: ${boot.error}`);
+let boot;
+try {
+  boot = await hydrate();
+} catch (err) {
+  console.error(`✕ hydrate ล้ม: ${(err as Error).message}`);
   process.exit(1);
 }
 if (ledgerOrigin() !== 'pipeline') {
@@ -48,9 +50,11 @@ if (ledgerOrigin() !== 'pipeline') {
 
 const l = boot.ledger;
 console.log(`✓ ledger จาก pipeline — สร้างเมื่อ ${l.built_at}, หน้าต่าง ${l.window_days} วัน`);
+console.log(`  ${l.items.length} work item จาก pipeline`);
 console.log(
-  `  ${l.items.length} work item · carry-over จาก fixture: ` +
-    `${l.decisions.length} decision, ${l.drifts.length} drift, ${l.standups.length} standup\n`,
+  `  ที่บอทเติมเอง: ${l.decisions.length} decision (คนกดบันทึก), ` +
+    `${l.standups.length} standup draft (คำนวณจาก item), ` +
+    `${l.drifts.length} drift${l.drifts.length === 0 ? ' — ยังไม่ได้ต่อ ticket system' : ''}\n`,
 );
 
 let missingEvidence = 0;

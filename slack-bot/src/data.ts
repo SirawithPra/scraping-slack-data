@@ -3,6 +3,8 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Ledger, WorkItem, Message, Decision, State } from './types.js';
 import { apiConfig, fetchLedger } from './tam-api.js';
+import { readDecisions } from './store.js';
+import { buildStandups } from './standups.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const LEDGER_PATH = resolve(here, '../data/ledger.json');
@@ -31,34 +33,60 @@ export function ledger(): Ledger {
 }
 
 /**
- * Load the ledger, preferring the Python pipeline when `TAM_API_URL` is set.
+ * Load the ledger from the Python pipeline when `TAM_API_URL` is set.
  *
- * Falls back to the fixture on any failure and says so. A bot that silently
- * serves three-day-old fixture data while claiming to be live is worse than one
- * that admits the pipeline is down.
+ * **No fallback.** Asking for the pipeline and silently getting three-day-old
+ * fixture data is the worst outcome available: the bot keeps answering, the
+ * answers look identical, and nobody learns the pipeline is down until a
+ * decision has already been made on stale numbers. If the pipeline was
+ * requested and cannot answer, this throws and the bot does not start.
+ *
+ * With `TAM_API_URL` unset there is nothing to be confused about — the fixture
+ * is the declared source, and the boot line says so.
  */
-export async function hydrate(): Promise<{ ledger: Ledger; origin: Origin; error?: string }> {
+export async function hydrate(): Promise<{ ledger: Ledger; origin: Origin }> {
   const cfg = apiConfig();
+
   if (!cfg) {
-    cache = fromDisk();
+    cache = withLocalExtras(fromDisk(), 'fixture');
     origin = 'fixture';
     return { ledger: cache, origin };
   }
 
-  const local = fromDisk();
-  try {
-    cache = await fetchLedger(cfg, {
-      decisions: local.decisions,
-      drifts: local.drifts,
-      standups: local.standups,
-    });
-    origin = 'pipeline';
-    return { ledger: cache, origin };
-  } catch (err) {
-    cache = local;
-    origin = 'fixture';
-    return { ledger: cache, origin, error: (err as Error).message };
-  }
+  const fetched = await fetchLedger(cfg);
+  cache = withLocalExtras(fetched, 'pipeline');
+  origin = 'pipeline';
+  return { ledger: cache, origin };
+}
+
+/**
+ * Fill the three collections the pipeline has no counterpart for.
+ *
+ * `decisions` come from what people actually filed through the message shortcut.
+ * `standups` are derived from the items in hand, so the 08:45 DM and the digest
+ * cannot disagree. `drifts` need a ticket system to compare Slack against, and
+ * nothing is connected, so there are none — the fixture's drift is only loaded
+ * when `DEMO_FIXTURES=1` asks for it explicitly, and the renderer labels it.
+ */
+function withLocalExtras(base: Ledger, from: Origin): Ledger {
+  const cfg = apiConfig();
+  const staleDays = cfg?.staleDays ?? (Number(process.env.TAM_STALE_DAYS ?? 3) || 3);
+  const recentDays = Number(process.env.TAM_RECENT_DAYS ?? 1.5) || 1.5;
+
+  return {
+    ...base,
+    decisions: readDecisions(),
+    standups: buildStandups(base.items, { recentDays, staleDays }),
+    drifts: demoFixtures() ? fromDisk().drifts : [],
+    // The fixture's own items are the only ones it can describe, so its
+    // unassigned list is meaningless next to pipeline items.
+    unassigned: from === 'fixture' ? base.unassigned : [],
+  };
+}
+
+/** Opt-in for fixture content that has no live source yet. Off by default. */
+export function demoFixtures(): boolean {
+  return process.env.DEMO_FIXTURES?.trim() === '1';
 }
 
 /** Re-read without restarting. Used by `/meowtam reload` and after `npm run ledger`. */
