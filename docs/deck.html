@@ -218,29 +218,40 @@
 
   <!-- 4 -->
   <section class="slide">
-    <div class="slide-head"><span class="num">04</span><span class="eyebrow">หลักการ</span></div>
+    <div class="slide-head"><span class="num">04</span><span class="eyebrow">จุดต่าง</span></div>
     <div class="slide-body">
-      <h2>สถานะงานไม่ผ่านโมเดลภาษา</h2>
-      <p>ข้อสรุปผิดเรื่องคำคุณศัพท์คือเรื่องความสวยงาม ข้อสรุปผิดเรื่อง<em>สถานะ</em>คือ standup ที่พาทีมไปผิดทาง เราจึงแยกสองอย่างนี้ออกจากกันในระดับโค้ด</p>
+      <h2>“ทำไมไม่ต่อ Claude เข้า Slack แล้วถามมันเลย”</h2>
+      <p class="lede">คำถามนี้ถูก และต้องตอบก่อนอย่างอื่น — Slack, Notion, Jira มี connector พร้อมใช้วันนี้ ถามว่า “อะไรติดอยู่” แล้วมันตอบได้จริง</p>
+      <p><strong>เราจึงไม่ขายว่า “อ่าน Slack แล้วสรุปได้”</strong> — ข้อนั้นแพ้ และแพ้เพราะมันจริง สิ่งที่ผู้ช่วยแบบถาม-ตอบทำไม่ได้ ไม่ใช่ทำได้แย่กว่า มีสามข้อ</p>
+      <div class="grid g3">
+        <div class="card">
+          <span class="k">01 · ไม่มีใครถาม</span>
+          <p>คุณค่าเกิด 09:25 ก่อน standup และ 08:45 ใน DM อาการของปัญหาคือ <em>“ลืมนึกถึง”</em> — เครื่องมือที่ต้องเรียกใช้ แก้ปัญหาที่อาการคือการลืมเรียกใช้ไม่ได้</p>
+        </div>
+        <div class="card">
+          <span class="k">02 · ถามซ้ำได้คำตอบเดิม</span>
+          <p>ถาม LLM สองครั้งอาจได้สถานะไม่เท่ากัน standup ต้องการคำตอบที่ทำซ้ำได้ สถานะที่นี่คำนวณด้วยกฎ ไม่ผ่านโมเดล</p>
+        </div>
+        <div class="card">
+          <span class="k">03 · เฝ้าโดยไม่มีใครสั่ง</span>
+          <p>ไม่มีใครเปิดมาถามว่า “สัปดาห์นี้ ticket ไหนใน 40 ใบ ไม่ตรงกับที่คุยใน Slack” การเฝ้าต้องยืนอยู่ตลอด</p>
+        </div>
+      </div>
+      <h3>กลไกที่ทำให้ข้อ 02 เป็นจริง</h3>
       <div class="grid g2">
         <div class="card">
           <span class="k">คำนวณด้วยกฎ · ตรวจได้</span>
-          <p>งานชิ้นไหน ใครเกี่ยวข้อง ติดหรือไม่ติด ตั้งแต่เมื่อไหร่ และข้อความไหนเป็นหลักฐาน</p>
+          <p>งานชิ้นไหน ใครเกี่ยวข้อง ติดหรือไม่ ตั้งแต่เมื่อไหร่ และข้อความไหนเป็นหลักฐาน</p>
           <p><span class="pill ok">✓ derived</span></p>
         </div>
         <div class="card">
           <span class="k">ให้โมเดลเขียน · ติดป้ายไว้</span>
-          <p>เฉพาะประโยคสรุป และต้องอ้าง message id ที่มีอยู่จริง id ที่ไม่มีในงานนั้นถูกตัดออก</p>
+          <p>เฉพาะประโยคสรุป ต้องอ้าง message id ที่มีจริง id ที่ไม่มีในงานนั้นถูกตัดออก เหลือศูนย์ก็ติดป้าย <code>unverified</code></p>
           <p><span class="pill hold">⚠ generated</span></p>
         </div>
       </div>
-      <ul class="tight">
-        <li><strong>ไม่มีคำกล่าวอ้างที่ไม่มีลิงก์</strong> — ทุกประโยคที่ระบบคำนวณ พาไปดูข้อความที่พิสูจน์ได้</li>
-        <li><strong>สรุปที่ไม่มีหลักฐานเหลือ ถูกติดป้าย <code>unverified</code></strong> ให้ผู้อ่านเห็น ไม่ได้ซ่อน</li>
-        <li><strong>รายงานเรื่องงาน ไม่ใช่เรื่องคน</strong> — ไม่มีกระดานจัดอันดับ ไม่นับข้อความรายคน เตือนทาง DM เท่านั้น</li>
-        <li><strong>ไม่เขียนกลับ ticket เองโดยไม่มีคนกด</strong> — ระบบร่างให้ แต่คนกดบันทึกเสมอ</li>
-      </ul>
-      <div class="rail"><span><b>ค่า default</b> SUMMARIZER=template — ไม่เรียก network เลย</span><span><b>ทางเลือก</b> SUMMARIZER=claude (ต้องตั้งเอง)</span></div>
+      <p><strong>เราไม่ได้แข่งกับ Claude — เราใช้มัน</strong> ระบบมี <code>SUMMARIZER=claude</code> อยู่แล้วสำหรับเขียนภาษา แต่สถานะไม่เคยผ่านมัน จุดต่างจึงไม่ใช่ความฉลาด แต่คือ<strong>ความรับผิดชอบต่อคำพูด และการทำงานเองโดยไม่มีใครสั่ง</strong></p>
+      <div class="rail"><span><b>ประโยคเดียว</b> ผู้ช่วยตอบเมื่อคุณถาม และคุณต้องเชื่อคำตอบ · อันนี้เฝ้าเอง และทุกบรรทัดบอกได้ว่าข้อความไหนเป็นหลักฐาน</span></div>
     </div>
   </section>
 
@@ -325,7 +336,8 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
   <section class="slide">
     <div class="slide-head"><span class="num">08</span><span class="eyebrow">ความปลอดภัย</span></div>
     <div class="slide-body">
-      <h2>ข้อมูลจริงและ token อยู่แค่ในเครื่อง</h2>
+      <h2>ข้อมูลไม่ออกนอกเครื่อง — และนี่คือประตู ไม่ใช่ความชอบ</h2>
+      <p><strong>อีกสองจุดต่างที่ connector ผ่านไม่ได้</strong> ค่า default ของระบบนี้ไม่ส่งข้อความออกนอกเครื่องเลย โมเดลทุกตัวรันในเครื่อง — สำหรับองค์กรที่ไม่อนุญาตให้ Slack ไหลออก API ต่างประเทศ นี่เป็นเงื่อนไขผ่าน/ไม่ผ่าน · และ<strong>ภาษาไทยที่วัดผลได้</strong> ไทยไม่มีเว้นวรรค เราจึงใช้ Thai BM25 + character n-gram + multilingual embeddings และมีเลข recall/nDCG กำกับ ไม่ใช่ keyword search ที่เสื่อมเงียบๆ</p>
       <p>รีโปเป็น public จึงต้องแยกให้ชัดว่าอะไรเผยแพร่ได้ อะไรไม่ได้ — และตรวจจริง ไม่ใช่ตั้งใจไว้</p>
       <div class="tw">
         <table>
@@ -378,23 +390,28 @@ python3 -m tam.web.server --records data/processed/combined.json --port 8899</pr
     <div class="slide-head"><span class="num">10</span><span class="eyebrow">ข้อจำกัด และก้าวถัดไป</span></div>
     <div class="slide-body">
       <h2>สิ่งที่ยังไม่เสร็จ — พูดตรงๆ</h2>
-      <p class="lede">ข้อแรกคือข้อที่ใหญ่ที่สุด และเป็นการตัดสินใจออกแบบ ไม่ใช่การแก้ config</p>
+      <div class="card" style="border-color:var(--good); background:var(--good-soft)">
+        <span class="k" style="color:var(--good)">ปิดไปแล้ว</span>
+        <h3>บอทกับ pipeline นับ “งานหนึ่งชิ้น” เหมือนกันแล้ว</h3>
+        <p style="color:var(--ink)">เดิมสองฝั่งอ่าน Slack เองและจับกลุ่มด้วยกฎต่างกัน ช่องเดียวกันจึงได้ work item ไม่เท่ากัน ตอนนี้ตั้ง <code>TAM_API_URL</code> แล้วบอทเลิกตัดสินเอง — work item, สถานะ, หลักฐาน, timeline และ recall มาจาก pipeline ทั้งหมด เหลือเจ้าของนิยามเดียว</p>
+        <p style="color:var(--ink)"><span class="pill ok">✓ ทดสอบแล้ว</span> 5 work item · evidence_id ทุกอันชี้ข้อความที่มีจริง · permalink สร้างคืน 33/42 · ถามไทยเจอข้อความอังกฤษที่ <code>bm25 0.00</code> คือ semantic ล้วน สิ่งที่ trigram ทำไม่ได้</p>
+      </div>
       <div class="card" style="border-color:var(--warn); background:var(--warn-soft)">
-        <span class="k" style="color:var(--warn)">ข้อจำกัดหลัก</span>
-        <h3>บอทกับ pipeline ยังนับ "งานหนึ่งชิ้น" ไม่เหมือนกัน</h3>
-        <p style="color:var(--ink)">สองฝั่งอ่าน Slack เองและตัดสินใจด้วยกฎต่างกัน — ฝั่ง Python จับกลุ่ม embeddings ด้วย Louvain graph ฝั่งบอทจับ character trigram ช่องเดียวกันจึงอาจได้ work item ไม่เท่ากัน</p>
-        <p style="color:var(--ink)"><strong>ทางแก้ที่เสนอ</strong> ให้บอทอ่าน <code>/api/digest</code> จาก dashboard แทนการสร้าง ledger เอง เหลือเจ้าของนิยามเดียว</p>
+        <span class="k" style="color:var(--warn)">ข้อจำกัดหลักที่เหลือ</span>
+        <h3>เกณฑ์ตัดความเกี่ยวข้องดีได้เท่าโมเดลที่เสิร์ฟ</h3>
+        <p style="color:var(--ink)">คะแนน hybrid คิดจาก<em>อันดับ</em> จึงบอกไม่ได้ว่า “ไม่เจออะไรเลย” — วัดบน corpus นี้ query ขยะได้ 0.0301 ของจริงได้ 0.0306 เราจึงตัดด้วย cosine ดิบแทน แต่มันได้ผลเฉพาะเมื่อโมเดลวางข้อความขยะไว้ไกล</p>
+        <p style="color:var(--ink)">MiniLM: ขยะ <strong>0.375</strong> · ของจริง 0.72 → ตัดได้ &nbsp;|&nbsp; โมเดลที่เรา fine-tune เอง: ขยะ <strong>0.743</strong> <em>สูงกว่า</em> query อังกฤษที่ตรงจริง → ตัดไม่ได้เลย <code>npm run check-api</code> รายงานให้เห็นก่อนขึ้นเวที</p>
       </div>
       <div class="grid g2">
-        <div class="card"><span class="k">ยังไม่มี</span><p>แปลง user id เป็นชื่อคน (ต้องเพิ่ม scope <code>users:read</code>) · export reaction ไฟล์ attachment · เขียนกลับ ticket จริง</p></div>
+        <div class="card"><span class="k">ยังไม่มี</span><p>แปลง user id เป็นชื่อคน (ต้องเพิ่ม scope <code>users:read</code>) · export reaction/attachment · เขียนกลับ ticket จริง · decision, drift, standup ยังมาจาก fixture</p></div>
         <div class="card"><span class="k">ขยายไม่ได้ถ้าโตมาก</span><p>ค้นหาแบบ brute-force ไหวระดับหลายพันข้อความ ไม่ไหวระดับล้าน — ต้องมี vector database</p></div>
       </div>
       <ul class="tight">
-        <li><strong>ก้าวถัดไปที่ 1</strong> รวมนิยาม work item ให้เหลือเจ้าของเดียว</li>
-        <li><strong>ก้าวถัดไปที่ 2</strong> ต่อ YouTrack แบบอ่านจริง เพื่อจับ requirement ที่เปลี่ยนใน Slack แต่ ticket ยังไม่เปลี่ยน</li>
+        <li><strong>ก้าวถัดไปที่ 1</strong> ต่อ YouTrack แบบอ่านจริง — ทำให้ drift ซึ่งเป็นจุดต่างข้อ 03 ทำงานกับข้อมูลจริง ไม่ใช่ fixture</li>
+        <li><strong>ก้าวถัดไปที่ 2</strong> ย้าย decision กับ drift ขึ้น pipeline ให้ครบ เหลือแหล่งเดียวจริงๆ</li>
         <li><strong>ก้าวถัดไปที่ 3</strong> วัดผลบน corpus จริงที่ใหญ่กว่านี้ — ชุดปัจจุบันเล็กเกินกว่าจะสรุปเรื่องคุณภาพการค้นหา</li>
       </ul>
-      <div class="rail"><span><b>เขียนไว้แล้วใน</b> README § Known limitations · USER_MANUAL § 11</span></div>
+      <div class="rail"><span><b>เขียนไว้แล้วใน</b> README § Known limitations · § Reading from the pipeline</span></div>
     </div>
   </section>
 
