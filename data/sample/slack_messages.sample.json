@@ -1,0 +1,259 @@
+[
+  {
+    "ts": "1754000010.000100",
+    "thread_ts": "1754000010.000100",
+    "user": "U01FE",
+    "text": "sorting หน้า candidate mock ไว้ก่อน api หลังบ้านยังไม่มา",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754000200.000200",
+    "thread_ts": "1754000200.000200",
+    "user": "U02FE",
+    "text": "FE sorting complete, backend support still pending",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 2,
+    "channel_id": "C0SAMPLE01",
+    "replies": [
+      {
+        "ts": "1754000260.000300",
+        "thread_ts": "1754000200.000200",
+        "user": "U03BE",
+        "text": "รับทราบครับ เดี๋ยว BE ทำ endpoint sort ให้ภายในวันนี้",
+        "subtype": "",
+        "bot_id": "",
+        "reply_count": 0,
+        "channel_id": "C0SAMPLE01",
+        "replies": []
+      },
+      {
+        "ts": "1754000320.000400",
+        "thread_ts": "1754000200.000200",
+        "user": "U02FE",
+        "text": "BE pending",
+        "subtype": "",
+        "bot_id": "",
+        "reply_count": 0,
+        "channel_id": "C0SAMPLE01",
+        "replies": []
+      }
+    ]
+  },
+  {
+    "ts": "1754000420.000450",
+    "thread_ts": "1754000420.000450",
+    "user": "U04FE",
+    "text": "ของหน้าเสร็จละ รอพี่หลังเปิด sort ให้",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754000500.000500",
+    "thread_ts": "1754000500.000500",
+    "user": "U03BE",
+    "text": "BE sorting API พร้อมแล้ว ลอง integrate ได้เลยที่ /api/v1/candidates?sort=score",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 1,
+    "channel_id": "C0SAMPLE01",
+    "replies": [
+      {
+        "ts": "1754000560.000600",
+        "thread_ts": "1754000500.000500",
+        "user": "U01FE",
+        "text": "รับทราบครับ เดี๋ยวต่อ FE ให้",
+        "subtype": "",
+        "bot_id": "",
+        "reply_count": 0,
+        "channel_id": "C0SAMPLE01",
+        "replies": []
+      }
+    ]
+  },
+  {
+    "ts": "1754001000.000700",
+    "thread_ts": "1754001000.000700",
+    "user": "U05QA",
+    "text": "deploy UAT แล้ว",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754001300.000800",
+    "thread_ts": "1754001300.000800",
+    "user": "U02FE",
+    "text": "ขอ deploy staging รอบใหม่ด้วยครับ build ล่าสุด fix เรื่อง sort แล้ว",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754001600.000900",
+    "thread_ts": "1754001600.000900",
+    "user": "U05QA",
+    "text": "555",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754001700.001000",
+    "thread_ts": "1754001700.001000",
+    "user": "U01FE",
+    "text": "ครับ",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754001800.001100",
+    "thread_ts": "1754001800.001100",
+    "user": "U03BE",
+    "text": "👍",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754001900.001200",
+    "thread_ts": "1754001900.001200",
+    "user": "U06NEW",
+    "text": "<@U06NEW> has joined the channel",
+    "subtype": "channel_join",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754002000.001300",
+    "thread_ts": "1754002000.001300",
+    "user": "U06NEW",
+    "text": "login token หมดอายุเร็วเกินไป ต้อง refresh ทุก 5 นาที",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 2,
+    "channel_id": "C0SAMPLE01",
+    "replies": [
+      {
+        "ts": "1754002060.001310",
+        "thread_ts": "1754002000.001300",
+        "user": "U03BE",
+        "text": "JWT expiry ตั้งไว้ 300s ครับ เดี๋ยวขยายเป็น 1 ชั่วโมง",
+        "subtype": "",
+        "bot_id": "",
+        "reply_count": 0,
+        "channel_id": "C0SAMPLE01",
+        "replies": []
+      },
+      {
+        "ts": "1754002120.001320",
+        "thread_ts": "1754002000.001300",
+        "user": "U02FE",
+        "text": "auth token expires too quickly, refresh flow ยัง broken บน mobile",
+        "subtype": "",
+        "bot_id": "",
+        "reply_count": 0,
+        "channel_id": "C0SAMPLE01",
+        "replies": []
+      }
+    ]
+  },
+  {
+    "ts": "1754002400.001400",
+    "thread_ts": "1754002400.001400",
+    "user": "U03BE",
+    "text": "migration candidate_score table เสร็จแล้ว ช่วยรัน db migrate บน UAT ด้วยครับ",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754002800.001500",
+    "thread_ts": "1754002800.001500",
+    "user": "U01FE",
+    "text": "pagination หน้า candidate list ยังโหลดช้าตอน scroll เยอะ ๆ",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 1,
+    "channel_id": "C0SAMPLE01",
+    "replies": [
+      {
+        "ts": "1754002860.001510",
+        "thread_ts": "1754002800.001500",
+        "user": "U03BE",
+        "text": "add index ให้แล้ว query เร็วขึ้น 3 เท่า",
+        "subtype": "",
+        "bot_id": "",
+        "reply_count": 0,
+        "channel_id": "C0SAMPLE01",
+        "replies": []
+      }
+    ]
+  },
+  {
+    "ts": "1754003200.001600",
+    "thread_ts": "1754003200.001600",
+    "user": "U05QA",
+    "text": "FE done, waiting for API",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754003600.001700",
+    "thread_ts": "1754003600.001700",
+    "user": "U02FE",
+    "text": "โอเค",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754004000.001800",
+    "thread_ts": "1754004000.001800",
+    "user": "U07PM",
+    "text": "สรุป sprint นี้ ปิด story sorting กับ pagination ได้ ส่วน login token ยกไป sprint หน้า",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  },
+  {
+    "ts": "1754004400.001900",
+    "thread_ts": "1754004400.001900",
+    "user": "U03BE",
+    "text": "<@U01FE> ดู MR นี้ด้วย <https://gitlab.example.com/aim/candidate-api/-/merge_requests/42|MR !42 sort endpoint> :pray:",
+    "subtype": "",
+    "bot_id": "",
+    "reply_count": 0,
+    "channel_id": "C0SAMPLE01",
+    "replies": []
+  }
+]

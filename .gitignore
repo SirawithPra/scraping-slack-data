@@ -1,0 +1,21 @@
+.venv/
+.env
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Private Slack exports, generated records, and embedding caches
+data/raw/*.json
+data/processed/*.json
+data/processed/*.npz
+data/eval_queries*.json
+output/*
+!.gitkeep
+!data/sample/*.json
+!data/eval_queries.example.json
+
+# Private scraped Slack exports dropped in the project root
+*_export.json
+
+# Fine-tuned model weights (too large for GitHub; rebuild with finetune.py)
+models/

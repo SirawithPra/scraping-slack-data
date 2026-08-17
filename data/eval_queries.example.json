@@ -1,0 +1,35 @@
+[
+  {
+    "query": "FE sorting เสร็จแล้วแต่ยังรอ BE API",
+    "relevant_ids": [
+      "msg_C0SAMPLE01_1754000010.000100",
+      "msg_C0SAMPLE01_1754000200.000200",
+      "msg_C0SAMPLE01_1754000320.000400",
+      "msg_C0SAMPLE01_1754000420.000450",
+      "msg_C0SAMPLE01_1754003200.001600"
+    ]
+  },
+  {
+    "query": "BE sorting API พร้อมแล้ว",
+    "relevant_ids": [
+      "msg_C0SAMPLE01_1754000500.000500",
+      "msg_C0SAMPLE01_1754004400.001900"
+    ]
+  },
+  {
+    "query": "token หมดอายุเร็ว ต้อง login ใหม่บ่อย",
+    "relevant_ids": [
+      "msg_C0SAMPLE01_1754002000.001300",
+      "msg_C0SAMPLE01_1754002060.001310",
+      "msg_C0SAMPLE01_1754002120.001320"
+    ]
+  },
+  {
+    "query": "deploy ขึ้น UAT",
+    "relevant_ids": [
+      "msg_C0SAMPLE01_1754001000.000700",
+      "msg_C0SAMPLE01_1754001300.000800",
+      "msg_C0SAMPLE01_1754002400.001400"
+    ]
+  }
+]
