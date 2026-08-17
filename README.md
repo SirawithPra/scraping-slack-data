@@ -90,10 +90,13 @@ does not hold**. Three gibberish queries are scored against the corpus:
 ```
 
 Thai gibberish scores *above* a genuine query, so no floor separates them here.
-That is a property of the model on a small corpus, not a broken install — the
-nearest neighbour of nonsense gets closer as the corpus shrinks, and on the
-42-record private export the same three are all filtered. The right response is a
-better embedding model, never a higher `TAM_MIN_COSINE`.
+The check then scores several real queries too — because a floor has to clear the
+*weakest* genuine question, not the strongest — and on the 42-record private export
+the picture is the same shape rather than better: gibberish tops out at 0.581 while
+the weakest real query sits at 0.473, so the two overlap and raising the floor
+would start throwing away real questions. That is a property of the served
+embedding model, not of the wiring, and the response is a better model, never a
+higher `TAM_MIN_COSINE`.
 
 The exit code answers only "is the integration sound?", so this reports loudly
 without failing the run; `--strict-gate` folds it back in, for CI against a real

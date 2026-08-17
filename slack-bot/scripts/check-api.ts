@@ -14,7 +14,7 @@
 
 import 'dotenv/config';
 import { apiConfig, hitToMessage, ping, searchViaApi } from '../src/tam-api.js';
-import { hydrate, ledgerOrigin, sortedItems } from '../src/data.js';
+import { hydrate, ledger, ledgerOrigin, sortedItems } from '../src/data.js';
 import { searchBest } from '../src/search.js';
 
 const cfg = apiConfig();
@@ -233,7 +233,7 @@ async function nearestCosine(api: typeof cfg & {}, probe: string): Promise<numbe
 }
 
 let worstNonsense = 0;
-let realScore = 0;
+let weakestReal = 1;
 try {
   for (const probe of NONSENSE_PROBES) {
     const score = await nearestCosine(cfg, probe);
@@ -241,9 +241,19 @@ try {
     const verdict = score >= cfg.minCosine ? '✕ ผ่าน gate' : '· ถูกกรอง';
     console.log(`  ${score.toFixed(3)}  ${verdict}  “${probe}”`);
   }
-  realScore = await nearestCosine(cfg, q);
-  console.log(`  ${realScore.toFixed(3)}  · query จริง  “${q}”`);
-  console.log(`  floor ${cfg.minCosine} · ช่องว่างระหว่างขยะที่แย่สุดกับ query จริง: ${(realScore - worstNonsense).toFixed(3)}`);
+  // Several real queries, not one. A floor has to clear the *weakest* genuine
+  // query, not the strongest — comparing gibberish against one well-chosen query
+  // makes any floor between them look safe while it silently rejects the ordinary
+  // ones. The item labels come from the corpus itself, so they are real questions
+  // about this data whatever the data is.
+  const realProbes = [q, ...ledger().items.map((i) => i.headline).filter(Boolean)].slice(0, 6);
+  for (const probe of realProbes) {
+    const score = await nearestCosine(cfg, probe);
+    weakestReal = Math.min(weakestReal, score);
+    const verdict = score < cfg.minCosine ? '✕ ถูกกรองทิ้ง' : '· ผ่าน';
+    console.log(`  ${score.toFixed(3)}  ${verdict}  (จริง) “${probe.slice(0, 46)}”`);
+  }
+  console.log(`  floor ${cfg.minCosine} · ขยะแย่สุด ${worstNonsense.toFixed(3)} · query จริงอ่อนสุด ${weakestReal.toFixed(3)}`);
 } catch (err) {
   console.error(`✕ calibration วัดไม่ได้ — pipeline ตอบไม่ได้: ${(err as Error).message}`);
   process.exit(1);
@@ -283,12 +293,15 @@ if (gateHolds && junk.length === 0) {
   console.log(`✓ gate ทำงาน — ขยะทุกตัวต่ำกว่า floor ${cfg.minCosine} และไม่คืนผลลัพธ์`);
 } else {
   console.warn(`✕ gate ไม่ทำงานกับ corpus/โมเดลชุดนี้ — ขยะสูงสุด ${worstNonsense.toFixed(3)} ≥ floor ${cfg.minCosine}`);
-  if (realScore > worstNonsense) {
-    const suggested = ((worstNonsense + realScore) / 2).toFixed(2);
-    console.warn(`  ยังแยกกันอยู่ (query จริง ${realScore.toFixed(3)}) แต่ floor วางผิดที่ — ค่าที่แยกได้คือราว ${suggested}`);
-    console.warn(`  ตั้ง TAM_MIN_COSINE=${suggested} ได้ แต่ต้องวัดกับ corpus จริง ไม่ใช่ corpus ตัวอย่าง`);
+  if (weakestReal > worstNonsense) {
+    // Only now is a number safe to name: it clears every gibberish probe and still
+    // admits the weakest real query.
+    const suggested = ((worstNonsense + weakestReal) / 2).toFixed(2);
+    console.warn(`  ยังมีช่องว่างอยู่ (query จริงอ่อนสุด ${weakestReal.toFixed(3)}) — floor ที่แยกได้คือราว ${suggested}`);
+    console.warn(`  ตั้ง TAM_MIN_COSINE=${suggested} ได้ แต่ต้องวัดซ้ำกับ corpus ของคุณเอง`);
   } else {
-    console.warn('  โมเดลวางขยะไว้ใกล้กว่า query จริง — ไม่มี floor ไหนแยกได้ ต้องเปลี่ยนโมเดล');
+    console.warn(`  ขยะ (${worstNonsense.toFixed(3)}) ทับกับ query จริงที่อ่อนสุด (${weakestReal.toFixed(3)}) —`);
+    console.warn('  ไม่มี floor ไหนแยกได้ ดันขึ้นก็ตัด query จริงทิ้ง ต้องเปลี่ยนโมเดล ไม่ใช่ปรับเลข');
   }
   console.warn('  corpus เล็กยิ่ง calibrate ยาก — เพื่อนบ้านที่ใกล้สุดของข้อความขยะจะยิ่งใกล้');
   console.warn('  เมื่อ corpus ยิ่งเล็ก ตัวเลขจาก corpus จริงเท่านั้นที่เชื่อได้');

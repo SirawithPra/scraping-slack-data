@@ -1072,11 +1072,18 @@ with 8 labels pulls the micro figure around and the macro one not at all.
   | `models/syn_finetuned` | **0.738** | 0.838 | no |
 
   The fine-tuned model pulled everything together, gibberish included: 0.10 apart
-  with the floor below both, so no threshold survives. The margin is also
-  corpus-dependent — on the 27-record committed sample even MiniLM scores the
-  gibberish 0.481 and `check-api` fails the calibration step on purpose. It is a
-  property of the served model and the corpus, not of the wiring, and the fix is a
-  better model, never a higher `TAM_MIN_COSINE`.
+  with the floor below both, so no threshold survives.
+
+  The single-probe number above is also too kind to the general model. `check-api`
+  scores three gibberish strings and several real queries, and the Thai one is the
+  one that hurts: on this same 42-record corpus `ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ` reaches 0.581
+  while the weakest genuine query — an item's own label, `street, sales dashboard,
+  react` — reaches only 0.473. They overlap, so **no floor separates them on this
+  corpus either**, and 0.45 lets that one probe through. A floor has to clear the
+  weakest real question, not the strongest, which is why the check measures both
+  and refuses to suggest a number when they cross. It is a property of the served
+  model, not of the wiring, and the fix is a better model, never a higher
+  `TAM_MIN_COSINE`.
 - **Brute-force search.** Every query scores every record with a NumPy dot
   product. Fine for thousands of messages, not for millions — that is what a
   vector database would be for later.
