@@ -1,0 +1,26 @@
+{
+  "name": "meowtam",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Meowtam — a Slack-native work ledger. Hackathon build.",
+  "scripts": {
+    "dev": "tsx watch src/app.ts",
+    "start": "tsx src/app.ts",
+    "typecheck": "tsc --noEmit",
+    "export": "tsx scripts/export-slack.ts",
+    "ledger": "tsx scripts/build-ledger.ts",
+    "preview": "tsx scripts/preview.ts"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.2.1",
+    "@slack/types": "^2.22.0",
+    "@slack/web-api": "^7.8.0",
+    "dotenv": "^16.4.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.5",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  }
+}

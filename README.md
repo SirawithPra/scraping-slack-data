@@ -32,8 +32,13 @@ Slack channel
      resolves / blocked_by / duplicates / answers / follows_up, directed
 ```
 
-No frontend, no database, no Slack Events API, no YouTrack/Notion. Every model
-runs locally; nothing is sent to an API.
+No frontend, no database, no YouTrack/Notion. Every model runs locally; nothing
+is sent to an API.
+
+The Slack-facing side lives separately in [meowtam/](meowtam/) — a TypeScript
+Bolt app (Socket Mode, slash commands, scheduled digest) built during a
+hackathon. It is a second surface over the same idea, not a port: it keeps its
+own ledger and does not import anything from the Python pipeline yet.
 
 **Start here:**
 
@@ -645,6 +650,11 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
 | [visualize.py](visualize.py) | Plotly HTML report of a search run, into `output/` |
 | [report_th.py](report_th.py) | Plain-Thai version of the results, for non-ML readers |
 | `data/sample/` | Committed Thai/English sample export for testing without Slack |
+| **Slack app (TypeScript)** | |
+| [meowtam/src/app.ts](meowtam/src/app.ts) | Bolt app: slash commands, shortcuts, modals, scheduled digest |
+| [meowtam/src/blocks/](meowtam/src/blocks/) | Block Kit builders per surface (digest, item card, drift, recall) |
+| [meowtam/scripts/](meowtam/scripts/) | `export-slack.ts` → `raw-slack.json` → `build-ledger.ts` → `data/ledger.json` |
+| [meowtam/slack-app-manifest.yaml](meowtam/slack-app-manifest.yaml) | Every scope, command and shortcut in one paste |
 
 ## Known limitations
 

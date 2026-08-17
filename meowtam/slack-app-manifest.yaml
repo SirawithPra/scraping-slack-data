@@ -1,0 +1,59 @@
+# Paste this at https://api.slack.com/apps → Create New App → From an app manifest
+# It sets every scope, command and shortcut in one go. Do not hand-configure these;
+# a missing scope at 3am is a miserable way to lose an hour.
+display_information:
+  name: Meowtam
+  description: รู้ว่าอะไรติด ก่อนเข้า standup
+  background_color: "#1d2b36"
+  long_description: |
+    Meowtam อ่าน Slack + YouTrack + บันทึกการประชุม แล้วรวมเป็น "งาน" หนึ่งชิ้น
+    บอกว่าอะไรติด ติดเพราะอะไร และหลักฐานอยู่ข้อความไหน — ทุกคำกล่าวอ้างกดดูที่มาได้ในคลิกเดียว
+features:
+  bot_user:
+    display_name: Meowtam
+    always_online: true
+  slash_commands:
+    - command: /meowtam
+      description: บอร์ดงาน · /meowtam blocked · /meowtam PROJ-1 · /meowtam recall <ข้อความ> · /meowtam demo
+      usage_hint: "[blocked|digest|recall <ข้อความ>|PROJ-1|@someone|demo]"
+      should_escape: false
+    # Short alias — same handler. Worth having on stage: eight keystrokes fewer
+    # per beat, and Slack's autocomplete on /me can hesitate.
+    - command: /mt
+      description: ย่อของ /meowtam
+      usage_hint: "[blocked|digest|recall <ข้อความ>|PROJ-1|@someone|demo]"
+      should_escape: false
+  shortcuts:
+    - name: ผูกกับ ticket
+      type: message
+      callback_id: link_to_ticket
+      description: ผูกข้อความนี้เข้ากับ work item
+    - name: บันทึกเป็นการตัดสินใจ
+      type: message
+      callback_id: mark_decision
+      description: เก็บเข้า decision log — หาเจอด้วย /meowtam recall ได้ตลอด
+oauth_config:
+  scopes:
+    bot:
+      # read history — needed by both the bot and scripts/export-slack.ts
+      - channels:history
+      - groups:history
+      - channels:read
+      - groups:read
+      # resolve U0123 → display names, so the ledger shows names where it can
+      - users:read
+      # post the digest, DMs, and threaded drift nudges
+      - chat:write
+      - im:write
+      # slash command + emoji-as-input
+      - commands
+      - reactions:read
+settings:
+  event_subscriptions:
+    bot_events:
+      - reaction_added
+  interactivity:
+    is_enabled: true
+  socket_mode_enabled: true
+  org_deploy_enabled: false
+  token_rotation_enabled: false

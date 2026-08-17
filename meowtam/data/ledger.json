@@ -1,0 +1,465 @@
+{
+  "built_at": "2026-08-17 09:25",
+  "window_days": 3,
+  "corpus_size": 128,
+  "unassigned": [
+    {
+      "id": "msg_C0DEMOCHAN1_1786800100.100",
+      "source": "slack",
+      "user": "Alice",
+      "when": "2026-08-16 11:02",
+      "text": "ใครมี access ของ staging DB บ้างครับ ผมลืม password",
+      "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786800100100",
+      "channel": "dev"
+    },
+    {
+      "id": "msg_C0DEMOCHAN1_1786800200.200",
+      "source": "slack",
+      "user": "U0DEMOUSER1",
+      "when": "2026-08-16 14:40",
+      "text": "Anyone else seeing the CI runner queue backing up this afternoon?",
+      "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786800200200",
+      "channel": "dev"
+    },
+    {
+      "id": "msg_C0DEMOCHAN1_1786800300.300",
+      "source": "slack",
+      "user": "Bob",
+      "when": "2026-08-16 17:15",
+      "text": "เดี๋ยวพรุ่งนี้ผมเข้าสายนิดนึงนะครับ มีนัดหมอ",
+      "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786800300300",
+      "channel": "dev"
+    }
+  ],
+  "items": [
+    {
+      "key": "PAY-088",
+      "headline": "Omega — Agentforce Add-on pricing sheet",
+      "state": "blocked",
+      "evidence": "ติดตั้งแต่ 2026-08-12 09:14 — คำที่จับได้ “ยังรอ”",
+      "evidence_id": "msg_C0DEMOCHAN1_1786500840.014",
+      "age_days": 5.4,
+      "assignee": "Sam",
+      "participants": ["Sam", "Alice", "U0DEMOUSER2"],
+      "sources": { "slack": 9, "meeting": 2 },
+      "youtrack_status": "In Progress",
+      "youtrack_url": "https://example.youtrack.cloud/issue/PAY-088",
+      "description_updated": "2026-08-05",
+      "first": "2026-08-10 14:22",
+      "last": "2026-08-12 09:14",
+      "summary": {
+        "detail": "ลูกค้า Omega สนใจ Agentforce Add-on แต่ขอ pricing แบบละเอียดก่อนตัดสินใจ ทีม sales ยังไม่ส่งตัวเลขกลับมา งานฝั่ง dev พร้อมแล้วแต่เดินต่อไม่ได้จนกว่าจะได้ pricing model ที่ยืนยันแล้ว",
+        "next_step": "ไล่ตาม pricing จากฝั่ง sales — Sam ค้างอยู่ 5 วัน",
+        "citations": ["msg_C0DEMOCHAN1_1786500840.014", "mtg_20260811-0930_1786440000.000"],
+        "unverified": false
+      },
+      "timeline": [
+        {
+          "when": "2026-08-10 14:22",
+          "kind": "status_change",
+          "text": "เปิดงานหลังคุยกับ Omega",
+          "source": "slack",
+          "user": "Sam",
+          "evidence_id": "msg_C0DEMOCHAN1_1786327320.022"
+        },
+        {
+          "when": "2026-08-12 09:14",
+          "kind": "blocked",
+          "text": "ยังรอ pricing จากฝั่ง sales อยู่ครับ ยังไปต่อไม่ได้",
+          "source": "slack",
+          "user": "Sam",
+          "evidence_id": "msg_C0DEMOCHAN1_1786500840.014"
+        }
+      ],
+      "messages": [
+        {
+          "id": "msg_C0DEMOCHAN1_1786327320.022",
+          "source": "slack",
+          "user": "Sam",
+          "when": "2026-08-10 14:22",
+          "text": "ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce Add-on ค่อนข้างมาก แต่ขอดู pricing ละเอียดก่อน",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786327320022",
+          "channel": "dev"
+        },
+        {
+          "id": "mtg_20260811-0930_1786440000.000",
+          "source": "meeting",
+          "user": "Alice",
+          "when": "2026-08-11 09:31",
+          "text": "ฝั่ง technical พร้อมแล้วนะ integration ทำเสร็จตั้งแต่ sprint ที่แล้ว รอแค่ commercial",
+          "channel": "daily-standup"
+        },
+        {
+          "id": "msg_C0DEMOCHAN1_1786500840.014",
+          "source": "slack",
+          "user": "Sam",
+          "when": "2026-08-12 09:14",
+          "text": "ยังรอ pricing จากฝั่ง sales อยู่ครับ ยังไปต่อไม่ได้ ผมส่ง follow-up ไปสองรอบแล้ว",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786500840014",
+          "channel": "dev"
+        }
+      ]
+    },
+    {
+      "key": "MOB-142",
+      "headline": "Android app crash ตอนเปิดหน้า Profile",
+      "state": "blocked",
+      "evidence": "ติดตั้งแต่ 2026-08-14 16:31 — คำที่จับได้ “ยังรอ”",
+      "evidence_id": "msg_C0DEMOCHAN1_1786699860.031",
+      "age_days": 3.1,
+      "assignee": "Bob",
+      "participants": ["Bob", "Alice", "U0DEMOUSER1"],
+      "sources": { "slack": 8, "meeting": 2, "youtrack": 3 },
+      "youtrack_status": "In Progress",
+      "youtrack_url": "https://example.youtrack.cloud/issue/MOB-142",
+      "description_updated": "2026-08-08",
+      "first": "2026-08-13 21:22",
+      "last": "2026-08-14 16:31",
+      "summary": {
+        "detail": "ผู้ใช้รายงาน crash เวลาเปิดหน้า Profile บน Android 14 · Bob debug เจอ bug ใน Profile module และ fix เสร็จแล้ว แต่ patch ยังไม่ได้ขึ้น release เพราะรอ QA verify · ตอนนี้ไม่มีใครรับ QA รอบนี้",
+        "next_step": "หาคน QA verify แล้ว cut patch release",
+        "citations": ["msg_C0DEMOCHAN1_1786699860.031"],
+        "unverified": true
+      },
+      "timeline": [
+        {
+          "when": "2026-08-13 21:22",
+          "kind": "status_change",
+          "text": "ผู้ใช้รายงาน crash บน Android 14",
+          "source": "slack",
+          "user": "U0DEMOUSER1",
+          "evidence_id": "msg_C0DEMOCHAN1_1786630920.022"
+        },
+        {
+          "when": "2026-08-14 09:31",
+          "kind": "unblocked",
+          "text": "debug แล้ว เจอ bug ใน Profile module — fix เสร็จ",
+          "source": "meeting",
+          "user": "Bob",
+          "evidence_id": "mtg_20260814-0930_1786699860.000"
+        },
+        {
+          "when": "2026-08-14 16:31",
+          "kind": "blocked",
+          "text": "ยังรอ QA verify อยู่ ยังไม่มีใครรับ",
+          "source": "slack",
+          "user": "Bob",
+          "evidence_id": "msg_C0DEMOCHAN1_1786699860.031"
+        }
+      ],
+      "messages": [
+        {
+          "id": "msg_C0DEMOCHAN1_1786630920.022",
+          "source": "slack",
+          "user": "U0DEMOUSER1",
+          "when": "2026-08-13 21:22",
+          "text": "Hey team, we've got a user reporting that our Android app crashes every time they open the profile screen. Happens on Android 14, Pixel 8. Logs attached.",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786630920022",
+          "channel": "dev"
+        },
+        {
+          "id": "mtg_20260814-0930_1786699860.000",
+          "source": "meeting",
+          "user": "Bob",
+          "when": "2026-08-14 09:31",
+          "text": "ผม debug แล้วครับ เจอ bug ใน Profile module ตรงที่ parse avatar url แล้วมันเป็น null · fix เสร็จแล้ว รอ patch ขึ้น release",
+          "channel": "daily-standup"
+        },
+        {
+          "id": "msg_C0DEMOCHAN1_1786699860.031",
+          "source": "slack",
+          "user": "Bob",
+          "when": "2026-08-14 16:31",
+          "text": "ยังรอ QA verify อยู่ครับ ยังไม่มีใครรับรอบนี้ ถ้าไม่มีคนว่างพรุ่งนี้ผมขอ verify เองแล้วปล่อยเลยได้ไหม",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786699860031",
+          "channel": "dev"
+        }
+      ]
+    },
+    {
+      "key": "WEB-097",
+      "headline": "Export CSV encoding เพี้ยนตอนเปิดใน Excel ไทย",
+      "state": "stalled",
+      "evidence": "ไม่มีความเคลื่อนไหวตั้งแต่ 2026-08-11 10:45 — 6 วัน",
+      "evidence_id": "msg_C0DEMOCHAN1_1786412700.045",
+      "age_days": 6.0,
+      "assignee": "Alice",
+      "participants": ["Alice", "Sam"],
+      "sources": { "slack": 5, "youtrack": 2 },
+      "youtrack_status": "In Progress",
+      "youtrack_url": "https://example.youtrack.cloud/issue/WEB-097",
+      "description_updated": "2026-05-12",
+      "first": "2026-08-02 15:10",
+      "last": "2026-08-11 10:45",
+      "summary": {
+        "detail": "ลูกค้าเปิดไฟล์ export ใน Excel ภาษาไทยแล้วอ่านไม่ออก · เดิมตกลงกันไว้ตั้งแต่ พ.ค. ว่าจะใช้ UTF-8 ไม่มี BOM แต่ Excel ไทยต้องการ BOM · การตัดสินใจเดิมถูกเปลี่ยนเมื่อ 2 ส.ค. แต่ ticket description ยังเป็นของเดิมจาก 12 พ.ค.",
+        "next_step": "แก้ description ใน YouTrack ให้ตรงกับที่ตกลงใหม่ แล้วค่อย implement",
+        "citations": ["msg_C0DEMOCHAN1_1785999000.010"],
+        "unverified": false
+      },
+      "timeline": [
+        {
+          "when": "2026-08-02 15:10",
+          "kind": "scope_change",
+          "text": "ลูกค้าเปิดใน Excel ไทยแล้วเพี้ยน ต้องใส่ BOM — เปลี่ยนเป็นใส่ BOM นะ",
+          "source": "slack",
+          "user": "Alice",
+          "evidence_id": "msg_C0DEMOCHAN1_1785999000.010"
+        },
+        {
+          "when": "2026-08-11 10:45",
+          "kind": "status_change",
+          "text": "ยังไม่ได้เริ่มเลย ติดงานอื่นอยู่",
+          "source": "slack",
+          "user": "Alice",
+          "evidence_id": "msg_C0DEMOCHAN1_1786412700.045"
+        }
+      ],
+      "messages": [
+        {
+          "id": "mtg_20260512-0930_1778000000.000",
+          "source": "meeting",
+          "user": "Sam",
+          "when": "2026-05-12 09:42",
+          "text": "สรุปว่า export CSV เป็น UTF-8 ไม่ต้องมี BOM นะครับ มาตรฐานสากลใช้แบบนี้ ระบบอื่นที่ต่อกับเราจะได้ไม่พัง",
+          "channel": "daily-standup"
+        },
+        {
+          "id": "msg_C0DEMOCHAN1_1785999000.010",
+          "source": "slack",
+          "user": "Alice",
+          "when": "2026-08-02 15:10",
+          "text": "สรุปว่าลูกค้าเปิดใน Excel ไทยแล้วเพี้ยนหมดเลยครับ ต้องใส่ BOM · เปลี่ยนเป็นใส่ UTF-8 with BOM นะ ของเดิมที่ตกลงไว้ตอน พ.ค. ใช้ไม่ได้กับ Excel ภาษาไทย",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1785999000010",
+          "channel": "dev"
+        },
+        {
+          "id": "msg_C0DEMOCHAN1_1786412700.045",
+          "source": "slack",
+          "user": "Alice",
+          "when": "2026-08-11 10:45",
+          "text": "อันนี้ยังไม่ได้เริ่มเลยครับ ติดงานอื่นอยู่ เดี๋ยวสัปดาห์หน้าน่าจะได้แตะ",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786412700045",
+          "channel": "dev"
+        }
+      ]
+    },
+    {
+      "key": "INT-076",
+      "headline": "Notion sync job ค้างตั้งแต่ deploy รอบที่แล้ว",
+      "state": "stalled",
+      "evidence": "ไม่มีความเคลื่อนไหวตั้งแต่ 2026-08-12 18:02 — 5 วัน",
+      "evidence_id": "msg_C0DEMOCHAN1_1786533720.002",
+      "age_days": 4.6,
+      "assignee": "U0DEMOUSER2",
+      "participants": ["U0DEMOUSER2", "Bob"],
+      "sources": { "slack": 4 },
+      "youtrack_status": "In Progress",
+      "youtrack_url": "https://example.youtrack.cloud/issue/INT-076",
+      "description_updated": "2026-08-01",
+      "first": "2026-08-12 09:30",
+      "last": "2026-08-12 18:02",
+      "timeline": [],
+      "messages": [
+        {
+          "id": "msg_C0DEMOCHAN1_1786533720.002",
+          "source": "slack",
+          "user": "U0DEMOUSER2",
+          "when": "2026-08-12 18:02",
+          "text": "Sync job is still failing silently. I'll pick it up tomorrow.",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786533720002",
+          "channel": "dev"
+        }
+      ]
+    },
+    {
+      "key": "PAY-118",
+      "headline": "Payment retry logic — exponential backoff",
+      "state": "moving",
+      "evidence": "มีความเคลื่อนไหวล่าสุด 2026-08-16 19:40",
+      "evidence_id": "msg_C0DEMOCHAN1_1786815600.040",
+      "age_days": 0.6,
+      "assignee": "Alice",
+      "participants": ["Alice", "Bob"],
+      "sources": { "slack": 6, "youtrack": 4 },
+      "youtrack_status": "In Progress",
+      "youtrack_url": "https://example.youtrack.cloud/issue/PAY-118",
+      "description_updated": "2026-08-14",
+      "first": "2026-08-14 11:00",
+      "last": "2026-08-16 19:40",
+      "timeline": [],
+      "messages": [
+        {
+          "id": "msg_C0DEMOCHAN1_1786815600.040",
+          "source": "slack",
+          "user": "Alice",
+          "when": "2026-08-16 19:40",
+          "text": "retry logic เขียนเสร็จแล้วครับ กำลังเขียน test อยู่ พรุ่งนี้น่าจะเปิด PR ได้",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786815600040",
+          "channel": "dev"
+        }
+      ]
+    },
+    {
+      "key": "MOB-131",
+      "headline": "Deep link จาก push notification เปิดผิดหน้า",
+      "state": "moving",
+      "evidence": "มีความเคลื่อนไหวล่าสุด 2026-08-16 16:12",
+      "evidence_id": "msg_C0DEMOCHAN1_1786803120.012",
+      "age_days": 0.7,
+      "assignee": "Bob",
+      "participants": ["Bob", "U0DEMOUSER1"],
+      "sources": { "slack": 5 },
+      "youtrack_status": "In Progress",
+      "youtrack_url": "https://example.youtrack.cloud/issue/MOB-131",
+      "description_updated": "2026-08-15",
+      "first": "2026-08-15 10:00",
+      "last": "2026-08-16 16:12",
+      "timeline": [],
+      "messages": [
+        {
+          "id": "msg_C0DEMOCHAN1_1786803120.012",
+          "source": "slack",
+          "user": "Bob",
+          "when": "2026-08-16 16:12",
+          "text": "เจอแล้วครับ intent filter ซ้ำกันสองอัน กำลังแก้",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786803120012",
+          "channel": "dev"
+        }
+      ]
+    },
+    {
+      "key": "WEB-104",
+      "headline": "หน้า Dashboard โหลดช้าบน connection ช้า",
+      "state": "done",
+      "evidence": "เสร็จแล้ว 2026-08-16 14:20 — คำที่จับได้ “deploy แล้ว”",
+      "evidence_id": "msg_C0DEMOCHAN1_1786796400.020",
+      "age_days": 0.8,
+      "assignee": "Sam",
+      "participants": ["Sam", "Alice"],
+      "sources": { "slack": 4, "youtrack": 2 },
+      "youtrack_status": "Done",
+      "youtrack_url": "https://example.youtrack.cloud/issue/WEB-104",
+      "description_updated": "2026-08-13",
+      "first": "2026-08-13 09:00",
+      "last": "2026-08-16 14:20",
+      "timeline": [],
+      "messages": [
+        {
+          "id": "msg_C0DEMOCHAN1_1786796400.020",
+          "source": "slack",
+          "user": "Sam",
+          "when": "2026-08-16 14:20",
+          "text": "lazy load เสร็จแล้ว deploy แล้วครับ ลดจาก 4.2s เหลือ 1.1s",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786796400020",
+          "channel": "dev"
+        }
+      ]
+    },
+    {
+      "key": "INT-081",
+      "headline": "เพิ่ม rate limit ให้ public API",
+      "state": "done",
+      "evidence": "เสร็จแล้ว 2026-08-16 11:30 — คำที่จับได้ “merge แล้ว”",
+      "evidence_id": "msg_C0DEMOCHAN1_1786786200.030",
+      "age_days": 0.9,
+      "assignee": "U0DEMOUSER2",
+      "participants": ["U0DEMOUSER2"],
+      "sources": { "slack": 3 },
+      "youtrack_status": "Done",
+      "youtrack_url": "https://example.youtrack.cloud/issue/INT-081",
+      "description_updated": "2026-08-14",
+      "first": "2026-08-15 14:00",
+      "last": "2026-08-16 11:30",
+      "timeline": [],
+      "messages": [
+        {
+          "id": "msg_C0DEMOCHAN1_1786786200.030",
+          "source": "slack",
+          "user": "U0DEMOUSER2",
+          "when": "2026-08-16 11:30",
+          "text": "Rate limiter merged. 100 req/min per key, configurable.",
+          "permalink": "https://example.slack.com/archives/C0DEMOCHAN1/p1786786200030",
+          "channel": "dev"
+        }
+      ]
+    }
+  ],
+  "decisions": [
+    {
+      "id": "dec_may_encoding",
+      "statement": "สรุปว่า export CSV เป็น UTF-8 ไม่ต้องมี BOM นะครับ มาตรฐานสากลใช้แบบนี้ ระบบอื่นที่ต่อกับเราจะได้ไม่พัง",
+      "when": "2026-05-12 09:42",
+      "user": "Sam",
+      "source": "meeting",
+      "evidence_id": "mtg_20260512-0930_1778000000.000",
+      "superseded_by": "dec_aug_encoding",
+      "related_items": ["WEB-097"]
+    },
+    {
+      "id": "dec_aug_encoding",
+      "statement": "สรุปว่าลูกค้าเปิดใน Excel ไทยแล้วเพี้ยนหมดเลยครับ ต้องใส่ BOM · เปลี่ยนเป็นใส่ UTF-8 with BOM นะ ของเดิมที่ตกลงไว้ตอน พ.ค. ใช้ไม่ได้กับ Excel ภาษาไทย",
+      "when": "2026-08-02 15:10",
+      "user": "Alice",
+      "source": "slack",
+      "evidence_id": "msg_C0DEMOCHAN1_1785999000.010",
+      "related_items": ["WEB-097"]
+    }
+  ],
+  "drifts": [
+    {
+      "item_key": "WEB-097",
+      "trigger_id": "msg_C0DEMOCHAN1_1785999000.010",
+      "cue": "เปลี่ยนเป็น",
+      "detected": "2026-08-02 15:10",
+      "current_description": "Export CSV เป็น UTF-8 (no BOM) ตามมาตรฐานสากล\n\nAcceptance criteria:\n- ไฟล์ export ต้องเป็น UTF-8\n- ห้ามมี BOM นำหน้า\n- ทดสอบกับ Google Sheets และ LibreOffice",
+      "proposed_description": "Export CSV เป็น UTF-8 with BOM\n\nเหตุผล: ลูกค้าเปิดไฟล์ใน Excel ภาษาไทยแล้วอ่านไม่ออก Excel ไทยต้องการ BOM เพื่อ detect encoding ถูก (เปลี่ยนจากที่ตกลงไว้ 2026-05-12)\n\nAcceptance criteria:\n- ไฟล์ export ต้องเป็น UTF-8 with BOM (EF BB BF)\n- เปิดใน Excel ภาษาไทยแล้วอ่านภาษาไทยออกถูกต้อง\n- ทดสอบกับ Excel TH, Google Sheets และ LibreOffice\n- ตรวจว่าระบบปลายทางที่ parse ไฟล์นี้อยู่ ไม่พังเพราะ BOM"
+    }
+  ],
+  "standups": [
+    {
+      "slack_user_id": "U_DEMO_AKE",
+      "display_name": "Bob",
+      "yesterday": [
+        {
+          "key": "MOB-142",
+          "headline": "Android app crash ตอนเปิดหน้า Profile",
+          "note": "คุณบอกว่า: fix เสร็จแล้ว รอ patch ขึ้น release แต่ยังรอ QA verify อยู่",
+          "evidence_id": "msg_C0DEMOCHAN1_1786699860.031"
+        },
+        {
+          "key": "MOB-131",
+          "headline": "Deep link จาก push notification เปิดผิดหน้า",
+          "note": "คุณบอกว่า: เจอแล้ว intent filter ซ้ำกันสองอัน กำลังแก้",
+          "evidence_id": "msg_C0DEMOCHAN1_1786803120.012"
+        }
+      ],
+      "carried_over": [
+        {
+          "key": "INT-076",
+          "headline": "Notion sync job ค้างตั้งแต่ deploy รอบที่แล้ว",
+          "stale_days": 4.6
+        }
+      ]
+    },
+    {
+      "slack_user_id": "U_DEMO_NOK",
+      "display_name": "Alice",
+      "yesterday": [
+        {
+          "key": "PAY-118",
+          "headline": "Payment retry logic — exponential backoff",
+          "note": "คุณบอกว่า: retry logic เขียนเสร็จแล้ว กำลังเขียน test พรุ่งนี้เปิด PR",
+          "evidence_id": "msg_C0DEMOCHAN1_1786815600.040"
+        }
+      ],
+      "carried_over": [
+        {
+          "key": "WEB-097",
+          "headline": "Export CSV encoding เพี้ยนตอนเปิดใน Excel ไทย",
+          "stale_days": 6.0
+        }
+      ]
+    }
+  ]
+}

@@ -22,3 +22,9 @@ models/
 
 # Internal business proposal - not for the public repo
 tam-proposal.md
+
+# meowtam (Slack bot, TypeScript)
+node_modules/
+meowtam/.env
+meowtam/data/raw-slack.json
+
