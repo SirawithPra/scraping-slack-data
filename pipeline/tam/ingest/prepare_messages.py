@@ -10,6 +10,13 @@ Produces two kinds of record:
 
 Thai, English, and mixed Thai/English text is kept as written -- nothing is
 translated. Only messages that carry no information at all are dropped.
+
+Writing has two modes, because a corpus can hold records this export cannot
+rebuild (meetings, which exist nowhere else):
+
+    --out PATH          replace PATH with this export; refuses if PATH holds
+                        records from another source, unless --force
+    --merge-into PATH   union by id into PATH, keeping everything else
 """
 
 from __future__ import annotations
@@ -20,11 +27,16 @@ import json
 import logging
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
+
+from tam.core import TamDataError, validate_records, write_records
 
 DEFAULT_INPUT = Path("data/raw/slack_messages.json")
 DEFAULT_OUTPUT = Path("data/processed/messages.json")
 MAX_THREAD_REPLIES = 20
+# The only sources a Slack export can rebuild. Anything else in the output file
+# (meetings, above all) exists nowhere but that file -- see guard_overwrite.
+PRODUCED_SOURCES = frozenset({"slack", "slack_thread"})
 
 # Slack system messages that are never about the work itself.
 IGNORED_SUBTYPES = {
@@ -49,7 +61,7 @@ IGNORED_SUBTYPES = {
 LINK_RE = re.compile(r"<(?![@#!])([^>|\s]+)(?:\|([^>]*))?>")
 SCHEME_RE = re.compile(r"^(?:https?://|mailto:|tel:)", re.IGNORECASE)
 CHANNEL_REF_RE = re.compile(r"<#[A-Z0-9]+(?:\|([^>]*))?>")
-MENTION_RE = re.compile(r"<@[A-Z0-9]+(?:\|[^>]*)?>")
+MENTION_RE = re.compile(r"<@([A-Z0-9]+)(?:\|([^>]*))?>")
 BROADCAST_RE = re.compile(r"<!(?:here|channel|everyone)(?:\|[^>]*)?>")
 SUBTEAM_RE = re.compile(r"<!subteam\^[A-Z0-9]+(?:\|([^>]*))?>")
 EMOJI_CODE_RE = re.compile(r":[a-z0-9_+\-]+:(?::skin-tone-\d:)?", re.IGNORECASE)
@@ -81,8 +93,10 @@ NOISE_WORDS = {
 }
 
 # Slack system messages that arrive as plain text (no subtype) in scraped exports.
+# The optional leading "@name" is the mention normalize_text now keeps: the line
+# reads "@Claude has joined the channel", and it is still the system talking.
 SYSTEM_TEXT_RE = re.compile(
-    r"^(?:has (?:joined|left) the channel"
+    r"^(?:@[^\n]{1,40}?\s+)?(?:has (?:joined|left) the channel"
     r"|has renamed the channel"
     r"|set the channel (?:topic|purpose|description)"
     r"|(?:un)?pinned a message to this channel"
@@ -114,12 +128,29 @@ def link_text(match: re.Match[str]) -> str:
     return label.strip() if label and label.strip() else SCHEME_RE.sub("", target)
 
 
+def mention_text(match: re.Match[str]) -> str:
+    """Keep the mention. Who a message is addressed to is often the whole point.
+
+    Deleting `<@U…>` threw away the only in-text sign of who was being asked to
+    do something, so a blocker could never name the person it was waiting on.
+    Scraped exports carry the display name (`<@U123|Nok>`); the API gives the id
+    alone, which stays readable enough to be looked up.
+    """
+    user_id, label = match.group(1), match.group(2)
+    return f"@{label.strip() if label and label.strip() else user_id}"
+
+
+def mention_ids(text: str) -> list[str]:
+    """Slack user ids a message addresses, in order, without duplicates."""
+    return list(dict.fromkeys(match.group(1) for match in MENTION_RE.finditer(html.unescape(text))))
+
+
 def normalize_text(text: str) -> str:
     """Turn Slack markup into plain text, keeping the wording intact."""
     cleaned = html.unescape(text)
     cleaned = CHANNEL_REF_RE.sub(lambda match: f"#{match.group(1)}" if match.group(1) else " ", cleaned)
     cleaned = SUBTEAM_RE.sub(lambda match: match.group(1) or " ", cleaned)
-    cleaned = MENTION_RE.sub(" ", cleaned)
+    cleaned = MENTION_RE.sub(mention_text, cleaned)
     cleaned = BROADCAST_RE.sub(" ", cleaned)
     cleaned = LINK_RE.sub(link_text, cleaned)
     cleaned = EMOJI_CODE_RE.sub(" ", cleaned)
@@ -151,11 +182,15 @@ def make_record(message: dict[str, Any], channel_id: str, thread_ts: str) -> dic
     """Build one searchable record, or None if the message carries no meaning."""
     if str(message.get("subtype", "")) in IGNORED_SUBTYPES:
         return None
-    text = normalize_text(str(message.get("text", "")))
-    if not is_useful(text):
+    raw = str(message.get("text", ""))
+    text = normalize_text(raw)
+    # A mention is addressing, not substance, so the keep/drop decision is made on
+    # the message without it: "@Nok ok" is still an acknowledgement, and a bare
+    # ping is still nothing to say, even though the text now keeps the name.
+    if not is_useful(normalize_text(MENTION_RE.sub(" ", raw))):
         return None
     ts = str(message.get("ts") or thread_ts)
-    return {
+    record: dict[str, Any] = {
         "id": f"msg_{channel_id}_{ts}",
         "channel_id": channel_id,
         "ts": ts,
@@ -164,11 +199,17 @@ def make_record(message: dict[str, Any], channel_id: str, thread_ts: str) -> dic
         "text": text,
         "source": "slack",
     }
+    mentions = mention_ids(raw)
+    if mentions:  # only when present, like parent_id on thread records
+        record["mentions"] = mentions
+    return record
 
 
-def make_thread_record(parent_id: str, channel_id: str, thread_ts: str, texts: list[str]) -> dict[str, Any]:
+def make_thread_record(
+    parent_id: str, channel_id: str, thread_ts: str, texts: list[str], mentions: Sequence[str] = ()
+) -> dict[str, Any]:
     """Concatenate a conversation so thread-level context is searchable too."""
-    return {
+    record: dict[str, Any] = {
         "id": f"thread_{channel_id}_{thread_ts}",
         "channel_id": channel_id,
         "ts": thread_ts,
@@ -178,6 +219,9 @@ def make_thread_record(parent_id: str, channel_id: str, thread_ts: str, texts: l
         "source": "slack_thread",
         "parent_id": parent_id,
     }
+    if mentions:  # everyone the conversation addressed, not just its authors
+        record["mentions"] = list(dict.fromkeys(mentions))
+    return record
 
 
 def flat_to_threads(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -227,9 +271,9 @@ def load_export(path: Path) -> list[dict[str, Any]]:
     try:
         rows = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        raise SystemExit(f"{path} is not valid JSON: {error}") from error
+        raise TamDataError(f"{path} is not valid JSON: {error}") from error
     if not isinstance(rows, list):
-        raise SystemExit(f"{path} should contain a list of messages.")
+        raise TamDataError(f"{path} should contain a list of messages.")
     if rows and isinstance(rows[0], dict) and "message_id" in rows[0]:
         log.info("Detected a flat scraped export; grouping %d row(s) into threads", len(rows))
         return flat_to_threads(rows)
@@ -247,6 +291,7 @@ def prepare(exported: list[dict[str, Any]]) -> list[dict[str, Any]]:
         thread_ts = str(parent.get("thread_ts") or parent_ts)
 
         thread_texts: list[str] = []
+        thread_mentions: list[str] = []
         parent_id = ""
         for position, message in enumerate([parent, *(parent.get("replies") or [])]):
             total += 1
@@ -259,11 +304,12 @@ def prepare(exported: list[dict[str, Any]]) -> list[dict[str, Any]]:
             seen_ids.add(record["id"])
             records.append(record)
             thread_texts.append(record["text"])
+            thread_mentions.extend(record.get("mentions") or [])
             if position == 0:
                 parent_id = record["id"]
 
         if len(thread_texts) > 1:
-            records.append(make_thread_record(parent_id, channel_id, thread_ts, thread_texts))
+            records.append(make_thread_record(parent_id, channel_id, thread_ts, thread_texts, thread_mentions))
             threads += 1
 
     log.info(
@@ -276,10 +322,76 @@ def prepare(exported: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return records
 
 
+def read_existing(path: Path) -> list[dict[str, Any]]:
+    """Records already at the destination, for the merge and the overwrite guard."""
+    if not path.exists():
+        return []
+    try:
+        parsed = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise TamDataError(f"{path} is not valid JSON: {error}") from error
+    return validate_records(path, parsed)
+
+
+def merge_records(
+    existing: Sequence[dict[str, Any]], records: Sequence[dict[str, Any]]
+) -> tuple[list[dict[str, Any]], int]:
+    """Union by id: this export's records win, every other record is kept.
+
+    The same discipline tam.ingest.meetings.merge_into uses, so refreshing Slack
+    into a corpus that also holds meetings updates the Slack half in place.
+    """
+    incoming = {str(record["id"]) for record in records}
+    kept = [record for record in existing if str(record.get("id")) not in incoming]
+    replaced = len(existing) - len(kept)
+    combined = kept + list(records)
+    combined.sort(key=lambda record: str(record.get("ts", "")))
+    return combined, replaced
+
+
+def guard_overwrite(path: Path, *, force: bool) -> None:
+    """Refuse to replace a corpus holding records this export cannot rebuild.
+
+    Meeting records live in the corpus file and nowhere else -- the upload
+    handler keeps no copy of the transcript -- so a plain --out onto a merged
+    corpus is a one-way deletion of the very thing the digest is built to show:
+    one work item spanning Slack and a meeting. Refusing is the fix; --merge-into
+    is the way to keep them.
+    """
+    if not path.exists():
+        return
+    if force:
+        log.warning("--force: replacing %s; any record in it from another source is gone for good", path)
+        return
+    try:
+        existing = read_existing(path)
+    except TamDataError as error:
+        raise TamDataError(
+            f"{path} is not a corpus this run can safely replace ({error}). Pass --force to overwrite it anyway."
+        ) from error
+    foreign = sorted({str(record.get("source") or "unknown") for record in existing} - PRODUCED_SOURCES)
+    if not foreign:
+        return
+    raise TamDataError(
+        f"{path} holds record(s) from {', '.join(foreign)}, which a Slack export does not produce.\n"
+        f"Overwriting would delete them permanently. Use --merge-into {path} to keep them, "
+        "or --force to replace the file anyway."
+    )
+
+
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--raw", type=Path, default=DEFAULT_INPUT, help=f"Slack export (default {DEFAULT_INPUT})")
-    parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help=f"Output path (default {DEFAULT_OUTPUT})")
+    destination = parser.add_mutually_exclusive_group()
+    destination.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help=f"Output path (default {DEFAULT_OUTPUT})")
+    destination.add_argument(
+        "--merge-into",
+        type=Path,
+        help="Merge into an existing corpus (union by id) instead of replacing it; keeps meeting records",
+    )
+    parser.add_argument(
+        "--force", action="store_true", help="Allow --out to replace a corpus that holds non-Slack records"
+    )
     return parser.parse_args()
 
 
@@ -289,10 +401,26 @@ def main() -> None:
     if not args.raw.exists():
         raise SystemExit(f"Missing {args.raw}. Run tam.ingest.export_slack first.")
 
-    records = prepare(load_export(args.raw))
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
-    log.info("Saved %d searchable record(s) to %s", len(records), args.out)
+    try:
+        records = prepare(load_export(args.raw))
+        if args.merge_into:
+            existing = read_existing(args.merge_into)
+            combined, replaced = merge_records(existing, records)
+            write_records(args.merge_into, combined)
+            log.info(
+                "Merged %d Slack record(s) into %s: %d updated, %d other record(s) kept, %d total",
+                len(records),
+                args.merge_into,
+                replaced,
+                len(existing) - replaced,
+                len(combined),
+            )
+        else:
+            guard_overwrite(args.out, force=args.force)
+            write_records(args.out, records)
+            log.info("Saved %d searchable record(s) to %s", len(records), args.out)
+    except TamDataError as error:
+        raise SystemExit(str(error)) from error
 
 
 if __name__ == "__main__":

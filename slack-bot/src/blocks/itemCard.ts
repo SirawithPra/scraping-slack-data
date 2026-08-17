@@ -1,9 +1,9 @@
 import type { KnownBlock } from '@slack/types';
 import type { WorkItem } from '../types.js';
-import { findMessage } from '../data.js';
+import { findMessage, ledgerOrigin, refreshStatus } from '../data.js';
 import {
-  STATE_LABEL, SOURCE_ICON, clamp, context, days, divider, esc,
-  evidenceButton, header, people, quote, section, sourceCounts, ticketButton,
+  CMD, STATE_LABEL, clamp, context, days, divider, esc,
+  evidenceButton, header, people, quote, section, sourceCounts, sourceIcon, ticketButton,
 } from './common.js';
 
 const KIND_ICON: Record<string, string> = {
@@ -16,12 +16,34 @@ const KIND_ICON: Record<string, string> = {
 };
 
 /**
+ * How the summary line is labelled.
+ *
+ * The label has to name the *actual* writer, not "a model" as a figure of speech.
+ * The shipped default summariser is `template`, a rule-based sentence assembled
+ * from counts and the state cue with no model in the loop — calling that "สรุปโดย
+ * โมเดล" credits an LLM for deterministic text and, worse, leaves an operator with
+ * no surface anywhere that says whether a model is actually running.
+ *
+ * The pipeline sends the writer as `summary.backend`. When it is absent (the
+ * fixture, or an older server) we say we do not know rather than guess: this is
+ * the one line on the card that is not a computed fact, so its provenance is the
+ * whole reason it is allowed on screen at all.
+ */
+function summaryProvenance(summary: WorkItem['summary'] & {}): string {
+  const backend = summary.backend?.trim();
+  const tail = ' · ข้อมูลด้านบนคำนวณจากข้อมูลจริง';
+  if (!backend) return `สรุปอัตโนมัติ — pipeline ไม่ได้บอกว่าใครเขียน${tail}`;
+  if (backend === 'template') return `สรุปจากกฎ (template) — ไม่ผ่านโมเดล${tail}`;
+  return `สรุปโดยโมเดล (${esc(backend)})${tail}`;
+}
+
+/**
  * The full ledger card for one work item.
  *
  * Note the ordering: computed facts first (state, evidence, timeline), the
- * model-written summary last and explicitly labelled. The derived facts are the
- * trustworthy part and should read as facts; the prose is the smallest part of
- * the product and should not be mistaken for the source of truth.
+ * summary last and explicitly labelled with who wrote it. The derived facts are
+ * the trustworthy part and should read as facts; the prose is the smallest part
+ * of the product and should not be mistaken for the source of truth.
  */
 export function itemCardBlocks(item: WorkItem): KnownBlock[] {
   const ev = findMessage(item.evidence_id);
@@ -35,7 +57,7 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
   ];
 
   if (ev) {
-    blocks.push(context(`หลักฐาน: ${SOURCE_ICON[ev.source]} *${esc(ev.user)}* · ${ev.when}`));
+    blocks.push(context(`หลักฐาน: ${sourceIcon(ev.source)} *${esc(ev.user)}* · ${ev.when}`));
     blocks.push({
       type: 'actions',
       elements: [evidenceButton(ev.id, ev.permalink) as any],
@@ -59,7 +81,7 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
       const link = m?.permalink ? ` <${m.permalink}|↗>` : '';
       blocks.push(
         context(
-          `${KIND_ICON[t.kind] ?? '•'} *${t.when}*  ${SOURCE_ICON[t.source]} ${esc(t.user)} — ${esc(clamp(t.text, 200))}${link}`,
+          `${KIND_ICON[t.kind] ?? '•'} *${t.when}*  ${sourceIcon(t.source)} ${esc(t.user)} — ${esc(clamp(t.text, 200))}${link}`,
         ),
       );
     }
@@ -84,27 +106,71 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
         ),
       );
     } else {
-      blocks.push(context('สรุปโดยโมเดล · ข้อมูลด้านบนคำนวณจากข้อมูลจริง'));
+      blocks.push(context(summaryProvenance(item.summary)));
     }
     blocks.push(section(esc(clamp(item.summary.detail, 600))));
     if (item.summary.next_step) blocks.push(section(`*ขั้นต่อไป:* ${esc(item.summary.next_step)}`));
+
+    // The citations behind the prose, minus the ones already quoted above — the
+    // rule-based backend cites the last three messages, which are the same three.
+    // A citation the reader cannot open is the same as no citation, so unresolvable
+    // ids are dropped rather than printed as bare strings.
+    const shown = new Set(recent.map((m) => m.id));
+    const cited = item.summary.citations
+      .filter((id) => !shown.has(id))
+      .map(findMessage)
+      .filter((m): m is NonNullable<typeof m> => Boolean(m))
+      .slice(0, 3);
+    if (cited.length) {
+      blocks.push(context('อ้างอิงของสรุปที่ยังไม่ได้แสดงข้างบน:'));
+      blocks.push({
+        type: 'actions',
+        elements: cited.map(
+          (m) => evidenceButton(m.id, m.permalink, clamp(`${m.user} · ${m.when}`, 70)) as any,
+        ),
+      } as KnownBlock);
+    }
   }
 
   return blocks;
 }
 
-/** Compact "my board" / "@someone's board" list. */
+/**
+ * Compact "my board" / "@someone's board" list.
+ *
+ * One block per item, and Slack rejects the whole message at 50 — so the board
+ * is capped and the reader is told what is missing and how to narrow it. Items
+ * arrive blocked-first, stalest-first, so the cap drops the least urgent rows.
+ */
+const MAX_BOARD_ROWS = 40;
+
 export function boardBlocks(title: string, items: WorkItem[]): KnownBlock[] {
   if (!items.length) {
     return [header(title), section('*ไม่มีงานค้าง* 🎉\nไม่มีอะไรเปิดค้างอยู่เลย')];
   }
-  const blocks: KnownBlock[] = [header(title), context(`${items.length} งานที่ยังเปิดอยู่ · นิ่งนานสุดขึ้นก่อน`)];
-  for (const i of items) {
+  const blocks: KnownBlock[] = [
+    header(title),
+    context(
+      `${items.length} งานที่ยังเปิดอยู่ · นิ่งนานสุดขึ้นก่อน · ` +
+        `จาก ${ledgerOrigin() === 'pipeline' ? 'pipeline' : 'fixture'} (${refreshStatus().at})` +
+        (refreshStatus().error ? ' · ⚠ โหลดใหม่ล่าสุดไม่สำเร็จ ข้อมูลเก่ากว่านี้' : ''),
+    ),
+  ];
+  for (const i of items.slice(0, MAX_BOARD_ROWS)) {
     blocks.push(
       section(
         `${STATE_LABEL[i.state]}  *${i.key}*  ${esc(clamp(i.headline, 80))}  ·  _${days(i.age_days)}_\n` +
           `${esc(clamp(i.evidence, 160))}`,
         { type: 'button', text: { type: 'plain_text', text: 'เปิด' }, action_id: 'open_item', value: i.key },
+      ),
+    );
+  }
+  const omitted = items.length - MAX_BOARD_ROWS;
+  if (omitted > 0) {
+    blocks.push(
+      context(
+        `…อีก ${omitted} งานไม่ได้แสดง (Slack จำกัด 50 block ต่อข้อความ) — ` +
+          `แคบลงด้วย \`${CMD} blocked\` หรือ \`${CMD} <KEY>\``,
       ),
     );
   }

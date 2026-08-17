@@ -33,9 +33,11 @@ import json
 import logging
 import re
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
 from typing import Any, Iterable, Sequence
+
+from tam.core import TamDataError, validate_records, write_records
 
 DEFAULT_OUTPUT = Path("data/processed/meeting_records.json")
 # Utterances closer together than this from the same speaker are one thought.
@@ -65,13 +67,26 @@ class Utterance:
     offset: float
 
 
+def parse_iso(value: str, *, assume_tz: tzinfo) -> datetime:
+    """ISO 8601 instant, reading a value with no offset as `assume_tz`.
+
+    The caller has to say what a bare "2026-08-14T09:30" means, because the
+    answer differs by caller: this module's --started documents UTC, while a
+    browser's datetime-local field is the operator's own wall clock. Guessing
+    one answer for both is what stored every uploaded meeting the local UTC
+    offset into the future. Raises ValueError; the CLI below turns that into a
+    SystemExit, the web app into a 400.
+    """
+    parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=assume_tz)
+
+
 def parse_timestamp(value: str) -> datetime:
-    """Meeting start time. Accepts ISO 8601, with or without a timezone."""
+    """`--started` from the command line, where a bare timestamp means UTC."""
     try:
-        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return parse_iso(value, assume_tz=timezone.utc)
     except ValueError as error:
         raise SystemExit(f"--started {value!r} is not an ISO timestamp (try 2026-08-14T09:30).") from error
-    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
 
 
 def _vtt_seconds(hours: str | None, minutes: str, seconds: str, fraction: str) -> float:
@@ -148,12 +163,14 @@ def parse_speaker_lines(text: str, *, seconds_per_line: float = 20.0) -> list[Ut
 
 def parse_json(text: str) -> list[Utterance]:
     """``[{"speaker": ..., "start": 12.5, "text": ...}]`` from an ASR API."""
+    # TamDataError, not SystemExit: an uploaded transcript reaches this from a
+    # request handler, which has to answer with a 400 rather than die.
     try:
         rows = json.loads(text)
     except json.JSONDecodeError as error:
-        raise SystemExit(f"Transcript is not valid JSON: {error}") from error
+        raise TamDataError(f"Transcript is not valid JSON: {error}") from error
     if not isinstance(rows, list):
-        raise SystemExit("A JSON transcript should be a list of utterances.")
+        raise TamDataError("A JSON transcript should be a list of utterances.")
     utterances: list[Utterance] = []
     for position, row in enumerate(rows):
         if not isinstance(row, dict):
@@ -259,9 +276,10 @@ def merge_into(records: Sequence[dict[str, Any]], path: Path) -> int:
     existing: list[dict[str, Any]] = []
     if path.exists():
         try:
-            existing = json.loads(path.read_text(encoding="utf-8"))
+            parsed = json.loads(path.read_text(encoding="utf-8"))
         except json.JSONDecodeError as error:
-            raise SystemExit(f"{path} is not valid JSON: {error}") from error
+            raise TamDataError(f"{path} is not valid JSON: {error}") from error
+        existing = validate_records(path, parsed)
     incoming = {str(record["id"]) for record in records}
     slugs = {str(record["id"]).rsplit("_", 1)[0] for record in records}
     kept = [
@@ -272,8 +290,7 @@ def merge_into(records: Sequence[dict[str, Any]], path: Path) -> int:
     replaced = len(existing) - len(kept)
     combined = kept + list(records)
     combined.sort(key=lambda record: str(record.get("ts", "")))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(combined, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_records(path, combined)
     return replaced
 
 
@@ -281,7 +298,10 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--transcript", type=Path, required=True, help="Transcript file (.vtt, .srt, .txt or .json)")
     parser.add_argument("--title", help="Meeting title; defaults to the file name")
-    parser.add_argument("--started", help="Meeting start, ISO 8601 (default: the file's modification time)")
+    parser.add_argument(
+        "--started",
+        help="Meeting start, ISO 8601, UTC unless it carries an offset (default: the file's modification time)",
+    )
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help=f"Write records here (default {DEFAULT_OUTPUT})")
     parser.add_argument("--merge-into", type=Path, help="Also merge into an existing corpus, replacing a prior import")
     parser.add_argument("--no-merge-speakers", action="store_true", help="Keep every transcript line as its own record")
@@ -302,7 +322,10 @@ def main() -> None:
         else datetime.fromtimestamp(args.transcript.stat().st_mtime, tz=timezone.utc)
     )
 
-    utterances = parse_transcript(args.transcript)
+    try:
+        utterances = parse_transcript(args.transcript)
+    except TamDataError as error:
+        raise SystemExit(str(error)) from error
     if not utterances:
         raise SystemExit(f"No utterances found in {args.transcript}. Check the format.")
     if not args.no_merge_speakers:
@@ -314,13 +337,15 @@ def main() -> None:
     if not records:
         raise SystemExit("Every utterance was filtered as noise. Check the transcript.")
 
-    args.out.parent.mkdir(parents=True, exist_ok=True)
-    args.out.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_records(args.out, records)
     speakers = sorted({str(record["user"]) for record in records})
     log.info("Wrote %d record(s) from %d speaker(s) to %s", len(records), len(speakers), args.out)
 
     if args.merge_into:
-        replaced = merge_into(records, args.merge_into)
+        try:
+            replaced = merge_into(records, args.merge_into)
+        except TamDataError as error:
+            raise SystemExit(str(error)) from error
         log.info("Merged into %s (replaced %d record(s) from a previous import)", args.merge_into, replaced)
 
     print(f"\nMeeting: {title}  ({started:%Y-%m-%d %H:%M})")

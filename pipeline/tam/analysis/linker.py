@@ -350,14 +350,32 @@ def load_overrides(path: Path | None) -> dict[str, str]:
     Overrides are the one part of the linker a human writes, so losing them to a
     reindex would be unforgivable — they live in their own file, never in the
     derived records.
+
+    The bot appends to this file while the pipeline reads it, so a torn read is a
+    normal event, not a bug in the data: it raises `ValueError` naming the file so
+    the caller can say what to do about it, and a row with no `record_id` is
+    dropped and counted rather than aborting every other human correction.
     """
     if path is None or not path.exists():
         return {}
-    data = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as error:
+        raise ValueError(f"{path} is not valid JSON ({error}) — the bot may have been mid-write; try again") from error
     if isinstance(data, dict):
         return {str(key): str(value) for key, value in data.items()}
     # Also accept the list-of-events shape a UI would append to.
-    return {str(row["record_id"]): str(row.get("key", "")) for row in data}
+    overrides: dict[str, str] = {}
+    dropped = 0
+    for row in data:
+        record_id = row.get("record_id") if isinstance(row, dict) else None
+        if not record_id:
+            dropped += 1
+            continue
+        overrides[str(record_id)] = str(row.get("key", ""))
+    if dropped:
+        log.warning("%s: skipped %d override row(s) with no record_id", path, dropped)
+    return overrides
 
 
 def parse_args() -> argparse.Namespace:
@@ -388,10 +406,15 @@ def main() -> None:
     if not args.no_cluster:
         labels, names = cluster_labels(records, knn=args.knn, resolution=args.resolution)
 
+    try:
+        overrides = load_overrides(args.overrides)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+
     links = link_records(
         records,
         labels,
-        overrides=load_overrides(args.overrides),
+        overrides=overrides,
         min_cluster_size=args.min_cluster,
         cluster_names=names,
         projects=[prefix for prefix in (args.projects or os.getenv("TICKET_PROJECTS", "")).split(",") if prefix.strip()],

@@ -2,7 +2,10 @@
 
 This module answers the standup questions without generating a word of prose:
 
-* **What are the work items?**  graph.py's communities, not a keyword list.
+* **What are the work items?**  graph.py's communities, not a keyword list. Each
+  one is named by its ticket key where the linker found one and by a hash of its
+  earliest message otherwise — never by the cluster index, which is a size rank
+  and would rename every item on the next rebuild.
 * **What moved today?**  Items with activity inside the window, in the context of
   their whole history — a bug reported last week and fixed this morning is one
   item, not two.
@@ -17,14 +20,16 @@ participants, and the blocked-since date are computed here and never invented.
 
     python3 -m tam.analysis.digest --records data/processed/combined.json --days 7
     python3 -m tam.analysis.digest --blockers
-    python3 -m tam.analysis.digest --item 2
+    python3 -m tam.analysis.digest --item REV-1421
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -35,24 +40,38 @@ from dotenv import load_dotenv
 
 from tam.retrieval.embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
 from tam.analysis.graph import EdgeWeights, build_graph, cluster_label, detect_communities
+from tam.analysis.linker import Link, link_records, load_overrides
 from tam.analysis.relations import Relation, extract_relations
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
 from tam.retrieval.signals import SignalIndex, timestamp
 
 # A "day" of standup usually means "since the last one", which is rarely 24h.
 DEFAULT_WINDOW_DAYS = 7
-# Relations that say something about whether work is finished.
-STATE_RELATIONS = ("resolves", "blocked_by", "duplicates", "follows_up", "answers")
+# Relations that say something about whether work is finished or stuck. Only
+# these two decide state — see infer_state.
+STATE_RELATIONS = ("resolves", "blocked_by")
+# Typed relations that prove an item moved without saying anything about whether
+# it is still stuck. Chasing an item, answering a question about it, or filing it
+# twice is activity, not progress.
+MOVEMENT_RELATIONS = ("duplicates", "follows_up", "answers")
 
 log = logging.getLogger("digest")
 
 
 @dataclass
 class Topic:
-    """One work item: its messages, who is on it, and whether it is stuck."""
+    """One work item: its messages, who is on it, and whether it is stuck.
+
+    `key` is the Louvain cluster index, which is a *size rank* — one new message
+    that grows a cluster past its neighbour renumbers both. It is fine as a
+    position inside one build and useless as a name to store: anything that
+    outlives a rebuild (a human's correction, a cross-reference in Slack) must
+    quote `item_id` instead, which is derived from content — see `item_ids`.
+    """
 
     key: int
     label: str
+    item_id: str = ""
     records: list[dict[str, Any]] = field(default_factory=list)
     relations: list[Relation] = field(default_factory=list)
     state: str = "active"  # active | blocked | resolved
@@ -102,6 +121,7 @@ class Topic:
     def as_dict(self) -> dict[str, Any]:
         return {
             "key": self.key,
+            "item_id": self.item_id,
             "label": self.label,
             "state": self.state,
             "evidence": self.evidence,
@@ -111,6 +131,11 @@ class Topic:
             "messages": len(self.records),
             "first": format_timestamp(str(self.first_ts)),
             "last": format_timestamp(str(self.last_ts)),
+            # The epochs alongside the display strings: 'YYYY-MM-DD HH:mm' carries no
+            # zone, so a reader in another timezone reparsing it as local miscomputes
+            # staleness by the offset. Anything deciding how old this is reads these.
+            "first_ts": self.first_ts,
+            "last_ts": self.last_ts,
             "age_days": None if np.isnan(self.age_days) else round(self.age_days, 1),
         }
 
@@ -140,17 +165,24 @@ class Digest:
 def infer_state(topic_records: Sequence[dict[str, Any]], relations: Sequence[Relation], records: Sequence[dict[str, Any]]) -> tuple[str, str, str, float]:
     """Decide whether a work item is blocked, resolved, or simply active.
 
-    The rule is the latest *typed* relation wins, judged by the timestamp of its
-    later message. A `blocked_by` from Tuesday followed by a `resolves` on
+    The rule is the latest *state-bearing* relation wins, judged by the timestamp
+    of its later message. A `blocked_by` from Tuesday followed by a `resolves` on
     Thursday is resolved; the same `blocked_by` with nothing after it is still
-    blocking someone right now. Untyped `same_topic` edges are ignored — they say
-    two messages are related, not what happened.
+    blocking someone right now.
+
+    Only `resolves` and `blocked_by` are state-bearing. Somebody asking "any
+    update?" on Wednesday is a `follows_up`, and a `follows_up` is not a
+    `resolves` — chasing a blocked item is the most common thing that happens to
+    one, and letting it clear the blocker would empty the standup agenda exactly
+    when it matters. Those relations still count as movement, so they are shown
+    after the state, not instead of it. Untyped `same_topic` edges are ignored —
+    they say two messages are related, not what happened.
     """
     member_ids = {str(record["id"]) for record in topic_records}
     relevant = [
         relation
         for relation in relations
-        if relation.name in STATE_RELATIONS
+        if relation.name in STATE_RELATIONS + MOVEMENT_RELATIONS
         and str(records[relation.source]["id"]) in member_ids
         and str(records[relation.target]["id"]) in member_ids
     ]
@@ -161,14 +193,70 @@ def infer_state(topic_records: Sequence[dict[str, Any]], relations: Sequence[Rel
         moment = timestamp(records[relation.target])
         return moment if np.isfinite(moment) else 0.0
 
-    latest = max(relevant, key=when)
+    def marker_for(relation: Relation) -> str:
+        return format_timestamp(str(records[relation.target].get("ts", "")))
+
+    newest = max(relevant, key=when)
+    stateful = [relation for relation in relevant if relation.name in STATE_RELATIONS]
+    if not stateful:
+        return "active", f"last movement {marker_for(newest)} ({newest.name})", str(records[newest.target]["id"]), when(newest)
+
+    latest = max(stateful, key=when)
     target = records[latest.target]
-    marker = format_timestamp(str(target.get("ts", "")))
+    marker = marker_for(latest)
+    # The evidence id stays on the message that proves the state; a chase after it
+    # is reported as movement, and never as the reason the item is blocked.
+    moved = f" · last movement {marker_for(newest)} ({newest.name})" if when(newest) > when(latest) else ""
     if latest.name == "resolves":
-        return "resolved", f"resolved on {marker} — {latest.evidence}", str(target["id"]), when(latest)
-    if latest.name == "blocked_by":
-        return "blocked", f"blocked since {marker} — {latest.evidence}", str(target["id"]), when(latest)
-    return "active", f"last movement {marker} ({latest.name})", str(target["id"]), when(latest)
+        return "resolved", f"resolved on {marker} — {latest.evidence}{moved}", str(target["id"]), when(latest)
+    return "blocked", f"blocked since {marker} — {latest.evidence}{moved}", str(target["id"]), when(latest)
+
+
+def content_id(topic_records: Sequence[dict[str, Any]]) -> str:
+    """A short id for a work item nobody filed a ticket for.
+
+    Hashed from the id of its earliest message, because that is the one thing
+    about a cluster that a rebuild does not move: new messages arrive at the end,
+    and the message that started the item stays the message that started it.
+    """
+    def order(record: dict[str, Any]) -> tuple[float, str]:
+        moment = timestamp(record)
+        return (moment if np.isfinite(moment) else float("inf"), str(record["id"]))
+
+    earliest = min(topic_records, key=order)
+    return "c" + hashlib.sha1(str(earliest["id"]).encode("utf-8")).hexdigest()[:6]
+
+
+def item_ids(members_by_topic: Sequence[Sequence[dict[str, Any]]], links: dict[str, Link]) -> list[str]:
+    """A stable name per work item: its ticket key where there is one.
+
+    The cluster index cannot be the identity — it is a size rank, so `TAM-3`
+    denotes a different item after any rebuild that changes relative cluster
+    sizes, and every stored cross-reference then points at the wrong work. A
+    ticket key is content the team typed, so it survives; `content_id` covers the
+    work nobody filed.
+
+    A ticket names at most one item: when Louvain splits one ticket's discussion,
+    the half that mentions it most keeps the key and the other falls back to its
+    hash, so two items can never answer to the same name.
+    """
+    def ticket_of(topic_records: Sequence[dict[str, Any]]) -> tuple[str, int]:
+        votes = Counter(
+            links[str(record["id"])].ticket
+            for record in topic_records
+            if str(record["id"]) in links and links[str(record["id"])].ticket
+        )
+        return votes.most_common(1)[0] if votes else ("", 0)
+
+    claims = [ticket_of(topic_records) for topic_records in members_by_topic]
+    owner: dict[str, int] = {}
+    for position, (ticket, votes) in enumerate(claims):
+        if ticket and (ticket not in owner or votes > claims[owner[ticket]][1]):
+            owner[ticket] = position
+    return [
+        ticket if ticket and owner.get(ticket) == position else content_id(members_by_topic[position])
+        for position, (ticket, _) in enumerate(claims)
+    ]
 
 
 def build_digest(
@@ -180,12 +268,18 @@ def build_digest(
     resolution: float = 1.0,
     method: str = "rules",
     min_messages: int = 2,
+    overrides: dict[str, str] | None = None,
 ) -> Digest:
     """Cluster the whole corpus, then keep the topics that moved in the window.
 
     Clustering runs over everything on purpose. Restricting it to the window
     first would split a work item at the window boundary and report this
     morning's fix as an unrelated new topic.
+
+    `overrides` is the linker's human tier (`linker.load_overrides`). It only
+    affects what each item is *called*, never its state — but a human who
+    reassigned a message to a ticket has said which work item it belongs to, and
+    that is exactly the question `item_ids` answers.
     """
     records = list(records)
     until = until if until is not None else datetime.now(tz=timezone.utc).timestamp()
@@ -196,6 +290,12 @@ def build_digest(
     graph = build_graph(records, matrix, signals, weights=EdgeWeights(), knn=knn)
     labels = detect_communities(graph, resolution=resolution)
     relations = extract_relations(records, [(int(a), int(b)) for a, b in graph.edges], method=method)
+    # Same clustering the linker would compute, handed to it, so the work items
+    # here and the links there cannot disagree about who is in which cluster.
+    links = {
+        link.record_id: link
+        for link in link_records(records, [int(label) for label in labels], overrides=overrides)
+    }
 
     topics: list[Topic] = []
     for community in sorted(set(labels)):
@@ -226,6 +326,9 @@ def build_digest(
             )
         )
 
+    for topic, name in zip(topics, item_ids([topic.records for topic in topics], links)):
+        topic.item_id = name
+
     # Blocked first, then most recently active — the order a standup reads in.
     order = {"blocked": 0, "active": 1, "resolved": 2}
     topics.sort(key=lambda topic: (order.get(topic.state, 1), -(topic.last_ts if np.isfinite(topic.last_ts) else 0.0)))
@@ -241,7 +344,9 @@ def timeline(topic: Topic, records: Sequence[dict[str, Any]]) -> list[dict[str, 
     Deduplicated by (relation, later message): one message that resolves a thread
     pairs with every earlier message in it, which is correct as graph edges and
     wrong as history — a timeline wants one row per event. The earliest partner
-    is kept, because it is the message the event is actually answering.
+    is kept, because it is the message the event is actually answering; the ones
+    it displaces are counted, so `also_answers` is the same number whichever
+    order the relations happen to arrive in.
     """
     events: dict[tuple[str, str], dict[str, Any]] = {}
     for relation in topic.relations:
@@ -265,7 +370,7 @@ def timeline(topic: Topic, records: Sequence[dict[str, Any]]) -> list[dict[str, 
             "to_text": " ".join(str(target["text"]).split())[:160],
             "to_user": str(target.get("user") or "-"),
             "evidence": relation.evidence,
-            "also_answers": existing["also_answers"] if existing else 0,
+            "also_answers": existing["also_answers"] + 1 if existing else 0,
         }
     return sorted(events.values(), key=lambda event: (event["ts"], event["relation"]))
 
@@ -279,10 +384,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--records", type=Path, default=DEFAULT_RECORDS, help=f"Prepared records (default {DEFAULT_RECORDS})")
     parser.add_argument("--days", type=float, default=DEFAULT_WINDOW_DAYS, help=f"Window in days (default {DEFAULT_WINDOW_DAYS})")
     parser.add_argument("--blockers", action="store_true", help="Only the stuck items")
-    parser.add_argument("--item", type=int, help="Show one topic's timeline by cluster key")
+    parser.add_argument("--item", help="Show one topic's timeline, by stable item id (REV-1421, c3f9a2b) or cluster key")
     parser.add_argument("--knn", type=int, default=6, help="Dense neighbours per message (default 6)")
     parser.add_argument("--resolution", type=float, default=1.0, help="Louvain resolution (default 1.0)")
     parser.add_argument("--method", default="rules", choices=("rules", "nli"), help="Relation typing (default rules)")
+    parser.add_argument("--overrides", type=Path, help="Human link corrections, as tam.analysis.linker reads them — they name work items, not states")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of text")
     parser.add_argument("--model", help="Embedding model id; overrides EMBEDDING_MODEL for this run")
     return parser.parse_args()
@@ -296,17 +402,30 @@ def main() -> None:
     set_model(args.model)
 
     records = load_records(args.records)
+    try:
+        overrides = load_overrides(args.overrides)
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
     digest = build_digest(
-        records, since=window_start(args.days), knn=args.knn, resolution=args.resolution, method=args.method
+        records,
+        since=window_start(args.days),
+        knn=args.knn,
+        resolution=args.resolution,
+        method=args.method,
+        overrides=overrides,
     )
     log.info("%d topic(s) active in the last %.0f day(s) over %d record(s)", len(digest.topics), args.days, len(records))
 
     if args.item is not None:
-        matches = [topic for topic in digest.topics if topic.key == args.item]
+        wanted = args.item.strip().upper()
+        matches = [
+            topic for topic in digest.topics if topic.item_id.upper() == wanted or str(topic.key) == wanted
+        ]
         if not matches:
-            raise SystemExit(f"No active topic with key {args.item}. Available: {[t.key for t in digest.topics]}")
+            available = ", ".join(f"{topic.item_id} (#{topic.key})" for topic in digest.topics)
+            raise SystemExit(f"No active topic {args.item}. Available: {available}")
         topic = matches[0]
-        print(f"\n#{topic.key} {topic.label}   [{topic.state}]")
+        print(f"\n{topic.item_id} · #{topic.key} {topic.label}   [{topic.state}]")
         print(f"{topic.evidence or 'no typed relation yet'}\n")
         events = timeline(topic, records)
         if not events:
@@ -332,7 +451,7 @@ def main() -> None:
         marker = {"blocked": "!", "resolved": "+", "active": "·"}.get(topic.state, "·")
         sources = ", ".join(f"{count} {name}" for name, count in sorted(topic.sources.items()))
         age = f"{topic.age_days:.1f}d" if np.isfinite(topic.age_days) else "-"
-        print(f"\n{marker} #{topic.key} {topic.label}")
+        print(f"\n{marker} {topic.item_id} · #{topic.key} {topic.label}")
         print(f"   {topic.state:8} {age:>7}   {len(topic.records)} msg ({sources})   {', '.join(topic.participants[:5])}")
         if topic.evidence:
             print(f"   {topic.evidence}")

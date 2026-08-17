@@ -1,9 +1,10 @@
 import type { KnownBlock } from '@slack/types';
-import { ledger, sortedItems, findMessage } from '../data.js';
+import { ledger, ledgerOrigin, refreshStatus, sortedItems, findMessage } from '../data.js';
+import { apiConfig } from '../tam-api.js';
 import type { WorkItem } from '../types.js';
 import {
-  STATE_LABEL, clamp, context, days, divider, esc, evidenceButton,
-  header, people, section, sourceCounts, ticketButton,
+  CMD, STATE_LABEL, clamp, context, days, divider, esc, evidenceButton,
+  header, section, sourceCounts, ticketButton,
 } from './common.js';
 
 /**
@@ -68,49 +69,91 @@ export function digestBlocks(): KnownBlock[] {
     header(`Standup · ${date}`),
     context(
       `${items.length} work items · หน้าต่าง ${l.window_days} วัน · จาก ${l.corpus_size} ข้อความ · ` +
-        `สร้างเมื่อ ${l.built_at}`,
+        `สร้างเมื่อ ${l.built_at} · ` +
+        // Where the numbers above came from, and how old they are. The digest looks
+        // identical whether it was fetched from the pipeline or read from the
+        // fixture, and a reader deciding something in standup deserves to know which
+        // one they are reading — and to be told when the last refresh failed, since
+        // the bot then keeps serving the previous data on purpose.
+        (ledgerOrigin() === 'pipeline'
+          ? `แหล่ง: pipeline ${esc(apiConfig()?.baseUrl ?? '')}`
+          : 'แหล่ง: fixture data/ledger.json') +
+        ` · ดึงมาเมื่อ ${refreshStatus().at}` +
+        (refreshStatus().error ? ' · ⚠ โหลดใหม่ล่าสุดไม่สำเร็จ ข้อมูลเก่ากว่านี้' : ''),
     ),
   ];
 
+  // Which items made it onto the screen, per block. The overflow footer has to
+  // report how many were *left out*, and that is only knowable at the trim.
+  const renderedBy: number[] = [0, 0];
+  let rendered = 0;
+  const push = (...bs: KnownBlock[]) => {
+    for (const b of bs) {
+      blocks.push(b);
+      renderedBy.push(rendered);
+    }
+  };
+
   // Empty digest is a quiet window, not an error. Say so plainly.
   if (items.length === 0) {
-    blocks.push(section('*เงียบทั้งหน้าต่างนี้* — ไม่มีงานที่ขยับเลย\nไม่ใช่ error ครับ แค่ไม่มีอะไรเปลี่ยน'));
+    push(section('*เงียบทั้งหน้าต่างนี้* — ไม่มีงานที่ขยับเลย\nไม่ใช่ error ครับ แค่ไม่มีอะไรเปลี่ยน'));
     return blocks;
   }
 
-  blocks.push(divider());
+  push(divider());
 
   if (blocked.length) {
-    blocks.push(section(`*${STATE_LABEL.blocked}  (${blocked.length})*`));
-    for (const i of blocked) blocks.push(...blockedRow(i));
+    push(section(`*${STATE_LABEL.blocked}  (${blocked.length})*`));
+    for (const i of blocked) {
+      rendered++;
+      push(...blockedRow(i));
+    }
   } else {
     // Empty blockers is good news. Design it as good news.
-    blocks.push(section('*✅ ไม่มีอะไรติด*\nทุกงานเดินได้หมด'));
+    push(section('*✅ ไม่มีอะไรติด*\nทุกงานเดินได้หมด'));
   }
 
   if (stalled.length) {
-    blocks.push(divider());
-    blocks.push(section(`*${STATE_LABEL.stalled}  (${stalled.length})*  _In Progress แต่ไม่มีความเคลื่อนไหว_`));
-    for (const i of stalled) blocks.push(compactRow(i));
+    push(divider());
+    push(section(`*${STATE_LABEL.stalled}  (${stalled.length})*  _In Progress แต่ไม่มีความเคลื่อนไหว_`));
+    for (const i of stalled) {
+      rendered++;
+      push(compactRow(i));
+    }
   }
 
   if (moving.length) {
-    blocks.push(divider());
-    blocks.push(section(`*${STATE_LABEL.moving}  (${moving.length})*`));
-    for (const i of moving) blocks.push(compactRow(i));
+    push(divider());
+    push(section(`*${STATE_LABEL.moving}  (${moving.length})*`));
+    for (const i of moving) {
+      rendered++;
+      push(compactRow(i));
+    }
   }
 
   const tail: string[] = [];
-  if (done.length) tail.push(`${STATE_LABEL.done} เมื่อวาน: ${done.map((d) => d.key).join(', ')}`);
+  if (done.length) {
+    // The done line names every key, so those items are accounted for even when
+    // the trim below cuts the sections above.
+    rendered += done.length;
+    tail.push(`${STATE_LABEL.done} เมื่อวาน: ${done.map((d) => d.key).join(', ')}`);
+  }
   if (l.unassigned.length) tail.push(`❓ ${l.unassigned.length} ข้อความที่ยังจับคู่ ticket ไม่ได้`);
   if (tail.length) {
-    blocks.push(divider());
-    blocks.push(context(tail.join('  ·  ')));
+    push(divider());
+    push(context(tail.join('  ·  ')));
   }
 
   // Slack caps a message at 50 blocks. Trim from the tail — the top is the point.
-  if (blocks.length > 48) {
-    return [...blocks.slice(0, 47), context(`…และอีก ${items.length} items — ดูทั้งหมดด้วย \`/tam\``)];
+  // Report what was *omitted*, not the total, and name a command that exists:
+  // sending the reader to `/tam` was two errors in one line.
+  const KEEP = 47;
+  if (blocks.length > KEEP + 1) {
+    const omitted = items.length - (renderedBy[KEEP - 1] ?? 0);
+    return [
+      ...blocks.slice(0, KEEP),
+      context(`…อีก ${omitted} items ไม่ได้แสดง — ดูต่อด้วย \`${CMD} blocked\` หรือ \`${CMD} <KEY>\``),
+    ];
   }
   return blocks;
 }

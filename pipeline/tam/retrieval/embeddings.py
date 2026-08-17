@@ -31,8 +31,24 @@ import numpy as np
 # Small, fast, and trained for cross-lingual paraphrase similarity, which is
 # exactly "same topic, different wording/language". Override with EMBEDDING_MODEL.
 DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
-CACHE_DIR = Path("data/processed")
+# Anchored to the package, not to the process: the documented invocation is from
+# pipeline/, but a service started anywhere else would silently get a second,
+# empty cache under its own cwd and pay the full embedding cost forever with
+# nothing on screen to explain it. TAM_CACHE_DIR overrides.
+CACHE_DIR = Path(__file__).resolve().parents[2] / "data" / "processed"
 BATCH_SIZE = 32
+
+# Files that decide what a local checkpoint actually outputs. The weights first,
+# then the configs, because pooling and normalisation live there rather than in
+# the safetensors — a changed 1_Pooling/config.json moves every vector too.
+FINGERPRINT_FILES = (
+    "model.safetensors",
+    "pytorch_model.bin",
+    "config.json",
+    "config_sentence_transformers.json",
+    "modules.json",
+    "1_Pooling/config.json",
+)
 
 # Handed to instruction-tuned models that want to know what the retrieval task is.
 DEFAULT_INSTRUCTION = "Given a Slack message written by a software team, retrieve messages about the same work item"
@@ -131,10 +147,54 @@ def text_hash(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def model_fingerprint(name: str | None = None) -> str:
+    """Short digest of *which build* of the model this is, or "" if unknowable.
+
+    A hub id names an immutable revision, so the id is its own fingerprint. A
+    local directory is not: `finetune --out models/finetuned` run twice leaves
+    the id identical while every vector the model produces moves, and because a
+    fine-tune keeps the base model's width the vector-width guard below cannot
+    see it either. So stat the checkpoint instead — size and mtime of the files
+    that decide the output. Deliberately not a content hash: reading 450MB of
+    safetensors on every run would cost more than re-embedding the whole corpus,
+    and stat already changes on every save.
+    """
+    directory = Path(name or model_name())
+    if not directory.is_dir():
+        return ""
+    parts: list[str] = []
+    for relative in FINGERPRINT_FILES:
+        candidate = directory / relative
+        if candidate.exists():
+            stat = candidate.stat()
+            parts.append(f"{relative}:{stat.st_size}:{stat.st_mtime_ns}")
+    if not parts:
+        return ""
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+def cache_identity() -> str:
+    """What a cached vector was produced by: the model id plus its build."""
+    fingerprint = model_fingerprint()
+    return f"{model_name()}@{fingerprint}" if fingerprint else model_name()
+
+
+def cache_dir() -> Path:
+    """Where cache files live; TAM_CACHE_DIR wins over the package default."""
+    override = os.getenv("TAM_CACHE_DIR", "").strip()
+    return Path(override).expanduser() if override else CACHE_DIR
+
+
 def cache_path() -> Path:
-    """One cache file per model, so switching models cannot mix dimensions."""
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", model_name())
-    return CACHE_DIR / f"embeddings_{slug}.npz"
+    """One cache file per model *build*.
+
+    Per model alone was not enough: two builds of the same local path share an
+    id, and mixing their vectors means taking cosine across two different spaces
+    (see `model_fingerprint`). A hub id fingerprints to "", so its filename is
+    unchanged and existing caches keep hitting.
+    """
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "_", cache_identity())
+    return cache_dir() / f"embeddings_{slug}.npz"
 
 
 def model_spec(name: str | None = None) -> ModelSpec:
@@ -199,27 +259,54 @@ def _read_cache(path: Path) -> dict[str, np.ndarray]:
         with np.load(path, allow_pickle=False) as data:
             hashes = [str(value) for value in data["hashes"]]
             vectors = data["embeddings"]
+            # Written since the fingerprint fix; absent in older files, which by
+            # construction only ever held hub models (fingerprint "").
+            stored = str(data["model"]) if "model" in data else ""
+            if "fingerprint" in data:
+                stored = f"{stored}@{data['fingerprint']}" if str(data["fingerprint"]) else stored
     except (OSError, ValueError, KeyError) as error:
         log.warning("Ignoring unreadable embedding cache %s (%s)", path, error)
         return {}
     if vectors.ndim != 2 or len(hashes) != len(vectors):
         log.warning("Ignoring malformed embedding cache %s", path)
         return {}
+    if stored and stored != cache_identity():
+        # A miss, loudly: these vectors came out of a different model build, and
+        # silently mixing them with freshly encoded ones means comparing two
+        # spaces. This is what the unused `model` field was evidently for.
+        log.warning(
+            "Embedding cache %s was written by %s, not %s; re-embedding rather than mixing two spaces",
+            path, stored, cache_identity(),
+        )
+        return {}
     return dict(zip(hashes, vectors))
 
 
 def _write_cache(path: Path, cache: dict[str, np.ndarray]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(
-        path,
-        hashes=np.array(list(cache), dtype=np.str_),
-        embeddings=np.stack(list(cache.values())),
-        model=np.array(model_name(), dtype=np.str_),
-    )
+    # Write beside the target and rename: savez_compressed rewrites the whole
+    # archive each time, so a crash or a full disk part-way through would
+    # otherwise leave a truncated file where a good cache used to be.
+    temporary = path.with_suffix(".npz.tmp")
+    with temporary.open("wb") as handle:
+        np.savez_compressed(
+            handle,
+            hashes=np.array(list(cache), dtype=np.str_),
+            embeddings=np.stack(list(cache.values())),
+            model=np.array(model_name(), dtype=np.str_),
+            fingerprint=np.array(model_fingerprint(), dtype=np.str_),
+        )
+    os.replace(temporary, path)
 
 
-def embed_with_cache(texts: Sequence[str], *, use_cache: bool = True, role: str = "passage") -> np.ndarray:
-    """Embed texts, reusing cached vectors for content that has not changed."""
+def embed_with_cache(texts: Sequence[str], *, use_cache: bool = True, role: str = "passage", prune: bool = False) -> np.ndarray:
+    """Embed texts, reusing cached vectors for content that has not changed.
+
+    `prune` is for callers that hand over a *whole* corpus and therefore own the
+    file: without it the cache is only ever a union of everything ever embedded,
+    so vectors for edited or deleted messages stay on disk forever and every
+    rebuild recompresses them. A caller embedding a subset must leave it off.
+    """
     if not texts:
         return np.zeros((0, 0), dtype=np.float32)
 
@@ -247,11 +334,19 @@ def embed_with_cache(texts: Sequence[str], *, use_cache: bool = True, role: str 
             missing = list(unique)
             vectors = embed_texts([unique[key] for key in missing], role=role)
         cache.update(zip(missing, vectors))
-        if use_cache:
-            _write_cache(path, cache)
-            log.info("Embedding cache now holds %d vector(s) at %s", len(cache), path)
     else:
         log.info("Reused %d cached embedding(s) from %s", len(unique), path)
+
+    stale = [key for key in cache if key not in unique] if prune else []
+    for key in stale:
+        del cache[key]
+
+    if use_cache and (missing or stale):
+        _write_cache(path, cache)
+        log.info(
+            "Embedding cache now holds %d vector(s) at %s%s",
+            len(cache), path, f" ({len(stale)} dropped as no longer in the corpus)" if stale else "",
+        )
 
     return np.stack([cache[key] for key in hashes])
 

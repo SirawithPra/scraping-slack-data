@@ -347,6 +347,10 @@ def main() -> None:
     ks = tuple(sorted({k for k in args.ks if k > 0}))
     if not ks:
         raise SystemExit("--ks needs at least one positive integer.")
+    if args.top_k <= 0:
+        # Without this the empty slice reaches matches[0] and dies on IndexError
+        # several hundred lines later, after the whole corpus has been embedded.
+        raise SystemExit("--top-k must be greater than zero.")
 
     records = load_records(args.records, include_threads=args.include_threads)
     matrix = embed_records(records)

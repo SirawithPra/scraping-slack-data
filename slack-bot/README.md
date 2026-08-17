@@ -5,11 +5,15 @@
 *เหมียว + ตาม* — the cat that follows your work around. Says something when it notices
 something, otherwise stays quiet.
 
-A Slack-native work ledger. It reads Slack, YouTrack and meeting notes, merges them into
+A Slack-native work ledger. It reads Slack and meeting notes, merges them into
 one record per work item, and tells you what is stuck, why, and which exact message proves it.
+YouTrack states are hand-set in the fixture and the write-back is mocked — see
+[What is real and what is faked](#what-is-real-and-what-is-faked).
 
-Built for a 24-hour hackathon. Runs entirely offline against a fixture — nothing in the demo
-path touches a network except Slack itself.
+Built for a 24-hour hackathon. Out of the box it runs entirely offline against a fixture —
+nothing in the demo path touches a network except Slack itself. Point it at the Python
+pipeline with `TAM_API_URL` when you want the real clustering (see
+[Reading from the pipeline](#reading-from-the-pipeline)).
 
 ---
 
@@ -80,6 +84,13 @@ Over that, lower `SIM_FLOOR` in `scripts/build-ledger.ts` and re-run.
 **Drive it with `/meowtam demo`, not from memory.** Five beats, fired one at a time. A live demo
 that depends on you typing the right thing in the right order in front of judges will desync.
 
+**Rehearse and present with `DEMO_FIXTURES=1 npm start`.** Beat 3 needs it. Drift detection
+compares Slack against a ticket system and none is connected, so with the flag off there is no
+drift to show and beat 3 answers with an explanation instead of the nudge. With the flag on, the
+fixture's drift loads and the rendered block carries a visible
+`⚠ ตัวอย่างจาก fixture — ยังไม่ได้ต่อ ticket system จริง` label, which is the honest way to demo
+it: say the label out loud, it is a better answer than pretending.
+
 `/mt` is a registered alias for the same handler — use it on stage, it's shorter and Slack's
 autocomplete on `/me` can hesitate.
 
@@ -94,13 +105,14 @@ autocomplete on `/me` can hesitate.
 | --- | --- | --- | --- |
 | 1 | `/meowtam demo 1` | 08:45 DM in **your DMs** | "It doesn't ask what I did. It tells me, and I correct it." |
 | 2 | `/meowtam demo 2` | 09:25 digest in the channel | "Blocked first. Every claim, one click from the message that proves it." |
-| 3 | `/meowtam demo 3` | Scope-change message, then a threaded nudge | "The requirement changed here. The ticket didn't. It noticed." |
+| 3 | `/meowtam demo 3` | Scope-change message, then a threaded nudge (needs `DEMO_FIXTURES=1`) | "The requirement changed here. The ticket didn't. It noticed." |
 | 4 | `/meowtam demo 4` | Recall with the decision chain | "May we said no BOM. August we changed it. The ticket still says May." |
 | 5 | `/meowtam demo 5` | The board | — |
 
 Beat 3 is the one that wins the room. Click **ดูร่างที่เสนอ** and let them see the proposed
 YouTrack diff, then say the important sentence: **it never writes on its own — a human always
-presses save.**
+presses save.** (Started without `DEMO_FIXTURES=1`? Beat 3 will tell you so rather than post
+nothing — but fix it before you present, not on stage.)
 
 ### Rehearse this
 
@@ -120,9 +132,11 @@ and it reads YouTrack, so it can tell you your ticket disagrees with your Slack 
 
 **"Does the AI hallucinate?"**
 The state, dates, participants and evidence are computed by rules you can read in
-`scripts/build-ledger.ts` — no model involved. Only the one-line summary is generated, it is
-labelled as generated, and when its citations fail verification the UI says so (see MOB-142
-in the demo — it renders the unverified warning deliberately).
+`scripts/build-ledger.ts` — no model involved. Only the one-line summary is written for you, the
+card names which backend wrote it (`สรุปจากกฎ (template)` for the shipped default, which is a
+rule-based sentence with no model in it at all; `สรุปโดยโมเดล (claude)` when one is configured),
+and when a model's citations fail verification the UI says so (see MOB-142 in the demo — it
+renders the unverified warning deliberately).
 
 **"What about Thai?"**
 The matching is character-trigram based specifically because Thai has no spaces between
@@ -160,6 +174,9 @@ a code problem.
 src/
   types.ts          the ledger shape — read this first
   data.ts           loading, sorting, the decision-chain walk
+  tam-api.ts        client for the Python pipeline's HTTP API, and the shape translation
+  store.ts          the bot's own writes: ticket-link overrides and the decision log
+  standups.ts       standup drafts derived from work items, not read from a fixture
   search.ts         recall: trigram + literal-term hybrid, no API key
   app.ts            commands, actions, modals, the demo driver
   blocks/
@@ -173,15 +190,37 @@ scripts/
   export-slack.ts   real channel history via bot token
   build-ledger.ts   messages → work items, states, drifts, decisions
   preview.ts        render every payload offline, validate against Slack's limits
+  check-api.ts      prove the bot can read the pipeline, with no Slack in the loop
+tests/              `npm test` — Slack's limits, the shape translation, the store
 data/
-  ledger.json       the fixture
+  ledger.fixture.json  the committed fixture — anonymised, safe for a public repo
+  ledger.json          what the bot reads: seeded from the fixture, overwritten by
+                       `npm run ledger`, and gitignored so real channel history
+                       never lands in a commit
 ```
 
 ```bash
+npm test                   # Slack's limits, the shape translation, and the store
 npm run preview            # validate every Block Kit payload, no Slack needed
 npm run preview -- digest  # dump one payload for app.slack.com/block-kit-builder
 npm run typecheck
 ```
+
+### Reading from the pipeline
+
+By default the bot builds its own ledger from `data/ledger.json` and touches no network but
+Slack. Set `TAM_API_URL` and the Python half becomes the owner of what a work item is —
+work items, states, evidence, timelines and recall all come from `tam.web.server`, while
+decisions, drifts and standup drafts stay local because the pipeline has no counterpart for
+them yet. There is **no fallback**: if the pipeline is asked for and cannot answer, the bot
+refuses to start rather than serve fixture data that looks identical to live.
+
+```bash
+TAM_API_URL=http://127.0.0.1:8899 npm run check-api   # fetch, translate, index, search
+```
+
+`.env.example` documents `TAM_API_URL`, `TAM_STALE_DAYS`, `TAM_MIN_COSINE`, `DEMO_FIXTURES` and
+the rest line by line; `../pipeline/README.md` covers the server side.
 
 ## Design rules that are not negotiable
 

@@ -1,7 +1,7 @@
 import type { KnownBlock } from '@slack/types';
 import { searchBest, searchDecisions, type Hit } from '../search.js';
 import { decisionChain, findMessage } from '../data.js';
-import { SOURCE_ICON, clamp, context, divider, esc, header, section } from './common.js';
+import { clamp, context, divider, esc, header, section, sourceIcon } from './common.js';
 
 /**
  * Thai labels for the scoring stages either engine can report. Unknown keys fall
@@ -77,7 +77,7 @@ export async function recallBlocks(query: string): Promise<KnownBlock[]> {
       const tag = isCurrent ? '  ← *ปัจจุบัน*' : '  ~(ถูกแทนที่แล้ว)~';
       blocks.push(
         section(
-          `*${d.when}* · ${SOURCE_ICON[d.source]} ${esc(d.user)}${tag}\n“${esc(clamp(d.statement, 300))}”`,
+          `*${d.when}* · ${sourceIcon(d.source)} ${esc(d.user)}${tag}\n“${esc(clamp(d.statement, 300))}”`,
           m?.permalink
             ? { type: 'button', text: { type: 'plain_text', text: 'ที่มา' }, url: m.permalink }
             : undefined,
@@ -96,7 +96,7 @@ export async function recallBlocks(query: string): Promise<KnownBlock[]> {
       const m = h.message;
       blocks.push(
         section(
-          `${SOURCE_ICON[m.source]} *${esc(m.user)}* · ${m.when}` +
+          `${sourceIcon(m.source)} *${esc(m.user)}* · ${m.when}` +
             (h.item_key ? ` · ${h.item_key}` : '') +
             `\n${esc(clamp(m.text, 260))}`,
           m.permalink

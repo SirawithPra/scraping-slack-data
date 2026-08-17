@@ -32,11 +32,20 @@ log = logging.getLogger(__name__)
 
 
 def to_ranks(scores: np.ndarray) -> np.ndarray:
-    """1-based rank of every entry, best score first. Ties break by index."""
-    order = np.argsort(-scores, kind="stable")
-    ranks = np.empty(len(scores), dtype=np.int64)
-    ranks[order] = np.arange(1, len(scores) + 1)
-    return ranks
+    """1-based rank of every entry, best score first; tied scores share a rank.
+
+    Ties have to share, or RRF invents a signal that no retriever supplied: BM25
+    scores exactly 0 for most of the corpus on a typical query, and handing that
+    block ranks 12..42 by array index means the order records happen to sit in
+    the file outvotes the one retriever that does have an opinion (measured on
+    this corpus: 0.004 of RRF weight spread across the zero block against 0.0002
+    for a real dense rank step). A retriever that cannot separate two records
+    must contribute equally to both, so this is competition ranking — every
+    member of a tie gets the best rank in it.
+    """
+    values = np.asarray(scores)
+    # searchsorted over the descending scores: rank = 1 + how many beat you.
+    return (1 + np.searchsorted(np.sort(-values), -values, side="left")).astype(np.int64)
 
 
 def rrf_fuse(

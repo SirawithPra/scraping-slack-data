@@ -82,8 +82,8 @@
   <p class="eyebrow">ตาม (Tam) · สถาปัตยกรรมและ flow</p>
   <h1>ข้อความหนึ่งข้อความ เดินทางไปเป็นการ์ดใน Slack ได้อย่างไร</h1>
   <p>ห้าภาพ ภาพละหนึ่งเรื่อง — เส้นทางข้อมูลทั้งเส้น, การให้คะแนน query หนึ่งครั้ง, ใครเป็นเจ้าของนิยาม
-  “งานหนึ่งชิ้น”, การเขียนกลับเมื่อคนแก้, และเหตุผลที่ recall ต้องยิงสองครั้ง
-  ทุกชื่อโมดูลในภาพคือไฟล์ที่มีอยู่จริงในรีโป</p>
+  “งานหนึ่งชิ้น”, การเขียนกลับเมื่อคนแก้, และเหตุผลที่ recall ต้องยิงสองครั้ง แล้วปิดท้ายด้วย
+  โครงโฟลเดอร์ ทุกชื่อโมดูลในภาพคือไฟล์ที่มีอยู่จริงในรีโป</p>
 </header>
 
 <!-- ============ 1 ============ -->
@@ -305,7 +305,7 @@
 
       <rect class="box-good" x="470" y="112" width="184" height="52" rx="4"/>
       <text class="tm" x="562" y="132" text-anchor="middle">pipeline เท่านั้น</text>
-      <text class="tdim" x="562" y="150" text-anchor="middle">/api/digest · /api/item · /api/search</text>
+      <text class="tdim" x="562" y="150" text-anchor="middle">/api/digest · /api/item · /api/search · /api/health</text>
 
       <path class="flow" d="M562,80 L562,112" marker-end="url(#a3g)"/>
       <text class="tgood" x="561" y="196" text-anchor="middle">บอทเป็นตัวเรนเดอร์</text>
@@ -402,12 +402,13 @@
 <!-- ============ 5 ============ -->
 <section>
   <h2>5 · ทำไม recall ต้องยิงสองครั้ง</h2>
-  <p>คะแนนรวมหลัง RRF คิดจาก<strong>อันดับ</strong> ไม่ใช่ความคล้าย มันจึงบอกไม่ได้ว่า “ไม่เจออะไรเลย” —
-  วัดบนคลังนี้ query ขยะได้ <code>0.0301</code> ของจริงได้ <code>0.0306</code> ถ้าไม่มีด่าน
-  recall จะตอบทุก query ด้วยผลลัพธ์ห้าแถวที่ดูน่าเชื่อ ซึ่งเป็นพฤติกรรมกล่องดำที่โปรดักต์นี้มีอยู่เพื่อไม่ให้เกิด</p>
+  <p>คะแนนรวมหลัง RRF คิดจาก<strong>อันดับ</strong> ไม่ใช่ความคล้าย มันจึงบอกไม่ได้ว่า “ไม่เจออะไรเลย”
+  เลยแม้แต่นิดเดียว — อันดับ 1 ได้ <code>1/61 + 1/61 = 0.0328</code> เท่ากันทุก query ไม่ว่าจะเป็นคำถามจริง
+  หรือ <code>qqqzzzxxx wvwvwv jjjkkk zzzqqq</code> เพราะอันดับ 1 ในสอง stage ก็คืออันดับ 1 ในสอง stage
+  ถ้าไม่มีด่าน recall จะตอบทุก query ด้วยผลลัพธ์ห้าแถวที่ดูน่าเชื่อ ซึ่งเป็นพฤติกรรมกล่องดำที่โปรดักต์นี้มีอยู่เพื่อไม่ให้เกิด</p>
 
   <figure>
-    <svg viewBox="0 0 740 300" role="img"
+    <svg viewBox="0 0 740 322" role="img"
          aria-label="recall ยิง preset dense เพื่อถามว่าสิ่งที่ใกล้ที่สุดใกล้แค่ไหน ถ้าต่ำกว่าเกณฑ์จะตอบว่าไม่เจอโดยไม่ยิงต่อ ถ้าผ่านจึงยิง preset hybrid เพื่อจัดอันดับ ด้านล่างเทียบคะแนนของสองโมเดล">
       <defs>
         <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -453,7 +454,7 @@
 
       <!-- measurement -->
       <line x1="14" y1="176" x2="726" y2="176" stroke="var(--rule)" stroke-width="1"/>
-      <text class="tacc" x="14" y="198">ด่านดีได้เท่าโมเดลที่เสิร์ฟ — cosine ที่วัดได้จริง</text>
+      <text class="tacc" x="14" y="198">ด่านดีได้เท่าโมเดลที่เสิร์ฟ — cosine ที่วัดได้จริง (corpus 42 record จาก export ส่วนตัว · เกณฑ์ 0.45)</text>
 
       <text class="tdim" x="14" y="222">โมเดล</text>
       <text class="tdim" x="330" y="222" text-anchor="middle">query ขยะ</text>
@@ -461,16 +462,17 @@
       <text class="tdim" x="610" y="222" text-anchor="middle">แยกออกไหม</text>
 
       <text class="t" x="14" y="248">MiniLM (ค่าเริ่มต้น)</text>
-      <text class="tgood" x="330" y="248" text-anchor="middle">0.375</text>
-      <text class="tm" x="470" y="248" text-anchor="middle">0.723</text>
+      <text class="tgood" x="330" y="248" text-anchor="middle">0.388</text>
+      <text class="tm" x="470" y="248" text-anchor="middle">0.847</text>
       <text class="tgood" x="610" y="248" text-anchor="middle">แยกได้</text>
 
       <text class="t" x="14" y="274">models/syn_finetuned</text>
-      <text class="twarn" x="330" y="274" text-anchor="middle">0.743</text>
-      <text class="tm" x="470" y="274" text-anchor="middle">0.725</text>
+      <text class="twarn" x="330" y="274" text-anchor="middle">0.738</text>
+      <text class="tm" x="470" y="274" text-anchor="middle">0.838</text>
       <text class="twarn" x="610" y="274" text-anchor="middle">แยกไม่ได้</text>
 
-      <text class="tdim" x="14" y="294">โมเดลที่ fine-tune วางข้อความขยะไว้ใกล้กว่า query อังกฤษที่ตรงจริง — ไม่มีเกณฑ์ไหนแยกได้ npm run check-api รายงานให้เห็น</text>
+      <text class="tdim" x="14" y="294">โมเดลที่ fine-tune ดึงทุกอย่างเข้ามาใกล้กัน ขยะกับของจริงห่างกัน 0.10 และเกณฑ์อยู่ใต้ทั้งคู่ — ไม่มีเกณฑ์ไหนแยกได้</text>
+      <text class="tdim" x="14" y="312">corpus ยิ่งเล็กยิ่งแย่: บนข้อมูลตัวอย่าง 27 record แม้ MiniLM ก็ได้ 0.481 npm run check-api รายงานให้เห็น ทางแก้คือเปลี่ยนโมเดล ไม่ใช่ดันเกณฑ์</text>
     </svg>
     <figcaption><b>สองคอลทำตามลำดับ ไม่ขนานกัน</b> ตอนยิงขนาน server โหลดโมเดลพร้อมกันสองครั้ง
     หน่วยความจำพุ่งเท่าตัวแล้ว process ตาย — และทำตามลำดับยังได้เปรียบด้วย เพราะ query
@@ -494,8 +496,8 @@
       <text class="tdim" x="120" y="96">evaluation · report · web</text>
       <text class="tm" x="40" y="120">data/</text>
       <text class="tdim" x="120" y="120">raw · processed · sample</text>
-      <text class="tm" x="40" y="140">fixtures/</text>
-      <text class="tdim" x="120" y="140">ตัวอย่าง API response</text>
+      <text class="tm" x="40" y="140">fixtures/ · tests/</text>
+      <text class="tdim" x="180" y="140">ตัวอย่าง API response · pytest</text>
       <text class="tm" x="40" y="160">models/</text>
       <text class="tdim" x="120" y="160">น้ำหนักที่ fine-tune (ไม่ขึ้น git)</text>
       <text class="tm" x="40" y="180">.env.example</text>
@@ -510,7 +512,9 @@
       <text class="tm" x="404" y="120">scripts/</text>
       <text class="tdim" x="484" y="120">export · ledger · preview · check-api</text>
       <text class="tm" x="404" y="140">data/</text>
-      <text class="tdim" x="484" y="140">ledger · decisions (เขียนเอง)</text>
+      <text class="tdim" x="484" y="140">ledger.fixture (ขึ้น git) · ledger · decisions</text>
+      <text class="tm" x="404" y="160">tests/</text>
+      <text class="tdim" x="484" y="160">node --test</text>
       <text class="tm" x="404" y="180">.env.example</text>
       <text class="tm" x="404" y="200">slack-app-manifest.yaml</text>
 

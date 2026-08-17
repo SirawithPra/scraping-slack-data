@@ -129,10 +129,16 @@ RELATION_TYPES: tuple[RelationType, ...] = (
         "follows_up",
         "The later message asks for the current status of the thing in the earlier message.",
         (
-            "any update", "any news", "status", "how's it going", "still", "eta", "when will",
-            "อัพเดท", "อัปเดท", "คืบหน้า", "ถึงไหน", "ยังไง", "เมื่อไหร่", "เป็นไง", "ได้ยัง", "แล้วยัง",
+            "any update", "any news", "any progress", "any status", "status update", "status on",
+            "what's the status", "how's it going", "still waiting", "still blocked", "still not",
+            "still no", "still pending", "any eta", "eta on", "eta for", "eta?", "when will",
+            "อัพเดท", "อัปเดท", "คืบหน้า", "ถึงไหน", "เมื่อไหร่", "เป็นไง", "ได้ยัง", "แล้วยัง", "เสร็จยัง",
         ),
         "a status chase on an earlier item",
+        # A chase leads with the ask and is short — "any update on REV-1421?".
+        # Deep inside a long standup transcript the same words are narration, not
+        # a chase, which is how a whole meeting chunk used to read as one.
+        cue_window=48,
     ),
     RelationType(
         "same_topic",

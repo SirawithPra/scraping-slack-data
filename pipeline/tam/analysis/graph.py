@@ -189,7 +189,10 @@ def detect_communities(graph: nx.Graph, *, resolution: float = 1.0) -> list[int]
     communities = nx.community.louvain_communities(
         graph, weight="weight", resolution=resolution, seed=LOUVAIN_SEED
     )
-    # Largest community first, so cluster 0 is the channel's main subject.
+    # Largest community first, so cluster 0 is the channel's main subject. This is
+    # a size *rank*, not a name: one message that grows a cluster past its
+    # neighbour swaps both indices, so nothing outside one build may store it —
+    # digest.item_ids derives the work item's lasting id from content instead.
     ordered = sorted(communities, key=len, reverse=True)
     labels = [0] * graph.number_of_nodes()
     for community_index, members in enumerate(ordered):

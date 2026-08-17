@@ -9,9 +9,10 @@ from __future__ import annotations
 import argparse
 import json
 import logging
-from datetime import datetime
+import os
+from datetime import datetime, timezone, tzinfo
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 import numpy as np
 from dotenv import load_dotenv
@@ -24,26 +25,90 @@ PREVIEW_LIMIT = 400
 log = logging.getLogger("semantic_search")
 
 
-def load_records(path: Path, *, include_threads: bool = False) -> list[dict[str, Any]]:
-    """Read prepared records; thread-context records are opt-in."""
+class TamDataError(Exception):
+    """The corpus on disk cannot be used, and the caller needs to be told why.
+
+    A plain Exception on purpose: these functions run inside the web app as well
+    as in CLIs, and a SystemExit raised in a request handler is a BaseException
+    that slips past every `except Exception` between here and the response, so
+    the operator gets a bare 500 instead of the diagnostic. CLIs get the same
+    one-line message from `load_records`, which converts it.
+    """
+
+
+def validate_records(path: Path, parsed: Any) -> list[dict[str, Any]]:
+    """Confirm a file really holds prepared records before anything indexes it.
+
+    The mistake this catches is pointing --records at one of the other
+    list-shaped JSON files this repo writes into data/processed/ (clusters.json,
+    relations.json); without it the run dies deep inside a comprehension.
+    """
+    if not isinstance(parsed, list):
+        raise TamDataError(f"{path} should contain a list of records.")
+    for position, record in enumerate(parsed):
+        if not isinstance(record, dict) or "id" not in record or "text" not in record:
+            raise TamDataError(
+                f"{path}: record {position} is not an object with 'id' and 'text'. "
+                "Expected the output of tam.ingest.prepare_messages."
+            )
+    return parsed
+
+
+def read_records(path: Path, *, include_threads: bool = False) -> list[dict[str, Any]]:
+    """Read prepared records; thread-context records are opt-in.
+
+    Raises TamDataError, so a long-lived caller (the web app) can answer its own
+    request instead of dying. CLIs call `load_records` below.
+    """
     if not path.exists():
-        raise SystemExit(f"Missing {path}. Run tam.ingest.prepare_messages first.")
+        raise TamDataError(f"Missing {path}. Run tam.ingest.prepare_messages first.")
     try:
-        records = json.loads(path.read_text(encoding="utf-8"))
+        parsed = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
-        raise SystemExit(f"{path} is not valid JSON: {error}") from error
-    if not isinstance(records, list):
-        raise SystemExit(f"{path} should contain a list of records.")
+        raise TamDataError(f"{path} is not valid JSON: {error}") from error
+    records = validate_records(path, parsed)
     if not include_threads:
         records = [record for record in records if record.get("source") != "slack_thread"]
     if not records:
-        raise SystemExit(f"No searchable records in {path}. Re-run tam.ingest.prepare_messages.")
+        raise TamDataError(f"No searchable records in {path}. Re-run tam.ingest.prepare_messages.")
     return records
 
 
-def embed_records(records: list[dict[str, Any]], *, use_cache: bool = True) -> np.ndarray:
-    """Embed the corpus. Only message text is embedded, never the metadata."""
-    return embed_with_cache([str(record["text"]) for record in records], use_cache=use_cache)
+def load_records(path: Path, *, include_threads: bool = False) -> list[dict[str, Any]]:
+    """`read_records` for command lines: one line of explanation, no traceback."""
+    try:
+        return read_records(path, include_threads=include_threads)
+    except TamDataError as error:
+        raise SystemExit(str(error)) from error
+
+
+def write_records(path: Path, records: Sequence[dict[str, Any]]) -> None:
+    """Write the corpus so no reader can observe a half-written file.
+
+    Several stages rewrite this one file, and the web app re-reads it while they
+    do, so the bytes land in a sibling temp file and are moved into place with a
+    single atomic rename.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.tmp")
+    try:
+        temporary.write_text(json.dumps(list(records), ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(temporary, path)
+    except BaseException:  # Ctrl-C included: never leave a stray half-corpus behind
+        temporary.unlink(missing_ok=True)
+        raise
+
+
+def embed_records(records: list[dict[str, Any]], *, use_cache: bool = True, prune: bool = False) -> np.ndarray:
+    """Embed the corpus. Only message text is embedded, never the metadata.
+
+    `prune` is off by default even though every caller here passes a whole corpus,
+    because one cache file is shared by every corpus using the same model — the
+    quickstart's sample and the real export both land in it. Pruning while embedding
+    one would evict the other's vectors and re-embed them on the next run, trading
+    disk space for a slower loop. Pass it when you are cleaning up on purpose.
+    """
+    return embed_with_cache([str(record["text"]) for record in records], use_cache=use_cache, prune=prune)
 
 
 def search(
@@ -55,9 +120,15 @@ def search(
     return [(float(scores[index]), records[index]) for index in ranked]
 
 
-def format_timestamp(ts: str) -> str:
+def format_timestamp(ts: str, *, tz: tzinfo | None = None) -> str:
+    """Render epoch seconds for display, in `tz` (default: this machine's zone).
+
+    The conversion goes through UTC explicitly. Stored timestamps are instants,
+    and a naive `fromtimestamp` reads as if the epoch had no zone at all — which
+    is how a display and the value behind it came to disagree by an offset.
+    """
     try:
-        return datetime.fromtimestamp(float(ts)).strftime("%Y-%m-%d %H:%M")
+        return datetime.fromtimestamp(float(ts), tz=timezone.utc).astimezone(tz).strftime("%Y-%m-%d %H:%M")
     except (TypeError, ValueError):
         return "unknown"
 
@@ -115,6 +186,12 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--model", help="Embedding model id; overrides EMBEDDING_MODEL for this run")
     parser.add_argument("--no-cache", action="store_true", help="Recompute embeddings instead of using the cache")
+    parser.add_argument(
+        "--prune-cache",
+        action="store_true",
+        help="Drop cached vectors this corpus does not use. One cache file is shared by every "
+        "corpus on the same model, so this evicts the others — use it to reclaim disk, not routinely",
+    )
     return parser.parse_args()
 
 
@@ -129,7 +206,7 @@ def main() -> None:
 
     records = load_records(args.records, include_threads=args.include_threads)
     log.info("Loaded %d record(s) from %s", len(records), args.records)
-    matrix = embed_records(records, use_cache=not args.no_cache)
+    matrix = embed_records(records, use_cache=not args.no_cache, prune=args.prune_cache)
 
     if args.query:
         for query in args.query:

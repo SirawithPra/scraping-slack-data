@@ -272,7 +272,16 @@ class Retriever:
             fused[anchor] = -np.inf  # a message is not its own relation
 
         limit = len(self.records) if top_k is None else max(1, min(top_k, len(self.records)))
-        order = np.argsort(-fused)[:limit]
+        # Tie-break on the record id rather than the array index: fused ties are
+        # common now that tied stage scores share a rank (see fusion.to_ranks),
+        # and index order is only the order the records file was written in.
+        order = np.lexsort((np.array(self.ids), -fused))
+        if anchor is not None:
+            # Masking the score is not enough — with no top_k the anchor would
+            # still be listed, last, at -inf. Drop it before slicing so top_k
+            # keeps meaning "this many other messages".
+            order = order[order != anchor]
+        order = order[:limit]
         normalised = {name: minmax(scores) for name, scores in stages.items()}
 
         hits: list[Hit] = []

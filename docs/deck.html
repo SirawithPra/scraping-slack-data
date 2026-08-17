@@ -276,6 +276,7 @@
 ├── retrieval/  embeddings · BM25 · signals · fusion · rerank
 ├── analysis/   graph · relations · linker · digest · summarize
 ├── evaluation/ วัดผล recall/nDCG · fine-tune
+├── report/     visualize (Plotly) · report_th (ภาษาไทยล้วน)
 └── web/        server.py — dashboard
 
 slack-bot/   Slack bot — npm project แยก</pre>
@@ -289,17 +290,17 @@ slack-bot/   Slack bot — npm project แยก</pre>
     <div class="slide-body">
       <h2>Dashboard เปิดกับข้อมูลจริงแล้ว</h2>
       <p>HTML สร้างจาก Python ตรงๆ — ไม่มี build step ไม่มี <code>node_modules</code> ไม่มี frontend แยกให้ต้องตามให้ทัน</p>
-      <pre>$ python3 -m tam.web.server --records data/processed/combined.json --port 8899
+      <pre>$ python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
 
-INFO Building index from data/processed/combined.json
-INFO Reused 42 cached embedding(s) from data/processed/embeddings_….npz
-INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
+INFO Building index from data/processed/sample_combined.json
+INFO Reused 27 cached embedding(s) from data/processed/embeddings_….npz
+INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template</pre>
       <div class="grid g2">
         <div class="card"><span class="k">5 หน้าจอ</span><p><code>/</code> digest · <code>/blockers</code> · <code>/item/{key}</code> timeline · <code>/search</code> หาต้นทางของประโยค · <code>/upload</code> โยนไฟล์ประชุมเข้า corpus</p></div>
-        <div class="card"><span class="k">5 API</span><p>ข้อมูลชุดเดียวกันออกเป็น JSON — <code>/api/digest</code> · <code>/api/blockers</code> · <code>/api/item/{key}</code> · <code>/api/search</code> · <code>POST /api/reindex</code></p></div>
+        <div class="card"><span class="k">5 API + health</span><p>ข้อมูลชุดเดียวกันออกเป็น JSON — <code>/api/digest</code> · <code>/api/blockers</code> · <code>/api/item/{key}</code> · <code>/api/search</code> · <code>/api/health</code> และ <code>POST /api/reindex</code> ที่ต้องมี token</p></div>
       </div>
-      <p><span class="pill ok">✓ ทดสอบแล้ว</span> ยิงทั้ง 9 endpoint คืน <code>200</code> พร้อมเนื้อหาจริงทุกตัว</p>
-      <div class="rail"><span><b>ชี้ไปข้อมูลจริง</b> --records รับไฟล์อะไรก็ได้ที่ ingest สร้าง</span><span><b>ไม่มี Slack ก็รันได้</b> data/sample/ commit ไว้แล้ว</span></div>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> ยิงทั้ง 10 endpoint ที่อ่านข้อมูล (5 หน้า + 5 API) คืน <code>200</code> พร้อมเนื้อหาจริงทุกตัว · อีก 2 route ที่<em>เขียน</em>ข้อมูล (<code>POST /upload</code>, <code>POST /api/reindex</code>) ต้องแนบ token ที่ server พิมพ์ตอน start</p>
+      <div class="rail"><span><b>ชี้ไปข้อมูลจริง</b> --records รับไฟล์อะไรก็ได้ที่ ingest สร้าง</span><span><b>ไม่มี Slack ก็รันได้</b> data/sample/ commit ไว้แล้ว · ตัวเลขข้างบนคือข้อมูลตัวอย่างล้วน</span></div>
     </div>
   </section>
 
@@ -316,7 +317,7 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
             <tr><td><code>/meowtam</code> · <code>/mt</code></td><td>บอร์ดงานทั้งหมด เรียงงานที่ติดขึ้นก่อน</td></tr>
             <tr><td><code>/meowtam blocked</code></td><td>เฉพาะที่ติด พร้อมข้อความที่เป็นหลักฐาน</td></tr>
             <tr><td><code>/meowtam recall &lt;ข้อความ&gt;</code></td><td>ค้นหาไทยได้ พร้อมสายการตัดสินใจของเรื่องนั้น</td></tr>
-            <tr><td><code>/meowtam PROJ-1</code></td><td>งานชิ้นเดียวตาม ticket key</td></tr>
+            <tr><td><code>/meowtam MOB-142</code></td><td>งานชิ้นเดียวตาม key — key นี้มีอยู่ใน ledger ตัวอย่างที่ commit ไว้</td></tr>
             <tr><td>คลิกขวาที่ข้อความ</td><td>ผูกกับ ticket · บันทึกเป็นการตัดสินใจ</td></tr>
             <tr><td>ใส่ emoji</td><td><code>reaction_added</code> เป็น input — emoji สั่งงานได้</td></tr>
           </tbody>
@@ -324,10 +325,10 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
       </div>
       <div class="grid g3">
         <div class="stat"><div class="v">8</div><div class="l">work item ใน ledger ตัวอย่าง</div></div>
-        <div class="stat"><div class="v">128</div><div class="l">ข้อความที่จัดกลุ่มแล้ว</div></div>
-        <div class="stat"><div class="v">8/8</div><div class="l">หน้าจอผ่าน Slack limits</div></div>
+        <div class="stat"><div class="v">128</div><div class="l">ข้อความใน corpus ตัวอย่างที่ ledger นั้นสร้างมาจาก</div></div>
+        <div class="stat"><div class="v">8</div><div class="l">หน้าจอเรนเดอร์ออฟไลน์ — ทุก payload ผ่าน Slack limits</div></div>
       </div>
-      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>tsc --noEmit</code> ไม่มี error · <code>npm run preview</code> เรนเดอร์ทุกหน้าจอออฟไลน์ผ่านหมด</p>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>npm run typecheck</code> ไม่มี error · <code>npm test</code> ผ่านหมด · <code>npm run preview</code> เรนเดอร์ทุกหน้าจอ<em>บวกเคสที่ยาวสุดของสี่หน้าที่มีลิสต์</em> ออฟไลน์ ผ่านทั้งหมด</p>
       <div class="rail"><span><b>DM 08:45 · digest 09:25</b> ปิดไว้เป็น default เปิดด้วย ENABLE_SCHEDULE=1</span></div>
     </div>
   </section>
@@ -346,17 +347,18 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
             <tr><td>token ทั้งหมด</td><td><code>.env</code>, <code>slack-bot/.env</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>export จริงจาก Slack</td><td><code>data/raw/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>records + embedding cache</td><td><code>data/processed/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
-            <tr><td>โมเดล fine-tune (~450 MB)</td><td><code>models/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
-            <tr><td>ข้อมูลตัวอย่างสังเคราะห์</td><td><code>data/sample/</code></td><td><span class="pill ok">✓ ตั้งใจ</span></td></tr>
+            <tr><td>โมเดล fine-tune (465 MB)</td><td><code>models/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>ledger ที่ <code>npm run ledger</code> เขียนจาก export จริง</td><td><code>slack-bot/data/ledger.json</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>ข้อมูลตัวอย่างสังเคราะห์ + ledger ตัวอย่าง</td><td><code>data/sample/</code> · <code>ledger.fixture.json</code></td><td><span class="pill ok">✓ ตั้งใจ</span></td></tr>
           </tbody>
         </table>
       </div>
       <ul class="tight">
-        <li><strong>ไม่เหลือ Slack ID จริงในรีโปเลย</strong> — ตรวจทุก commit ปัจจุบันเป็น placeholder 149 จุด คงความยาวเดิมไว้ให้ parser ไม่พัง</li>
-        <li><strong>ชื่อคน ชื่อบริษัท ชื่อโปรเจกต์ภายใน</strong> เปลี่ยนเป็นชื่อสมมติ ตรวจซ้ำแล้วไม่เหลือ</li>
-        <li><strong>ไม่มี token ในโค้ดเลย</strong> — อ่านจาก env ทุกจุด และ <code>.env.example</code> อธิบายครบทุกตัวแปร</li>
+        <li><strong>ไฟล์ที่ commit อยู่ตอนนี้ไม่มี Slack ID จริงเลย</strong> — เป็น placeholder ที่คงความยาวเดิมไว้ให้ parser ไม่พัง (<code>C0SAMPLE01</code>, <code>C0DEMOCHAN1</code>, <code>U0DEMOUSER1</code>) ชื่อคน ชื่อบริษัท ชื่อโปรเจกต์ภายใน เปลี่ยนเป็นชื่อสมมติทั้งหมด</li>
+        <li><strong>แต่ประวัติ git ยังไม่สะอาด — พูดตรงๆ</strong> commit แรก (<code>8c27553</code>) ยังมี ID จริงอยู่ก่อนสอง commit ที่มาแทนที่ทีหลัง ใน repo public นั้นดึงตาม SHA ได้ ต้อง rewrite history แล้ว force-push จึงจะหมดจริง — ยังไม่ได้ทำ ไม่ใช่ credential (token ไม่เคยหลุด) แต่ก็ยังเป็นงานที่ค้าง</li>
+        <li><strong>ไม่มี token ในโค้ดเลย</strong> — อ่านจาก env ทุกจุด และ <code>.env.example</code> อธิบายครบทุกตัวแปร · route ที่เขียนข้อมูลบน dashboard ต้องมี token ที่สร้างใหม่ทุกครั้งที่ start และปฏิเสธ <code>Origin</code> ข้ามเว็บ</li>
       </ul>
-      <div class="rail"><span><b>ตัวอย่าง id ที่เผยแพร่</b> <code>msg_C0DEMOCHAN1_1786630932.425409</code></span></div>
+      <div class="rail"><span><b>ตัวอย่าง id ที่เผยแพร่</b> <code>msg_C0SAMPLE01_1754000010.000100</code></span><span><b>สัญญาอนุญาต</b> MIT</span></div>
     </div>
   </section>
 
@@ -369,7 +371,7 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
         <table>
           <thead><tr><th>รายการ</th><th>สถานะ</th><th>หลักฐาน</th></tr></thead>
           <tbody>
-            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 9 endpoint คืน 200 · bot typecheck สะอาด 8/8 payload ผ่าน · 22 โมดูล import ผ่าน · 20 CLI ตอบ <code>--help</code></td></tr>
+            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 10 endpoint ที่อ่านข้อมูลคืน 200 · bot typecheck สะอาด, <code>npm test</code> ผ่าน, ทุก payload ผ่าน Slack limits · 22 โมดูล Python ตอบ <code>--help</code> ครบทุกตัว และ <code>pytest</code> ผ่าน</td></tr>
             <tr><td><strong>User Manual</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><code>docs/USER_MANUAL.md</code> — 11 หัวข้อ ติดตั้ง ใช้งาน ต่อ Slack แก้ปัญหา ทุกคำสั่งรันผ่านจริง</td></tr>
             <tr><td><strong>Draft Presentation</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>สไลด์นี้ 10 แผ่น</td></tr>
             <tr><td><strong>Source Code</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a> — public</td></tr>
@@ -379,9 +381,16 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template</pre>
       <p><strong>ทดลองเองได้โดยไม่ต้องมี Slack token</strong> — รีโปมีข้อมูลตัวอย่างไทย/อังกฤษ commit ไว้ ทำงานครบทุกขั้นตั้งแต่ ingest ถึง dashboard</p>
       <pre>git clone https://github.com/SirawithPra/scraping-slack-data.git
 cd scraping-slack-data && python3 -m venv .venv && source .venv/bin/activate
-python3 -m pip install -r requirements.txt
-python3 -m tam.web.server --records data/processed/combined.json --port 8899</pre>
-      <div class="rail"><span><b>เวลาติดตั้ง</b> ~2 นาที</span><span><b>ทดสอบบน</b> macOS · Python 3.10.17 · Node v24.3.0</span></div>
+cd pipeline && python3 -m pip install -r requirements.txt
+
+python3 -m tam.ingest.prepare_messages --raw data/sample/slack_messages.sample.json \
+        --out data/processed/sample_combined.json
+python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt \
+        --title "Daily standup" --started 2026-08-14T09:30 \
+        --merge-into data/processed/sample_combined.json
+python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899</pre>
+      <p>ทุกคำสั่งรันจาก <code>pipeline/</code> เพราะแพ็กเกจ <code>tam</code> อยู่ที่นั่น · ไฟล์ <code>data/processed/</code> ไม่ขึ้น git จึงต้องสร้างจากข้อมูลตัวอย่างสองคำสั่งแรก · <code>--days 3650</code> เพราะ export ตัวอย่างลงวันที่ 2025-08-01 หน้าต่าง default 7 วันจะว่าง</p>
+      <div class="rail"><span><b>เวลาติดตั้ง</b> ~2 นาที</span><span><b>ได้อะไร</b> Ready: 27 record · 5 topic · 1 blocked</span><span><b>ทดสอบบน</b> macOS · Python 3.10.17 · Node v24.3.0</span></div>
     </div>
   </section>
 
@@ -394,16 +403,16 @@ python3 -m tam.web.server --records data/processed/combined.json --port 8899</pr
         <span class="k" style="color:var(--good)">ปิดไปแล้ว</span>
         <h3>บอทกับ pipeline นับ “งานหนึ่งชิ้น” เหมือนกันแล้ว</h3>
         <p style="color:var(--ink)">เดิมสองฝั่งอ่าน Slack เองและจับกลุ่มด้วยกฎต่างกัน ช่องเดียวกันจึงได้ work item ไม่เท่ากัน ตอนนี้ตั้ง <code>TAM_API_URL</code> แล้วบอทเลิกตัดสินเอง — work item, สถานะ, หลักฐาน, timeline และ recall มาจาก pipeline ทั้งหมด เหลือเจ้าของนิยามเดียว</p>
-        <p style="color:var(--ink)"><span class="pill ok">✓ ทดสอบแล้ว</span> 5 work item · evidence_id ทุกอันชี้ข้อความที่มีจริง · permalink สร้างคืน 33/42 · ถามไทยเจอข้อความอังกฤษที่ <code>bm25 0.00</code> คือ semantic ล้วน สิ่งที่ trigram ทำไม่ได้</p>
+        <p style="color:var(--ink)"><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm run check-api</code> บน corpus 42 record (export ส่วนตัว ไม่ได้ commit): 5 work item · หลักฐาน, citation และ timeline ทุกอันชี้ข้อความที่มีจริงใน item นั้น · permalink สร้างคืน 33/42 (9 ที่เหลือเป็นบทประชุม ไม่มี Slack message ให้ลิงก์ ตามคาด) · และมันยืนยันว่า “ทุกผลลัพธ์มาจาก pipeline (embeddings) ไม่ใช่ trigram ในเครื่อง”</p>
       </div>
       <div class="card" style="border-color:var(--warn); background:var(--warn-soft)">
         <span class="k" style="color:var(--warn)">ข้อจำกัดหลักที่เหลือ</span>
         <h3>เกณฑ์ตัดความเกี่ยวข้องดีได้เท่าโมเดลที่เสิร์ฟ</h3>
-        <p style="color:var(--ink)">คะแนน hybrid คิดจาก<em>อันดับ</em> จึงบอกไม่ได้ว่า “ไม่เจออะไรเลย” — วัดบน corpus นี้ query ขยะได้ 0.0301 ของจริงได้ 0.0306 เราจึงตัดด้วย cosine ดิบแทน แต่มันได้ผลเฉพาะเมื่อโมเดลวางข้อความขยะไว้ไกล</p>
-        <p style="color:var(--ink)">MiniLM: ขยะ <strong>0.375</strong> · ของจริง 0.72 → ตัดได้ &nbsp;|&nbsp; โมเดลที่เรา fine-tune เอง: ขยะ <strong>0.743</strong> <em>สูงกว่า</em> query อังกฤษที่ตรงจริง → ตัดไม่ได้เลย <code>npm run check-api</code> รายงานให้เห็นก่อนขึ้นเวที</p>
+        <p style="color:var(--ink)">คะแนน hybrid คิดจาก<em>อันดับ</em> จึงบอกไม่ได้ว่า “ไม่เจออะไรเลย” เลยแม้แต่นิดเดียว — อันดับ 1 ได้ <code>1/61 + 1/61 = 0.0328</code> เท่ากันทั้ง query จริงและ query ขยะ เพราะอันดับ 1 ก็คืออันดับ 1 เราจึงตัดด้วย cosine ดิบจาก preset <code>dense</code> แทน แต่มันได้ผลเฉพาะเมื่อโมเดลวางข้อความขยะไว้ไกล</p>
+        <p style="color:var(--ink)">วัดบน corpus 42 record (export ส่วนตัว) เกณฑ์ <code>TAM_MIN_COSINE=0.45</code> ด้วย query ขยะตัวเดียวกับที่ <code>check-api</code> ใช้ — MiniLM: ขยะ <strong>0.388</strong> · ของจริง 0.847 → <strong>ตัดได้</strong> &nbsp;|&nbsp; โมเดลที่เรา fine-tune เอง: ขยะ <strong>0.738</strong> · ของจริง 0.838 → ห่างกัน 0.10 และเกณฑ์อยู่ใต้ทั้งคู่ <strong>ตัดไม่ได้เลย</strong> · corpus เล็กก็แย่ลงอีก บนข้อมูลตัวอย่าง 27 record แม้ MiniLM ก็ได้ 0.481 <code>npm run check-api</code> รายงานให้เห็นก่อนขึ้นเวที ทางแก้คือเปลี่ยนโมเดล ไม่ใช่ดันเกณฑ์ขึ้น</p>
       </div>
       <div class="grid g2">
-        <div class="card"><span class="k">ยังไม่มี</span><p>แปลง user id เป็นชื่อคน (ต้องเพิ่ม scope <code>users:read</code>) · export reaction/attachment · เขียนกลับ ticket จริง · decision, drift, standup ยังมาจาก fixture</p></div>
+        <div class="card"><span class="k">ยังไม่มี</span><p>แปลง user id เป็นชื่อคน (ต้องเพิ่ม scope <code>users:read</code>) · export reaction/attachment · เขียนกลับ ticket จริง · <strong>drift ยังไม่มีแหล่งจริง</strong> ต้องต่อ ticket system ก่อน (decision อ่านจากไฟล์ที่คนกดบันทึกเอง ว่างจนกว่าจะมีคนกด · standup คำนวณจาก item ที่ได้มา — สองอันนี้ไม่ได้มาจาก fixture)</p></div>
         <div class="card"><span class="k">ขยายไม่ได้ถ้าโตมาก</span><p>ค้นหาแบบ brute-force ไหวระดับหลายพันข้อความ ไม่ไหวระดับล้าน — ต้องมี vector database</p></div>
       </div>
       <ul class="tight">

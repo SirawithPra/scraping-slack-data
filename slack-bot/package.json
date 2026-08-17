@@ -5,13 +5,19 @@
   "type": "module",
   "description": "Meowtam — a Slack-native work ledger. Hackathon build.",
   "scripts": {
+    "seed": "node -e \"const{copyFileSync,existsSync}=require('node:fs');const t='data/ledger.json';if(existsSync(t)){process.exit(0)}copyFileSync('data/ledger.fixture.json',t);console.log('✓ seeded '+t+' from data/ledger.fixture.json')\"",
+    "predev": "npm run seed",
     "dev": "tsx watch src/app.ts",
+    "prestart": "npm run seed",
     "start": "tsx src/app.ts",
     "typecheck": "tsc --noEmit",
     "export": "tsx scripts/export-slack.ts",
     "ledger": "tsx scripts/build-ledger.ts",
+    "prepreview": "npm run seed",
     "preview": "tsx scripts/preview.ts",
-    "check-api": "tsx scripts/check-api.ts"
+    "check-api": "tsx scripts/check-api.ts",
+    "pretest": "npm run seed",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@slack/bolt": "^4.2.1",

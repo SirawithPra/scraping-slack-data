@@ -1,7 +1,7 @@
 import type { KnownBlock } from '@slack/types';
 import type { StandupDraft } from '../types.js';
 import { findMessage } from '../data.js';
-import { clamp, context, divider, esc, header, section } from './common.js';
+import { CMD, clamp, context, divider, esc, header, section } from './common.js';
 
 /**
  * The 08:45 DM — the heart of the pitch.
@@ -14,7 +14,16 @@ import { clamp, context, divider, esc, header, section } from './common.js';
  *
  * `carried_over` is the pain-#1 fix: work still open from before that nobody
  * would have mentioned unless asked by name.
+ *
+ * Both lists are capped. A `yesterday` entry costs two blocks and a
+ * `carried_over` entry one, and Slack rejects the whole message at 50 blocks —
+ * so an unbounded draft means the busiest person is the one who gets no DM at
+ * all. The overflow is stated on screen rather than dropped quietly: a draft the
+ * reader cannot tell is incomplete is worse than a short one.
  */
+const MAX_YESTERDAY = 5;
+const MAX_CARRIED = 5;
+
 export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
   const blocks: KnownBlock[] = [
     header('สรุปของคุณเมื่อวาน'),
@@ -26,7 +35,7 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
     blocks.push(section('_เมื่อวานไม่เจอความเคลื่อนไหวของคุณเลย — ถ้าทำอะไรอยู่ เขียนข้างล่างได้ครับ_'));
   }
 
-  for (const y of draft.yesterday) {
+  for (const y of draft.yesterday.slice(0, MAX_YESTERDAY)) {
     const ev = y.evidence_id ? findMessage(y.evidence_id) : undefined;
     blocks.push(
       section(`*${y.key}*  ${esc(y.headline)}\n${esc(y.note)}`, ev?.permalink
@@ -35,14 +44,24 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
     );
     if (ev) blocks.push(context(`💬 ${ev.when} · จาก ${esc(ev.source)}`));
   }
+  const moreYesterday = draft.yesterday.length - MAX_YESTERDAY;
+  if (moreYesterday > 0) {
+    blocks.push(context(`…และอีก ${moreYesterday} งานที่คุณขยับเมื่อวาน — ดูทั้งหมดด้วย \`${CMD}\``));
+  }
 
   if (draft.carried_over.length) {
     blocks.push(divider());
     blocks.push(section('*⏸ ค้างจากก่อนหน้านี้ — ยังไม่ขยับ*'));
-    for (const c of draft.carried_over) {
+    // Stalest first, so a cap drops the freshest rather than the most overdue.
+    const carried = [...draft.carried_over].sort((a, b) => b.stale_days - a.stale_days);
+    for (const c of carried.slice(0, MAX_CARRIED)) {
       blocks.push(
         context(`*${c.key}*  ${esc(clamp(c.headline, 80))} — นิ่งมา *${Math.round(c.stale_days)} วัน*`),
       );
+    }
+    const moreCarried = carried.length - MAX_CARRIED;
+    if (moreCarried > 0) {
+      blocks.push(context(`…และอีก ${moreCarried} งานที่ค้างอยู่ — ดูทั้งหมดด้วย \`${CMD}\``));
     }
   }
 

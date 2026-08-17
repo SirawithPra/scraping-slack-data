@@ -1,4 +1,5 @@
 import 'dotenv/config';
+import { basename } from 'node:path';
 import { App, LogLevel } from '@slack/bolt';
 
 import {
@@ -6,13 +7,15 @@ import {
   findMessage, itemKeyForMessage, itemsFor, standupFor, driftFor,
 } from './data.js';
 import { apiConfig } from './tam-api.js';
-import { decisionsPath, overridesPath, saveDecision, saveOverride, storeSummary } from './store.js';
+import {
+  decisionsPath, overridesPath, readDecisions, saveDecision, saveOverride, storeSummary,
+} from './store.js';
 import { digestBlocks } from './blocks/digest.js';
 import { standupDmBlocks } from './blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from './blocks/drift.js';
 import { recallBlocks } from './blocks/recall.js';
-import { context, section, esc, clamp } from './blocks/common.js';
+import { COMMANDS, CMD, context, section, esc, clamp } from './blocks/common.js';
 
 const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
 
@@ -20,6 +23,25 @@ const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
 function stamp(d = new Date()): string {
   const p = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
+}
+
+/**
+ * The timestamp of a Slack message, from the `ts` the payload already carries.
+ *
+ * A decision has to be dated when it was *said*, not when someone got around to
+ * filing it: recall renders these dates as the chain ("we said X in May, Y in
+ * August"), so stamping now() next to a message from May makes the one claim the
+ * decision log exists to support false.
+ */
+function stampOfMessage(ts?: string): string | undefined {
+  const seconds = Number(ts);
+  if (!Number.isFinite(seconds) || seconds <= 0) return undefined;
+  return stamp(new Date(seconds * 1000));
+}
+
+/** A path the operator can act on, without publishing the host's directory layout into Slack. */
+function shortPath(p: string): string {
+  return basename(p);
 }
 
 /**
@@ -53,6 +75,20 @@ const app = new App({
   logLevel: LogLevel.INFO,
 });
 
+// A stray promise anywhere must be a log line, not an outage. Node's default for
+// an unhandled rejection is to kill the process, and this bot has no supervisor:
+// losing it at 08:45 means nobody gets a standup and nobody knows why.
+// Before start() resolves, "still running" is a lie — the boot path exits on
+// failure, and this is the one line an operator reads when a boot fails.
+let running = false;
+process.on('unhandledRejection', (reason) => {
+  const state = running ? 'บอทยังทำงานต่อ' : 'ยังไม่ได้เริ่ม — ดู error ด้านล่าง';
+  console.error(`⚠  unhandled rejection (${state}):`, reason);
+});
+app.error(async (err) => {
+  console.error('⚠  bolt error:', err);
+});
+
 const DIGEST_CHANNEL = env('DIGEST_CHANNEL');
 const STANDUP_USERS = env('STANDUP_USERS').split(',').map((s) => s.trim()).filter(Boolean);
 
@@ -62,8 +98,9 @@ const STANDUP_USERS = env('STANDUP_USERS').split(',').map((s) => s.trim()).filte
  * ------------------------------------------------------------------ */
 
 // Both names hit the same handler. `/mt` exists purely so the live demo is
-// eight keystrokes shorter per beat.
-app.command(/^\/(meowtam|mt)$/, async ({ command, ack, respond, client, body }) => {
+// eight keystrokes shorter per beat. The names live in blocks/common.ts because
+// the Block Kit copy points people at them too.
+app.command(new RegExp(`^/(${COMMANDS.join('|')})$`), async ({ command, ack, respond, client, body }) => {
   await ack();
   const arg = command.text.trim();
   const lower = arg.toLowerCase();
@@ -133,8 +170,11 @@ app.command(/^\/(meowtam|mt)$/, async ({ command, ack, respond, client, body }) 
     // failing with "unknown command" would be hostile.
     await respond({ blocks: await recallBlocks(arg), text: 'recall' });
   } catch (err) {
+    // The detail goes to the server log, not into Slack: a fetch failure's message
+    // carries the internal TAM_API_URL, and the person who typed a slash command
+    // can do nothing with a stack trace anyway.
     console.error('command error', err);
-    await respond({ text: `พัง: ${(err as Error).message}` });
+    await respond({ text: 'พังตอนประมวลผลคำสั่งครับ — รายละเอียดอยู่ใน log ฝั่งเซิร์ฟเวอร์' });
   }
 });
 
@@ -142,19 +182,31 @@ app.command(/^\/(meowtam|mt)$/, async ({ command, ack, respond, client, body }) 
  * Interactions
  * ------------------------------------------------------------------ */
 
+/**
+ * Open a modal, or stack it on the one already open.
+ *
+ * Every one of these actions is reachable from inside a modal — the item card
+ * embeds the evidence button, and the digest's card is itself a modal — and
+ * `views.open` from a view interaction is not the supported call: it replaces the
+ * card the reader was looking at instead of stacking on it. Branch on whether the
+ * interaction came from a view.
+ */
+async function showModal(client: any, body: any, view: any) {
+  const args = { trigger_id: body.trigger_id, view };
+  if (body.view) await client.views.push(args);
+  else await client.views.open(args);
+}
+
 app.action('open_item', async ({ ack, body, client, action }) => {
   await ack();
   const key = (action as any).value as string;
   const item = findItem(key);
   if (!item) return;
-  await client.views.open({
-    trigger_id: (body as any).trigger_id,
-    view: {
-      type: 'modal',
-      title: { type: 'plain_text', text: clamp(item.key, 24) },
-      close: { type: 'plain_text', text: 'ปิด' },
-      blocks: itemCardBlocks(item) as any,
-    },
+  await showModal(client, body, {
+    type: 'modal',
+    title: { type: 'plain_text', text: clamp(item.key, 24) },
+    close: { type: 'plain_text', text: 'ปิด' },
+    blocks: itemCardBlocks(item) as any,
   });
 });
 
@@ -162,18 +214,15 @@ app.action('show_evidence', async ({ ack, body, client, action }) => {
   await ack();
   const m = findMessage((action as any).value as string);
   if (!m) return;
-  await client.views.open({
-    trigger_id: (body as any).trigger_id,
-    view: {
-      type: 'modal',
-      title: { type: 'plain_text', text: 'หลักฐาน' },
-      close: { type: 'plain_text', text: 'ปิด' },
-      blocks: [
-        section(`*${esc(m.user)}* · ${m.when} · ${m.source}`),
-        section(esc(m.text)),
-        context(m.permalink ? `<${m.permalink}|เปิดใน Slack>` : `id: \`${m.id}\``),
-      ] as any,
-    },
+  await showModal(client, body, {
+    type: 'modal',
+    title: { type: 'plain_text', text: 'หลักฐาน' },
+    close: { type: 'plain_text', text: 'ปิด' },
+    blocks: [
+      section(`*${esc(m.user)}* · ${m.when} · ${m.source}`),
+      section(esc(m.text)),
+      context(m.permalink ? `<${m.permalink}|เปิดใน Slack>` : `id: \`${m.id}\``),
+    ] as any,
   });
 });
 
@@ -183,14 +232,22 @@ app.action('open_drift_modal', async ({ ack, body, client, action }) => {
   const drift = driftFor(key);
   const item = findItem(key);
   if (!drift || !item) return;
-  await client.views.open({ trigger_id: (body as any).trigger_id, view: driftModal(drift, item) as any });
+  await showModal(client, body, driftModal(drift, item) as any);
 });
 
 app.action('dismiss_drift', async ({ ack, respond, action }) => {
   await ack();
   // Dismissals are signal, not noise — in the real build they tune the cue list.
+  // Nothing persists them yet, so the reply says exactly that. Answering "บันทึก
+  // ไว้แล้ว" for a console.log is the same fake confirmation store.ts was written
+  // to delete, and it would be believed.
   console.log('drift dismissed for', (action as any).value);
-  await respond({ replace_original: false, text: 'โอเค บันทึกไว้ว่าอันนี้ไม่ใช่การเปลี่ยนสโคป — จะเอาไปปรับ cue ต่อ' });
+  await respond({
+    replace_original: false,
+    text:
+      'โอเค ปิดให้แล้วครับ — แต่ยังไม่ได้เก็บไว้ถาวร (ยังไม่มีที่เก็บ dismissal) ' +
+      'ตอนนี้แค่ขึ้น log ฝั่งเซิร์ฟเวอร์ ยังไม่ได้เอาไปปรับ cue อัตโนมัติ',
+  });
 });
 
 app.view('drift_save', async ({ ack, view, client, body }) => {
@@ -259,8 +316,33 @@ app.action('standup_skip', async ({ ack, respond }) => {
  * original problem with extra steps.
  * ------------------------------------------------------------------ */
 
+/** Why a message could not be linked. Same wording wherever the reason differs. */
+function cannotLinkBlocks(reason: string) {
+  return [section('*ผูกไม่ได้*'), context(reason)] as any;
+}
+
+// Slack's own ceiling for a static_select. The old cap of 20 was self-imposed and
+// silently made items 21+ unlinkable, which is the same class of bug as a
+// truncated board with no notice.
+const MAX_TICKET_OPTIONS = 100;
+
 app.shortcut('link_to_ticket', async ({ ack, shortcut, client }) => {
   await ack();
+  const items = sortedItems();
+
+  // A static_select with zero options is an invalid view: Slack rejects it and the
+  // user sees nothing happen at all. Say why instead.
+  if (!items.length) {
+    await client.chat.postMessage({
+      channel: (shortcut as any).user.id,
+      text: 'ผูกไม่ได้',
+      blocks: cannotLinkBlocks(
+        'ยังไม่มี work item ให้ผูกเลย — pipeline ยังไม่ได้จัดกลุ่มอะไร ลองรัน prepare/digest ก่อน',
+      ),
+    });
+    return;
+  }
+
   await client.views.open({
     trigger_id: (shortcut as any).trigger_id,
     view: {
@@ -279,8 +361,8 @@ app.shortcut('link_to_ticket', async ({ ack, shortcut, client }) => {
           element: {
             type: 'static_select',
             action_id: 'value',
-            options: sortedItems()
-              .slice(0, 20)
+            options: items
+              .slice(0, MAX_TICKET_OPTIONS)
               .map((i) => ({
                 text: { type: 'plain_text', text: clamp(`${i.key} · ${i.headline}`, 70) },
                 value: i.key,
@@ -302,10 +384,9 @@ app.view('link_save', async ({ ack, view, client, body }) => {
     await client.chat.postMessage({
       channel: who,
       text: 'ผูกไม่ได้',
-      blocks: [
-        section('*ผูกไม่ได้ — ไม่รู้ว่าเป็นข้อความไหน*'),
-        context('เกิดขึ้นเมื่อข้อความไม่ได้อยู่ใน corpus ที่ประมวลผลแล้ว ลองรัน export/prepare ใหม่'),
-      ] as any,
+      blocks: cannotLinkBlocks(
+        'ไม่รู้ว่าเป็นข้อความไหน — เกิดขึ้นเมื่อข้อความไม่ได้อยู่ใน corpus ที่ประมวลผลแล้ว ลองรัน export/prepare ใหม่',
+      ),
     });
     return;
   }
@@ -315,12 +396,14 @@ app.view('link_save', async ({ ack, view, client, body }) => {
   try {
     total = saveOverride(recordId, key, who, stamp());
   } catch (err) {
+    // The errno and the absolute path go to the log; Slack gets the file name.
+    console.error('saveOverride failed', err);
     await client.chat.postMessage({
       channel: who,
       text: 'บันทึกไม่สำเร็จ',
       blocks: [
         section('*บันทึกไม่สำเร็จ*'),
-        context(`เขียนไฟล์ override ไม่ได้: ${esc((err as Error).message)}`),
+        context(`เขียนไฟล์ ${esc(shortPath(overridesPath()))} ไม่ได้ — รายละเอียดอยู่ใน log ฝั่งเซิร์ฟเวอร์`),
       ] as any,
     });
     return;
@@ -332,7 +415,7 @@ app.view('link_save', async ({ ack, view, client, body }) => {
     blocks: [
       section(`*🔗 ผูกกับ ${key} แล้ว*`),
       context(
-        `เขียนลง ${esc(overridesPath())} แล้ว (${total} รายการ) · ` +
+        `เขียนลง \`${esc(shortPath(overridesPath()))}\` แล้ว (${total} รายการ) · ` +
           'linker จะถือเป็น tier สูงสุดในรอบถัดไป ไม่เดาทับ',
       ),
     ] as any,
@@ -367,7 +450,9 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
   try {
     saved = saveDecision({
       statement: clamp(statement, 600),
-      when: stamp(),
+      // The message's own timestamp, not now(). Falls back to now() only when the
+      // payload carries no usable ts, and then it is the only date available.
+      when: stampOfMessage(msg?.ts) ?? stamp(),
       user: msg?.user ?? who,
       source: 'slack',
       evidence_id: recordId,
@@ -375,18 +460,23 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
       related_items: itemKey ? [itemKey] : undefined,
     });
   } catch (err) {
+    console.error('saveDecision failed', err);
     await client.chat.postMessage({
       channel: who,
       text: 'บันทึกไม่สำเร็จ',
       blocks: [
         section('*บันทึกไม่สำเร็จ*'),
-        context(`เขียนไฟล์ decision ไม่ได้: ${esc((err as Error).message)}`),
+        context(`เขียนไฟล์ ${esc(shortPath(decisionsPath()))} ไม่ได้ — รายละเอียดอยู่ใน log ฝั่งเซิร์ฟเวอร์`),
       ] as any,
     });
     return;
   }
 
-  await reload();
+  // Refresh only the collection that changed. The decision log is the bot's own
+  // file, so re-fetching every topic from the pipeline to observe a local write
+  // was both wasteful and the thing that could throw past this handler — leaving
+  // the decision on disk and the person who filed it told nothing at all.
+  ledger().decisions = readDecisions();
 
   await client.chat.postMessage({
     channel: who,
@@ -395,9 +485,10 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
       section('*🧠 บันทึกเป็นการตัดสินใจแล้ว*'),
       section(`>${esc(clamp(statement, 300))}`),
       context(
-        `id \`${esc(saved.id)}\` · เขียนลง ${esc(decisionsPath())} แล้ว` +
+        `id \`${esc(saved.id)}\` · ลงวันที่ ${esc(saved.when)} (เวลาของข้อความ ไม่ใช่เวลาที่กด)` +
+          ` · เขียนลง \`${esc(shortPath(decisionsPath()))}\` แล้ว` +
           (prior ? ` · แทน \`${esc(prior.id)}\` — recall จะเห็นเป็นสาย` : '') +
-          ' · หาเจอด้วย `/meowtam recall`',
+          ` · หาเจอด้วย \`${CMD} recall\``,
       ),
     ] as any,
   });
@@ -408,23 +499,132 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
  * everything will use this far more than a slash command.
  * ------------------------------------------------------------------ */
 
-const EMOJI_ACTION: Record<string, string> = {
-  ticket: '🎫 สร้าง/ผูก ticket',
-  construction: '🚧 ทำเครื่องหมายว่าติด',
-  white_check_mark: '✅ ทำเครื่องหมายว่าเสร็จ',
+/** 📌 and 🧠 file a real decision. Everything else is a hint, and says so. */
+const DECISION_EMOJI: Record<string, string> = {
   pushpin: '📌 บันทึกเป็นการตัดสินใจ',
   brain: '🧠 บันทึกเป็นการตัดสินใจ',
 };
 
+/**
+ * Emoji with no write behind them.
+ *
+ * These used to answer "Meowtam บันทึกไว้ให้แล้ว" and write nothing. State is
+ * computed from the messages by rules — an emoji cannot set it, and pretending it
+ * did would put a claim on screen with nothing behind it. So each one points at
+ * the affordance that does work.
+ */
+const EMOJI_HINT: Record<string, string> = {
+  ticket: `🎫 อยากผูกกับ ticket — ใช้เมนู *ผูกกับ ticket* ที่ข้อความนั้น (⋯) แล้วเลือก work item · หรือ \`${CMD} <KEY>\``,
+  construction: `🚧 สถานะคำนวณจากข้อความด้วยกฎ อีโมจิเปลี่ยนไม่ได้ — ถ้าติดจริง เขียนในเธรดว่าติดอะไร แล้วเช็คด้วย \`${CMD} blocked\``,
+  white_check_mark: `✅ สถานะคำนวณจากข้อความด้วยกฎ อีโมจิเปลี่ยนไม่ได้ — ปิดที่ ticket แล้ว digest รอบถัดไปจะเห็นเอง (\`${CMD} digest\`)`,
+};
+
+/**
+ * The text of the message someone reacted to.
+ *
+ * A `reaction_added` payload carries only the channel and the ts, and a decision
+ * without its statement is not a decision. Try the corpus first (already resolved,
+ * no API call), then the channel, then the thread — `conversations.history` does
+ * not return replies.
+ */
+async function reactedMessage(
+  client: any,
+  recordId: string,
+  channel: string,
+  ts: string,
+): Promise<{ text: string; user?: string } | undefined> {
+  const known = findMessage(recordId);
+  if (known?.text) return { text: known.text, user: known.user };
+
+  const pick = (list: any[] | undefined) => list?.find((m: any) => m.ts === ts && m.text);
+  try {
+    const hist = await client.conversations.history({ channel, latest: ts, oldest: ts, inclusive: true, limit: 1 });
+    const m = pick(hist.messages);
+    if (m) return { text: m.text, user: m.user };
+  } catch (err) {
+    console.error('conversations.history failed', err);
+  }
+  try {
+    const rep = await client.conversations.replies({ channel, ts, limit: 200 });
+    const m = pick(rep.messages);
+    if (m) return { text: m.text, user: m.user };
+  } catch (err) {
+    console.error('conversations.replies failed', err);
+  }
+  return undefined;
+}
+
 app.event('reaction_added', async ({ event, client }) => {
-  const label = EMOJI_ACTION[event.reaction];
+  const label = DECISION_EMOJI[event.reaction];
+  const hint = EMOJI_HINT[event.reaction];
+  if (!label && !hint) return;
+
+  const target = event.item as any;
+  if (target?.type !== 'message' || !target.channel || !target.ts) return;
+
+  const reply = (blocks: any[], text: string) =>
+    client.chat.postEphemeral({ channel: target.channel, user: event.user, text, blocks });
+
+  if (hint) {
+    await reply([context(hint)], hint);
+    return;
+  }
   if (!label) return;
-  await client.chat.postEphemeral({
-    channel: (event.item as any).channel,
-    user: event.user,
-    text: label,
-    blocks: [section(`*${label}*`), context('Meowtam บันทึกไว้ให้แล้ว — ไม่ต้องพิมพ์คำสั่ง')] as any,
-  });
+
+  const recordId = `msg_${target.channel}_${target.ts}`;
+  const msg = await reactedMessage(client, recordId, target.channel, target.ts);
+  if (!msg) {
+    await reply(
+      [
+        section('*ยังบันทึกไม่ได้*'),
+        context('อ่านข้อความนั้นไม่ได้ (นอกช่องที่ผมอยู่ หรือไม่มีข้อความ) — ใช้เมนู *บันทึกเป็นการตัดสินใจ* ที่ข้อความแทน'),
+      ],
+      'ยังบันทึกไม่ได้',
+    );
+    return;
+  }
+
+  const itemKey = itemKeyForMessage(recordId);
+  const prior = itemKey
+    ? ledger().decisions.filter((d) => d.related_items?.includes(itemKey) && !d.superseded_by).at(-1)
+    : undefined;
+
+  let saved;
+  try {
+    saved = saveDecision({
+      statement: clamp(msg.text, 600),
+      when: stampOfMessage(target.ts) ?? stamp(),
+      user: msg.user ?? event.user,
+      source: 'slack',
+      evidence_id: recordId,
+      supersedes: prior?.id,
+      related_items: itemKey ? [itemKey] : undefined,
+    });
+  } catch (err) {
+    console.error('saveDecision from reaction failed', err);
+    await reply(
+      [
+        section('*บันทึกไม่สำเร็จ*'),
+        context(`เขียนไฟล์ ${esc(shortPath(decisionsPath()))} ไม่ได้ — รายละเอียดอยู่ใน log ฝั่งเซิร์ฟเวอร์`),
+      ],
+      'บันทึกไม่สำเร็จ',
+    );
+    return;
+  }
+
+  ledger().decisions = readDecisions();
+
+  await reply(
+    [
+      section(`*${label} แล้ว*`),
+      context(
+        `id \`${esc(saved.id)}\` · ลงวันที่ ${esc(saved.when)} · เขียนลง \`${esc(shortPath(decisionsPath()))}\`` +
+          (prior ? ` · แทน \`${esc(prior.id)}\`` : '') +
+          ` · หาเจอด้วย \`${CMD} recall\``,
+      ),
+    ],
+    label,
+  );
 });
 
 /* ------------------------------------------------------------------ *
@@ -557,28 +757,110 @@ async function runDemo(
  * kind of thing that ruins a demo.
  * ------------------------------------------------------------------ */
 
-function scheduleDaily(hour: number, minute: number, fn: () => void) {
+/** 'YYYY-MM-DD', 'HH', 'mm' in the scheduling zone — the host's unless told otherwise. */
+const SCHEDULE_TZ = env('TAM_SCHEDULE_TZ');
+
+function localNow(): { date: string; hour: number; minute: number } {
+  const d = new Date();
+  if (!SCHEDULE_TZ) {
+    const p = (n: number) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+      hour: d.getHours(),
+      minute: d.getMinutes(),
+    };
+  }
+  // en-CA gives ISO-ordered date parts, which is the cheapest way to get
+  // 'YYYY-MM-DD' in another zone without pulling in a date library.
+  const [date, time] = new Intl.DateTimeFormat('en-CA', {
+    timeZone: SCHEDULE_TZ,
+    hour12: false,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit',
+  })
+    .format(d)
+    .split(', ');
+  const [hh, mm] = (time ?? '00:00').split(':');
+  return { date: date ?? '', hour: Number(hh), minute: Number(mm) };
+}
+
+/**
+ * Fire `fn` once a day at hour:minute.
+ *
+ * Two things this has to get right, and the minute-equality version got both
+ * wrong. First, the promise: an unawaited async callback inside a timer is an
+ * unhandled rejection, and one `channel_not_found` from a deactivated user in
+ * STANDUP_USERS took the whole bot down — Bolt's error handling does not reach
+ * a timer. Second, the clock: setInterval's delay is a floor, not a ceiling, so
+ * a laptop sleeping through :45 or one slow tick meant the day's digest never
+ * fired and said nothing about it. Fire on "we are past the time and have not run
+ * today" instead, which is late rather than missing, and cannot double-fire.
+ */
+function scheduleDaily(name: string, hour: number, minute: number, fn: () => Promise<void>) {
+  const boot = localNow();
+  // Booting after the time is not a missed run to catch up on — starting the bot
+  // in the evening must not post this morning's digest. Only a tick lost inside a
+  // running process is recovered.
+  let lastRun = boot.hour * 60 + boot.minute >= hour * 60 + minute ? boot.date : '';
+  let running = false;
+
   const tick = () => {
-    const now = new Date();
-    if (now.getHours() === hour && now.getMinutes() === minute) fn();
+    const now = localNow();
+    const due = now.hour * 60 + now.minute >= hour * 60 + minute;
+    if (!due || lastRun === now.date || running) return;
+    lastRun = now.date;
+    running = true;
+    const late = now.hour * 60 + now.minute - (hour * 60 + minute);
+    console.log(`⏰ ${name} — ${now.date} ${now.hour}:${String(now.minute).padStart(2, '0')}${late ? ` (ช้า ${late} นาที)` : ''}`);
+    void fn()
+      .catch((err) => console.error(`⏰ ${name} ล้ม —`, err))
+      .finally(() => {
+        running = false;
+      });
   };
+
   setInterval(tick, 60_000);
+  console.log(
+    `⏰ ตั้ง ${name} แล้ว (${SCHEDULE_TZ || 'เวลาเครื่องนี้'})` +
+      (lastRun ? ' — วันนี้เลยเวลาไปแล้ว เริ่มรอบถัดไปพรุ่งนี้' : ''),
+  );
+}
+
+/**
+ * Re-read before a scheduled post. The cache is filled once at boot, so without
+ * this a bot left running for a week posts boot-day data every morning with only
+ * `built_at` in the footer hinting at it. A failed refresh is not a reason to skip
+ * the post — the footer still names the source and the date it was built.
+ */
+async function refreshForSchedule(name: string) {
+  try {
+    await reload();
+  } catch (err) {
+    console.error(`⏰ ${name} — โหลดข้อมูลใหม่ไม่ได้ ใช้ของเดิมที่มีในหน่วยความจำ:`, err);
+  }
 }
 
 if (env('ENABLE_SCHEDULE') === '1') {
-  scheduleDaily(8, 45, async () => {
+  scheduleDaily('standup DM 08:45', 8, 45, async () => {
+    await refreshForSchedule('standup DM 08:45');
     for (const uid of STANDUP_USERS) {
       const draft = standupFor(uid);
       if (!draft) continue;
-      await app.client.chat.postMessage({
-        channel: uid,
-        text: 'สรุปของคุณเมื่อวาน',
-        blocks: standupDmBlocks(draft) as any,
-      });
+      // One bad user id must not cost everyone else their standup.
+      try {
+        await app.client.chat.postMessage({
+          channel: uid,
+          text: 'สรุปของคุณเมื่อวาน',
+          blocks: standupDmBlocks(draft) as any,
+        });
+      } catch (err) {
+        console.error(`⏰ standup DM ส่งให้ ${uid} ไม่ได้ —`, err);
+      }
     }
   });
-  scheduleDaily(9, 25, async () => {
+  scheduleDaily('digest 09:25', 9, 25, async () => {
     if (!DIGEST_CHANNEL) return;
+    await refreshForSchedule('digest 09:25');
     await app.client.chat.postMessage({
       channel: DIGEST_CHANNEL,
       text: 'Standup digest',
@@ -596,12 +878,25 @@ try {
   const cfg0 = apiConfig();
   console.error(`✕ อ่านจาก pipeline ไม่ได้: ${(err as Error).message}`);
   console.error(`  TAM_API_URL=${cfg0?.baseUrl} — server รันอยู่ไหม?`);
-  console.error('  cd pipeline && python3 -m tam.web.server --records data/processed/combined.json --port 8899');
+  // sample_combined.json, not combined.json: the latter is gitignored, so on a
+  // fresh clone the suggested command would fail on a missing file instead.
+  console.error('  cd pipeline && python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899');
   console.error('  หรือลบ TAM_API_URL ออกถ้าจะรันกับ fixture');
   process.exit(1);
 }
 
-await app.start();
+// Same reason as the env check above: a rejected start printed a raw Bolt stack
+// trace, and 'invalid_auth' twelve frames deep is not what you want to read at 3am.
+try {
+  await app.start();
+  running = true;
+} catch (err) {
+  console.error(`✕ เปิด socket กับ Slack ไม่ได้: ${(err as Error).message}`);
+  console.error('  เช็ค SLACK_BOT_TOKEN (xoxb-) และ SLACK_APP_TOKEN (xapp-, scope connections:write)');
+  console.error('  (ถ้าอยากดู payload เฉย ๆ โดยไม่ต่อ Slack: npm run preview)');
+  process.exit(1);
+}
+
 const l = ledger();
 const cfg = apiConfig();
 const src = ledgerOrigin() === 'pipeline' ? `pipeline ${cfg?.baseUrl}` : 'fixture data/ledger.json';

@@ -19,12 +19,35 @@ export const SOURCE_ICON: Record<Source, string> = {
   notion: '📄',
 };
 
+/**
+ * Icon for a source the pipeline named. The lookup is deliberately not a bare
+ * index: the ingest side already emits `slack_thread`, which is not in `Source`,
+ * and `SOURCE_ICON[that]` renders the literal string "undefined" next to a count
+ * that is otherwise a computed fact. An unknown source gets a neutral bullet —
+ * the count stays visible and nothing is claimed about where it came from.
+ */
+export function sourceIcon(s: string): string {
+  return SOURCE_ICON[s as Source] ?? '•';
+}
+
+/**
+ * The registered slash commands. app.ts builds its command regex from this list
+ * and the Block Kit copy interpolates `CMD`, so renaming the command cannot
+ * leave a footer pointing at a command Slack does not know.
+ */
+export const COMMANDS = ['meowtam', 'mt'] as const;
+export const CMD = `/${COMMANDS[0]}`;
+
 /** Slack hard-limits a section's text to 3000 chars. Truncate on a whitespace
  *  boundary only when one exists — Thai has no word spaces, so a naive
- *  word-boundary cut can lop off most of a Thai sentence. */
+ *  word-boundary cut can lop off most of a Thai sentence.
+ *
+ *  The budget includes the ellipsis. Callers pass Slack's own limit — a modal
+ *  title is exactly 24 — so returning max+1 chars would be a rejected view. */
 export function clamp(s: string, max = 280): string {
   if (s.length <= max) return s;
-  const cut = s.slice(0, max);
+  if (max <= 1) return s.slice(0, max);
+  const cut = s.slice(0, max - 1);
   const sp = cut.lastIndexOf(' ');
   // Only respect the space if it is near the end; otherwise hard-cut.
   return (sp > max * 0.7 ? cut.slice(0, sp) : cut).trimEnd() + '…';
@@ -80,14 +103,14 @@ export function evidenceButton(messageId: string, permalink?: string, label = '�
 }
 
 export function quote(m: Message): string {
-  return `>${SOURCE_ICON[m.source]} *${esc(m.user)}* · ${m.when}\n>${esc(clamp(m.text, 240)).replace(/\n/g, '\n>')}`;
+  return `>${sourceIcon(m.source)} *${esc(m.user)}* · ${m.when}\n>${esc(clamp(m.text, 240)).replace(/\n/g, '\n>')}`;
 }
 
 /** '💬 8 · 🎙 2 · 🎫 3' — counts are computed facts, so they get to look like facts. */
 export function sourceCounts(item: WorkItem): string {
-  return (Object.entries(item.sources) as Array<[Source, number]>)
-    .filter(([, n]) => n > 0)
-    .map(([s, n]) => `${SOURCE_ICON[s]} ${n}`)
+  return Object.entries(item.sources)
+    .filter(([, n]) => (n ?? 0) > 0)
+    .map(([s, n]) => `${sourceIcon(s)} ${n}`)
     .join(' · ');
 }
 

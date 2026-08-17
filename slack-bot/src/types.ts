@@ -71,6 +71,12 @@ export interface WorkItem {
     citations: string[];
     /** True when none of the model's citations survived checking. Warn the reader. */
     unverified: boolean;
+    /**
+     * Which summariser wrote it — 'template' for the rule-based default, otherwise a
+     * model id. Absent when the source did not say, which the card must show as
+     * unknown rather than guess: 'a model wrote this' is itself a claim.
+     */
+    backend?: string;
   };
   timeline: TimelineEvent[];
   messages: Message[];

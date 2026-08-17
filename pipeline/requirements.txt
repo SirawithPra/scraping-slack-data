@@ -23,3 +23,9 @@ python-multipart>=0.0.9,<1
 
 # tam.analysis.summarize with SUMMARIZER=claude only. The default backend needs no network.
 anthropic>=0.69,<1
+
+# The offline test suite: `cd pipeline && python3 -m pytest`. Nothing under
+# tests/ loads an embedding model or opens a socket, so the suite runs in about a
+# second and needs no corpus — the bugs it guards are all in the pure logic
+# (state inference, cache identity, timestamp zones).
+pytest>=8,<10

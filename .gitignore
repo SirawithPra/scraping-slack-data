@@ -22,9 +22,13 @@ node_modules/
 # all of it; none of it belongs in a public repo. The sample directories are the
 # exception: they are committed on purpose so both halves run with no Slack
 # access at all.
-pipeline/data/raw/*.json
-pipeline/data/processed/*.json
-pipeline/data/processed/*.npz
+#
+# Whole directories rather than an extension list, because extension and depth
+# both used to matter and neither should: the docs tell you to drop .vtt/.srt
+# transcripts into raw/ (tam.ingest.meetings:25), and a Slack admin export unzips
+# into per-channel *subdirectories* of dated .json — `raw/*.json` reached neither.
+pipeline/data/raw/**
+pipeline/data/processed/**
 pipeline/data/eval_queries*.json
 pipeline/output/*
 slack-bot/data/raw-slack.json
@@ -34,7 +38,7 @@ slack-bot/data/raw-slack.json
 !pipeline/data/eval_queries.example.json
 
 # --- large artefacts ---------------------------------------------------------
-# Fine-tuned weights run ~450MB, over GitHub's 100MB file limit.
+# Fine-tuned weights run ~465MB, over GitHub's 100MB file limit.
 # Rebuild with: cd pipeline && python3 -m tam.evaluation.finetune
 pipeline/models/
 models/
@@ -45,5 +49,16 @@ tam-proposal.md
 
 # Human ticket-link corrections written by the bot. Real record ids from a real
 # workspace, and rebuildable only by the people who made them — keep local.
-pipeline/data/link_overrides.json
-slack-bot/data/decisions.json
+# The trailing * covers the `.bak` store.ts keeps and the `.tmp` it renames from:
+# same contents, same workspace, and neither was covered before.
+pipeline/data/link_overrides.json*
+slack-bot/data/decisions.json*
+
+# `npm run ledger` writes data/ledger.json from a real Slack export — verbatim
+# message text, user ids, channel names and permalinks. It used to be a *tracked*
+# file, so the documented workflow left real content staged in a public repo and
+# one `git commit -a` from publication. The generated file is now never the
+# tracked one: `data/ledger.fixture.json` is the committed demo ledger, and
+# `npm run seed` copies it here when the file is absent so the offline demo still
+# works on a fresh clone.
+slack-bot/data/ledger.json*

@@ -1,0 +1,235 @@
+{
+  "_recorded": "Verbatim responses from `python3 -m tam.web.server --records data/processed/sample_messages.json --days 3650`, i.e. the committed sample corpus (channel C0SAMPLE01) — no real workspace content. Trimmed to the two topics the mapper needs: one `resolved` with a timeline entry, one `active` with no evidence at all. Re-record with the same command when the wire shape changes.",
+  "/api/digest": {
+    "built_at": "2026-08-17 23:25",
+    "built_at_iso": "2026-08-17T23:25:52+07:00",
+    "last_error": null,
+    "window_days": 3650.0,
+    "summariser": "template",
+    "corpus_size": 18,
+    "topics": [
+      {
+        "key": 0,
+        "item_id": "c2feb83",
+        "label": "api",
+        "state": "resolved",
+        "evidence": "resolved on 2025-08-01 05:21 — cue “พร้อมแล้ว”",
+        "evidence_id": "msg_C0SAMPLE01_1754000500.000500",
+        "participants": [
+          "U01FE",
+          "U02FE",
+          "U03BE",
+          "U04FE"
+        ],
+        "sources": {
+          "slack": 6
+        },
+        "messages": 6,
+        "first": "2025-08-01 05:13",
+        "last": "2025-08-01 06:26",
+        "age_days": 381.8,
+        "summary": {
+          "key": 0,
+          "headline": "api — ปิดแล้ว",
+          "detail": "6 ข้อความ (6 slack) · ผู้เกี่ยวข้อง: U01FE, U02FE, U03BE, U04FE. หลักฐาน: resolved on 2025-08-01 05:21 — cue “พร้อมแล้ว”. ล่าสุด [U03BE] @U01FE ดู MR นี้ด้วย MR !42 sort endpoint",
+          "next_step": "",
+          "citations": [
+            "msg_C0SAMPLE01_1754000560.000600",
+            "msg_C0SAMPLE01_1754001300.000800",
+            "msg_C0SAMPLE01_1754004400.001900"
+          ],
+          "unverified": false,
+          "backend": "template"
+        }
+      },
+      {
+        "key": 3,
+        "item_id": "c59085f",
+        "label": "(no shared anchor)",
+        "state": "active",
+        "evidence": "",
+        "evidence_id": "",
+        "participants": [
+          "U01FE",
+          "U03BE",
+          "U07PM"
+        ],
+        "sources": {
+          "slack": 3
+        },
+        "messages": 3,
+        "first": "2025-08-01 06:00",
+        "last": "2025-08-01 06:20",
+        "age_days": 381.7,
+        "summary": {
+          "key": 3,
+          "headline": "(no shared anchor) — กำลังดำเนินอยู่",
+          "detail": "3 ข้อความ (3 slack) · ผู้เกี่ยวข้อง: U01FE, U03BE, U07PM. ล่าสุด [U07PM] สรุป sprint นี้ ปิด story sorting กับ pagination ได้ ส่วน login token ยกไป sprint หน้า",
+          "next_step": "",
+          "citations": [
+            "msg_C0SAMPLE01_1754002800.001500",
+            "msg_C0SAMPLE01_1754002860.001510",
+            "msg_C0SAMPLE01_1754004000.001800"
+          ],
+          "unverified": false,
+          "backend": "template"
+        }
+      }
+    ]
+  },
+  "/api/item/0": {
+    "topic": {
+      "key": 0,
+      "item_id": "c2feb83",
+      "label": "api",
+      "state": "resolved",
+      "evidence": "resolved on 2025-08-01 05:21 — cue “พร้อมแล้ว”",
+      "evidence_id": "msg_C0SAMPLE01_1754000500.000500",
+      "participants": [
+        "U01FE",
+        "U02FE",
+        "U03BE",
+        "U04FE"
+      ],
+      "sources": {
+        "slack": 6
+      },
+      "messages": 6,
+      "first": "2025-08-01 05:13",
+      "last": "2025-08-01 06:26",
+      "age_days": 381.8
+    },
+    "summary": {
+      "key": 0,
+      "headline": "api — ปิดแล้ว",
+      "detail": "6 ข้อความ (6 slack) · ผู้เกี่ยวข้อง: U01FE, U02FE, U03BE, U04FE. หลักฐาน: resolved on 2025-08-01 05:21 — cue “พร้อมแล้ว”. ล่าสุด [U03BE] @U01FE ดู MR นี้ด้วย MR !42 sort endpoint",
+      "next_step": "",
+      "citations": [
+        "msg_C0SAMPLE01_1754000560.000600",
+        "msg_C0SAMPLE01_1754001300.000800",
+        "msg_C0SAMPLE01_1754004400.001900"
+      ],
+      "unverified": false,
+      "backend": "template"
+    },
+    "timeline": [
+      {
+        "relation": "resolves",
+        "when": "2025-08-01 05:21",
+        "ts": 1754000500.0005,
+        "from_ts": 1754000010.0001,
+        "from_id": "msg_C0SAMPLE01_1754000010.000100",
+        "from_text": "sorting หน้า candidate mock ไว้ก่อน api หลังบ้านยังไม่มา",
+        "from_user": "U01FE",
+        "to_id": "msg_C0SAMPLE01_1754000500.000500",
+        "to_text": "BE sorting API พร้อมแล้ว ลอง integrate ได้เลยที่ /api/v1/candidates?sort=score",
+        "to_user": "U03BE",
+        "evidence": "cue “พร้อมแล้ว”",
+        "also_answers": 0
+      }
+    ],
+    "messages": [
+      {
+        "id": "msg_C0SAMPLE01_1754000010.000100",
+        "when": "2025-08-01 05:13",
+        "user": "U01FE",
+        "source": "slack",
+        "text": "sorting หน้า candidate mock ไว้ก่อน api หลังบ้านยังไม่มา"
+      },
+      {
+        "id": "msg_C0SAMPLE01_1754000420.000450",
+        "when": "2025-08-01 05:20",
+        "user": "U04FE",
+        "source": "slack",
+        "text": "ของหน้าเสร็จละ รอพี่หลังเปิด sort ให้"
+      },
+      {
+        "id": "msg_C0SAMPLE01_1754000500.000500",
+        "when": "2025-08-01 05:21",
+        "user": "U03BE",
+        "source": "slack",
+        "text": "BE sorting API พร้อมแล้ว ลอง integrate ได้เลยที่ /api/v1/candidates?sort=score"
+      },
+      {
+        "id": "msg_C0SAMPLE01_1754000560.000600",
+        "when": "2025-08-01 05:22",
+        "user": "U01FE",
+        "source": "slack",
+        "text": "รับทราบครับ เดี๋ยวต่อ FE ให้"
+      },
+      {
+        "id": "msg_C0SAMPLE01_1754001300.000800",
+        "when": "2025-08-01 05:35",
+        "user": "U02FE",
+        "source": "slack",
+        "text": "ขอ deploy staging รอบใหม่ด้วยครับ build ล่าสุด fix เรื่อง sort แล้ว"
+      },
+      {
+        "id": "msg_C0SAMPLE01_1754004400.001900",
+        "when": "2025-08-01 06:26",
+        "user": "U03BE",
+        "source": "slack",
+        "text": "@U01FE ดู MR นี้ด้วย MR !42 sort endpoint"
+      }
+    ]
+  },
+  "/api/item/3": {
+    "topic": {
+      "key": 3,
+      "item_id": "c59085f",
+      "label": "(no shared anchor)",
+      "state": "active",
+      "evidence": "",
+      "evidence_id": "",
+      "participants": [
+        "U01FE",
+        "U03BE",
+        "U07PM"
+      ],
+      "sources": {
+        "slack": 3
+      },
+      "messages": 3,
+      "first": "2025-08-01 06:00",
+      "last": "2025-08-01 06:20",
+      "age_days": 381.7
+    },
+    "summary": {
+      "key": 3,
+      "headline": "(no shared anchor) — กำลังดำเนินอยู่",
+      "detail": "3 ข้อความ (3 slack) · ผู้เกี่ยวข้อง: U01FE, U03BE, U07PM. ล่าสุด [U07PM] สรุป sprint นี้ ปิด story sorting กับ pagination ได้ ส่วน login token ยกไป sprint หน้า",
+      "next_step": "",
+      "citations": [
+        "msg_C0SAMPLE01_1754002800.001500",
+        "msg_C0SAMPLE01_1754002860.001510",
+        "msg_C0SAMPLE01_1754004000.001800"
+      ],
+      "unverified": false,
+      "backend": "template"
+    },
+    "timeline": [],
+    "messages": [
+      {
+        "id": "msg_C0SAMPLE01_1754002800.001500",
+        "when": "2025-08-01 06:00",
+        "user": "U01FE",
+        "source": "slack",
+        "text": "pagination หน้า candidate list ยังโหลดช้าตอน scroll เยอะ ๆ"
+      },
+      {
+        "id": "msg_C0SAMPLE01_1754002860.001510",
+        "when": "2025-08-01 06:01",
+        "user": "U03BE",
+        "source": "slack",
+        "text": "add index ให้แล้ว query เร็วขึ้น 3 เท่า"
+      },
+      {
+        "id": "msg_C0SAMPLE01_1754004000.001800",
+        "when": "2025-08-01 06:20",
+        "user": "U07PM",
+        "source": "slack",
+        "text": "สรุป sprint นี้ ปิด story sorting กับ pagination ได้ ส่วน login token ยกไป sprint หน้า"
+      }
+    ]
+  }
+}

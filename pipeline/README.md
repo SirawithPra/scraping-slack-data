@@ -57,13 +57,19 @@ what groups and ranks. Leave it unset and the bot runs offline against its own
 fixture exactly as before.
 
 ```bash
-python3 -m tam.web.server --records data/processed/combined.json --port 8899
+# terminal 1
+python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
+# terminal 2
 cd ../slack-bot && TAM_API_URL=http://127.0.0.1:8899 npm run check-api
 ```
 
+(That corpus is the committed sample; build it in two commands under [Try it
+without Slack credentials](#try-it-without-slack-credentials), or point
+`--records` at your own export and drop `--days`.)
+
 `check-api` exercises the whole boot path without Slack in the loop and prints
-what came back. Decisions, drifts and standup drafts stay local, because the
-pipeline has no counterpart for them yet — see [Reading from the
+what came back. Decisions, standup drafts and drift stay on the bot's side,
+because the pipeline has no counterpart for them yet — see [Reading from the
 pipeline](#reading-from-the-pipeline).
 
 ## Layout
@@ -81,15 +87,22 @@ tam/                    the Python package — import it, or run any module with
 ../slack-bot/           the Slack bot, a separate npm project
 ├── src/                app.ts + Block Kit builders per surface
 ├── scripts/            export-slack → raw-slack.json → build-ledger → ledger.json
+├── data/               ledger.fixture.json is committed; ledger.json is generated
+├── tests/              npm test
 └── slack-app-manifest.yaml
 
-data/   raw/ (private) · processed/ (generated) · sample/ (committed, runs offline)
-docs/   design brief, concept doc, API response fixtures
-deploy/ export-app-manifest.json — the read-only Slack app used by the exporter
+data/       raw/ (private) · processed/ (generated) · sample/ (committed, runs offline)
+fixtures/   committed API response fixtures (digest, blockers, item, search)
+models/     fine-tuned weights, generated and gitignored
+tests/      python3 -m pytest, from here
+slack-app-manifest.json   read-only Slack app for the exporter — history scopes only
+
+../docs/    design brief, concept doc, user manual, deck, diagrams
 ```
 
 Nothing sits at the repo root any more. Every module is reachable as
-`python3 -m tam.<area>.<module>`, and `--help` works on all twenty of them.
+`python3 -m tam.<area>.<module>`, `--help` works on all 22 of them, and
+`python3 -m pytest` from `pipeline/` runs the Python tests.
 
 **New here?** [../docs/USER_MANUAL.md](../docs/USER_MANUAL.md) is the install-and-use
 guide in Thai: prerequisites, both Slack apps, every command, and a
@@ -132,7 +145,14 @@ python3 -m tam.ingest.prepare_messages       # clean  -> data/processed/messages
 python3 -m tam.core        # interactive search, top 10
 ```
 
-Then type a Thai / English / mixed message:
+Refreshing later, once meetings have been merged into that corpus, use
+`--merge-into data/processed/messages.json` instead of the plain second line.
+`--out` onto a corpus that holds meeting records refuses rather than overwrite
+them, and names the flag that does what you meant.
+
+Then type a Thai / English / mixed message. This paste is the committed sample
+corpus prepared as in [Try it without Slack
+credentials](#try-it-without-slack-credentials), so it is reproducible:
 
 ```text
 Search:
@@ -140,10 +160,18 @@ Search:
 
 Top Matches:
 
-1. 0.91
-   sorting หน้า candidate mock ไว้ก่อน api หลังบ้านยังไม่มา
-   user=U01FE  time=2025-08-01 03:53  thread=1754000010.000100  id=msg_C0SAMPLE01_1754000010.000100
+1. 0.80
+   FE done, waiting for API
+   user=U05QA  time=2025-08-01 06:06  thread=1754003200.001600  id=msg_C0SAMPLE01_1754003200.001600
 ```
+
+Read the top hit twice: a Thai/English query, and the message it found is
+English. The query's closest *Thai* paraphrase — `sorting หน้า candidate mock
+ไว้ก่อน api หลังบ้านยังไม่มา` — scores **0.31** and sits at the bottom of the
+ranking, on the edge of the ten hits `--top-k` prints by default. 0.80 against
+0.31 for the same meaning in two languages is the cross-lingual limitation
+measured at the bottom of this file, not a rounding error, and it is why the
+pipeline below stops being dense-only.
 
 Useful flags:
 
@@ -163,13 +191,34 @@ A small Thai/English sample export is committed, so the pipeline can be checked
 before any real token exists. Writing to its own path keeps a real export intact:
 
 ```bash
+# Slack sample alone — 18 messages kept of 23, 22 searchable records
 python3 -m tam.ingest.prepare_messages --raw data/sample/slack_messages.sample.json \
                             --out data/processed/sample_messages.json
 python3 -m tam.core --records data/processed/sample_messages.json \
                            -q "FE sorting เสร็จแล้วแต่ยังรอ BE API"
 python3 -m tam.evaluation.evaluate --records data/processed/sample_messages.json \
                     --eval-file data/eval_queries.example.json
+
+# the same sample plus the committed standup transcript — 27 searchable records
+python3 -m tam.ingest.prepare_messages --raw data/sample/slack_messages.sample.json \
+                            --out data/processed/sample_combined.json
+python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt \
+                    --title "Daily standup" --started 2026-08-14T09:30 \
+                    --merge-into data/processed/sample_combined.json
+python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
 ```
+
+Two files rather than one because they answer different questions: the Slack-only
+corpus is what the retrieval numbers below are quoted against, and the combined
+one is what makes a work item span two sources. `--merge-into` needs a corpus that
+already exists, which is why the prepare step is repeated for the second file.
+
+**`--days 3650` is deliberate.** The digest window defaults to 7 days and the
+committed Slack export is dated 2025-08-01, so a narrow window shows only the
+meeting utterances and the digest, blockers and item pages come up nearly empty.
+Widen it for the sample; use `--days 7` on a live export. The wide window is
+honest rather than flattering — every item still prints its real age, so the
+sample's Slack items read as more than a year stale, which they are.
 
 ## Slack token and scopes
 
@@ -214,7 +263,7 @@ Get `SLACK_CHANNEL_ID` from Slack: channel name → About → Channel ID (`C...`
 ## Embedding model
 
 Default: **`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`**
-(384 dimensions, ~470 MB, runs on CPU).
+(384 dimensions, 458 MB, runs on CPU).
 
 Why this one for the first experiment:
 
@@ -285,15 +334,45 @@ python3 -m tam.core --model intfloat/multilingual-e5-base -q "…"
 python3 -m tam.evaluation.evaluate --model sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 ```
 
-Models are cached by Hugging Face under `~/.cache/huggingface/hub` (about 2.6 GB
-for the three below), and each model keeps its own embedding cache under
+Models are cached by Hugging Face under `~/.cache/huggingface/hub` — about 2.6 GB
+for the two the defaults need, `paraphrase-multilingual-MiniLM-L12-v2` (458 MB)
+plus the `bge-reranker-v2-m3` cross-encoder (2.1 GB, and only downloaded the first
+time a run actually reranks). Every further entry in the catalog above adds
+0.5–4.3 GB; the whole catalog measures 13 GB on this machine, so pull them one at
+a time. Each model keeps its own embedding cache under
 `data/processed/`, so switching re-downloads and re-embeds nothing. Set
 `HF_HUB_OFFLINE=1` in `.env` once they are downloaded to skip Hugging Face
 network checks entirely — measured 12.7s → 4.2s per run.
 
+### Which corpus every number below came from
+
+Read this once and the rest of the measurements stop being ambiguous.
+
+Every measured table from here down was produced on **a private 33-message Slack
+export with 4 hand-labelled queries** — `data/processed/messages.json` and
+`data/eval_queries.json`. Both are gitignored, because both are real workspace
+text, so **a clone cannot reproduce these tables**. They are quoted as what this
+machine actually produced and nothing more.
+
+The committed sample is a different, smaller corpus: 18 of 23 messages kept, 22
+searchable records, 27 with the standup transcript merged in. Where the gap
+changes a conclusion — fine-tuning pair counts, the relevance gate — both numbers
+are given inline. Where it only changes digits, the number quoted is the private
+export's.
+
+Measuring anything yourself needs a label file, and only the example is committed
+(`data/eval_queries*.json` is gitignored for the same reason):
+
+```bash
+cp data/eval_queries.example.json data/eval_queries.json   # then edit the ids
+```
+
+The example's ids point at the committed sample, so it works against
+`data/processed/sample_messages.json` with no editing at all.
+
 ### Measured model comparison
 
-Five models on the committed 33-message sample corpus and its 4 labelled queries
+Five models on the private 33-message export and its 4 labelled queries
 (`python3 -m tam.evaluation.compare_models --transforms none abtt whiten --no-csls`):
 
 | Model | dim | nDCG@10 | thread separation | score spread |
@@ -306,8 +385,8 @@ Five models on the committed 33-message sample corpus and its 4 labelled queries
 | **RRF fusion of all five** | — | 0.89 | n/a | n/a |
 
 - *thread separation* = `(mean same-thread − mean cross-thread) / sd(cross-thread)`,
-  over every pair. Computed on 528 pairs rather than 4 queries, so it is the
-  trustworthy column.
+  over every pair. Computed on all 528 pairs of those 33 messages rather than on
+  4 queries, so it is the trustworthy column.
 - *score spread* = sd of every pairwise similarity. It measures how much of the
   0–1 range a model actually uses.
 
@@ -375,8 +454,10 @@ evaluated, and charted.
 
 ```bash
 python3 -m tam.retrieval.retrieve --list-presets
-python3 -m tam.retrieval.retrieve -q "bug ใน Profile module แก้แล้วยัง" --preset hybrid --explain
-python3 -m tam.retrieval.retrieve --related msg_C0DEMOCHAN1_1786630932.425409
+python3 -m tam.retrieval.retrieve --records data/processed/sample_messages.json \
+        -q "BE sorting API พร้อมแล้วหรือยัง" --preset full --explain
+python3 -m tam.retrieval.retrieve --records data/processed/sample_messages.json \
+        --related msg_C0SAMPLE01_1754000010.000100
 ```
 
 | Preset | What it adds | Why |
@@ -393,14 +474,22 @@ python3 -m tam.retrieval.retrieve --related msg_C0DEMOCHAN1_1786630932.425409
 | `related` | + thread / time / author | message → message, not text → message |
 
 `--explain` prints each stage's contribution per hit, plus the BM25 terms and the
-anchors that actually matched:
+anchors that actually matched. The output of the `full` line above:
 
 ```text
-1. 33.000
-   Thanks for the heads up! … I found a bug in the Profile module …
-   why: dense=0.79  bm25=0.80  anchors=1.00  cross=1.00
-   matched terms: module, bug, profile
+1. 18.000
+   BE sorting API พร้อมแล้ว ลอง integrate ได้เลยที่ /api/v1/candidates?sort=score
+   user=U03BE  time=2025-08-01 05:21  thread=1754000500.000500  id=msg_C0SAMPLE01_1754000500.000500
+   why: dense=1.00  bm25=1.00  anchors=1.00  cross=0.99
+   matched terms: พร้อม, be, api, sorting, แล้ว
 ```
+
+The components are per-stage, so a preset only reports the stages it runs: the
+same query under `--preset hybrid` prints `why: dense=1.00  bm25=1.00` and
+nothing else, because `hybrid` is `rrf[dense=1, bm25=1]` — check with
+`--list-presets` before reading a component that cannot be there. The leading
+number is also on a different scale between presets: rerank presets emit
+RRF-with-rerank sums (18.000 here), plain fused presets emit RRF scores (0.033).
 
 **Why each stage exists**
 
@@ -427,15 +516,15 @@ produce *exactly* the same ranking. Changing the metric there is a no-op.
 
 ### Measured preset comparison
 
-`python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full`, on the 33-message
-sample corpus and its 4 hand-labelled queries:
+`python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full`, on the
+private 33-message export and its 4 hand-labelled queries:
 
 | Preset | nDCG@3 | nDCG@10 | MRR | MAP | worst first hit |
 | --- | --- | --- | --- | --- | --- |
-| `dense` | 0.88 | **0.89** | **1.00** | **0.85** | **1** |
-| `hybrid` | **0.93** | 0.86 | **1.00** | 0.83 | **1** |
-| `hybrid-rerank` | 0.81 | 0.85 | 0.83 | **0.85** | 3 |
-| `full` | 0.81 | 0.85 | 0.83 | **0.85** | 3 |
+| `dense` | 0.88 | **0.89** | **1.00** | 0.85 | **1** |
+| `hybrid` | **0.93** | **0.89** | **1.00** | **0.86** | **1** |
+| `hybrid-rerank` | 0.81 | 0.85 | 0.83 | 0.85 | 3 |
+| `full` | 0.81 | 0.85 | 0.83 | 0.85 | 3 |
 
 **Adding BM25 helps at k=3** (0.88 → 0.93), which is the expected result: exact
 terms sharpen the top of the list. **The cross-encoder makes it worse here**, and
@@ -444,8 +533,22 @@ in the top 50, so reranking cannot filter anything, it can only reorder, and one
 query's answer slipping from rank 1 to rank 3 costs more than any gain. Reranking
 earns its keep when there are thousands of candidates to cut down to fifty.
 
-Both statements are one message changing place. Neither is evidence. That is the
-point of the section below.
+Both statements are one message changing place. Neither is evidence — and the
+committed sample, which anyone can run, reverses the second one outright:
+
+```text
+python3 -m tam.evaluation.evaluate --records data/processed/sample_messages.json \
+        --eval-file data/eval_queries.example.json --presets dense hybrid hybrid-rerank full
+
+dense           nDCG@3 0.79   nDCG@10 0.84   MAP 0.80
+hybrid          nDCG@3 0.76   nDCG@10 0.85   MAP 0.79
+hybrid-rerank   nDCG@3 0.84   nDCG@10 0.89   MAP 0.86
+full            nDCG@3 0.84   nDCG@10 0.89   MAP 0.86
+```
+
+Two corpora of about the same size, and they disagree about which preset wins.
+That is what "too small to conclude anything" looks like from the inside, and it
+is the point of the section below.
 
 ## Topics, not top-k
 
@@ -460,7 +563,8 @@ open output/graph.html
 
 [graph.py](tam/analysis/graph.py) builds one sparse graph whose edges combine dense
 similarity, thread membership, temporal proximity and shared anchors, then runs
-Louvain community detection. On the sample corpus:
+Louvain community detection. On the private 33-message export — 33 nodes, 93
+edges:
 
 ```text
   #  size  1-thread  label
@@ -516,14 +620,26 @@ positive pair, and the rest of the batch supplies the negatives
 **thread**, never by message — splitting by message would put one half of a
 conversation in train and the other in test.
 
-It refuses to run below 200 pairs (the sample corpus yields 42). Under that it
-fits noise instead of learning, and that refusal is the point.
+It refuses to run below 200 pairs, and neither small corpus here comes close: the
+committed sample yields 8 pairs from 4 threads, and the private 33-message export
+45 pairs from 5 threads (42 after the held-out split). Under 200 it fits noise
+instead of learning, and that refusal is the point — the measured run below used a
+927-message chat, which is what it takes.
 
 ### Measured: it generalises, but check on held-out threads
 
 On a 927-message Thai work chat (2984 pairs, 2 epochs, batch 32, ~1 min on a
 laptop CPU), against thread separation — the metric computed over *every* pair
-rather than a few queries:
+rather than a few queries.
+
+That chat is committed as `data/sample/synthetic_work_chat.json` (1000 synthetic
+rows, no real workspace content), so this table is reproducible from a clone:
+
+```bash
+python3 -m tam.ingest.prepare_messages --raw data/sample/synthetic_work_chat.json \
+        --out data/processed/syn.json      # Kept 927/1000, 77 threads
+python3 -m tam.evaluation.finetune --records data/processed/syn.json --epochs 2
+```
 
 | | all pairs | held-out threads only |
 | --- | --- | --- |
@@ -546,25 +662,46 @@ whole meeting as one `thread_ts` — and from there every module above works
 untouched: the meeting is clustered, searched, and related to Slack with no new
 code. A meeting is a conversation that happened out loud.
 
-```bash
-python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt --title "Daily standup" \
-                    --started 2026-08-14T09:30 --merge-into data/processed/combined.json
+`--merge-into` merges into a corpus that already exists, so the Slack side is
+prepared first — otherwise the "combined" file is a meeting on its own:
 
-python3 -m tam.analysis.digest    --records data/processed/combined.json --days 3   # what moved
-python3 -m tam.analysis.digest    --records data/processed/combined.json --blockers # what is stuck
-python3 -m tam.analysis.summarize --records data/processed/combined.json --days 3   # the same, in prose
-python3 -m tam.web.server    --records data/processed/combined.json            # the web app
+```bash
+python3 -m tam.ingest.prepare_messages --raw data/sample/slack_messages.sample.json \
+                    --out data/processed/sample_combined.json
+python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt --title "Daily standup" \
+                    --started 2026-08-14T09:30 --merge-into data/processed/sample_combined.json
+
+python3 -m tam.analysis.digest    --records data/processed/sample_combined.json --days 3650  # what moved
+python3 -m tam.analysis.digest    --records data/processed/sample_combined.json --blockers   # what is stuck
+python3 -m tam.analysis.summarize --records data/processed/sample_combined.json --days 3650  # in prose
+python3 -m tam.web.server         --records data/processed/sample_combined.json --days 3650  # the web app
 ```
 
-The payoff is that a work item spans both sources. On the sample corpus the
+That corpus is 27 searchable records and produces 5 topics, 1 of them blocked,
+and one work item whose sources are `slack` *and* `meeting` — which is the whole
+claim of this section, reproducible from a clone. (`--days 3` works too, but the
+committed Slack export is a year old, so a 3-day window shows the meeting alone.)
+
+The payoff is that a work item spans both sources. On this machine's larger
+private corpus — the 33-message export with the same transcript merged in — the
 Android Profile bug clusters as **8 Slack messages + 2 meeting utterances**, and
 its timeline reads:
 
 ```text
-2026-08-13 21:22  resolves     [slack]   "I found a bug in the Profile module. I've fixed it…"
-2026-08-14 16:30  follows_up   [meeting] "วันนี้เอาเรื่อง Profile module ก่อน … ตอนนี้สถานะเป็นยังไง"
-2026-08-14 16:30  resolves     [meeting] "ผม debug แล้วครับ … fix เสร็จแล้ว รอ patch ขึ้น release"
+c30a929 · #2 profile, android, service cloud   [resolved]
+resolved on 2026-08-14 16:30 — cue "เสร็จแล้ว"
+
+  2026-08-13 21:22  resolves   [slack]   "…I found a bug in the Profile module…"
+  2026-08-14 16:30  resolves   [meeting] "ผม debug แล้วครับ … fix เสร็จแล้ว รอ patch ขึ้น release"
 ```
+
+Both rows are `resolves`, and that is deliberate. An earlier version of this paste
+showed a `follows_up` chase between them, on the words "ตอนนี้สถานะเป็นยังไง". The
+cue list behind it was bare high-frequency words — `still`, `status`, `eta`, Thai
+`ยังไง` ("how") — which typed ordinary narration as a status chase; every
+`follows_up` this corpus produced came from one standup transcript. The cues are
+now chase phrases with a 48-character window, and this corpus produces none. Fewer
+rows that are all true beats more rows where one is invented.
 
 **One tuning note that came out of this.** A Slack thread is *one* topic — people
 open a new thread for a new subject. A meeting is deliberately *several*: one
@@ -601,23 +738,32 @@ computed digest — the HTML is generated in Python, so there is no build step, 
 `node_modules`, and no separate frontend to keep in sync.
 
 ```bash
-python3 -m tam.web.server --records data/processed/combined.json --port 8899
+python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
 ```
 
 It prints what it built before it serves anything, which is the fastest way to
-tell whether your corpus is actually loaded:
+tell whether your corpus is actually loaded. On the committed sample:
 
 ```text
-INFO Building index from data/processed/combined.json
-INFO Reused 42 cached embedding(s) from data/processed/embeddings_….npz
-INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template
+INFO Building index from data/processed/sample_combined.json
+INFO Reused 27 cached embedding(s) from data/processed/embeddings_….npz
+INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template
 ```
+
+It also prints the token every write route needs (see `POST /api/reindex` below);
+set `TAM_ADMIN_TOKEN` to keep the same one across restarts.
+
+The bind is loopback only. `--host` with anything non-loopback refuses to start
+unless you add `--expose`, and `--expose` refuses without `TAM_ADMIN_TOKEN` set —
+`/upload` and `/api/reindex` write the corpus, so reaching them from the network
+should be a decision, and the token that guards them should be one you chose
+rather than one printed at startup.
 
 | Page | Shows |
 | --- | --- |
 | `/` | The digest: what moved, per work item, most recent first |
 | `/blockers` | Only what is stuck, with the message that proves it |
-| `/item/{key}` | One work item — full timeline across Slack and meetings |
+| `/item/{key}` | One work item — full timeline across Slack and meetings. `{key}` is the stable `item_id` (a ticket key, or `c30a929`); the cluster rank still resolves but is not stable across rebuilds |
 | `/search` | Ground a note: paste a sentence, get the messages behind it |
 | `/upload` | Drop a `.vtt` / `.srt` transcript and merge it into the corpus |
 
@@ -627,9 +773,16 @@ without scraping HTML:
 ```bash
 curl localhost:8899/api/digest          # every work item, with evidence ids
 curl localhost:8899/api/blockers
-curl localhost:8899/api/item/1
+curl localhost:8899/api/item/c30a929    # {key} is the stable item_id from /api/digest
+curl localhost:8899/api/item/1          # the cluster rank still works, but names a
+                                        # different item after the next rebuild
 curl "localhost:8899/api/search?q=Android&k=10"
-curl -X POST localhost:8899/api/reindex # re-read records + rebuild, no restart
+curl "localhost:8899/api/search?q=Android&k=1&preset=dense"   # raw cosine, the only calibrated number
+curl localhost:8899/api/health
+
+# the one write route: re-read records + rebuild, no restart. It needs the token
+# the server printed at startup, because it changes what everyone else is reading.
+curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" localhost:8899/api/reindex
 ```
 
 Startup cost is embedding the corpus. It reuses `data/processed/embeddings_*.npz`
@@ -647,10 +800,15 @@ python3 -m tam.ingest.export_slack
 python3 -m tam.ingest.prepare_messages
 python3 -m tam.web.server --records data/processed/messages.json
 
-# Slack + meetings in one corpus, which is what the digest is for
+# Slack + meetings in one corpus, which is what the digest is for. The meeting
+# merges into the file prepare_messages just wrote — --merge-into needs it to exist.
 python3 -m tam.ingest.meetings --transcript standup.vtt --title "Daily standup" \
-                    --started 2026-08-14T09:30 --merge-into data/processed/combined.json
-python3 -m tam.web.server --records data/processed/combined.json
+                    --started 2026-08-14T09:30 --merge-into data/processed/messages.json
+python3 -m tam.web.server --records data/processed/messages.json
+
+# Every Slack refresh after that merges too, or it would drop the meetings:
+python3 -m tam.ingest.export_slack
+python3 -m tam.ingest.prepare_messages --merge-into data/processed/messages.json
 ```
 
 With no Slack access at all, the committed sample runs the whole thing — see
@@ -684,7 +842,7 @@ later, so do not hand-configure them.
 | `/meowtam blocked` | Only what is stuck |
 | `/meowtam digest` | The standup digest, on demand |
 | `/meowtam recall <ข้อความ>` | Search, including Thai, plus the decision chain behind a topic |
-| `/meowtam PROJ-1` | One work item by ticket key |
+| `/meowtam MOB-142` | One work item by key — `MOB-142` exists in the committed ledger; with `TAM_API_URL` set the keys are `TAM-0`…`TAM-4` |
 | `/meowtam @someone` | What that person is on |
 | Message shortcut **ผูกกับ ticket** | Attach any message to a work item |
 | Message shortcut **บันทึกเป็นการตัดสินใจ** | File it in the decision log, findable via `recall` |
@@ -716,7 +874,7 @@ item is, and the one the team sees is then a coin flip. `TAM_API_URL` makes the
 Python side the only owner of that definition:
 
 ```bash
-python3 -m tam.web.server --records data/processed/combined.json --port 8899
+python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
 cd ../slack-bot
 TAM_API_URL=http://127.0.0.1:8899 npm run check-api    # prove it, no Slack needed
 TAM_API_URL=http://127.0.0.1:8899 npm start
@@ -725,23 +883,35 @@ TAM_API_URL=http://127.0.0.1:8899 npm start
 The bot then prints its source at boot and on `/meowtam reload`, so nobody has to
 guess which half answered.
 
-| Comes from the API | Stays local |
+| Comes from the API | Filled in on the bot's side |
 | --- | --- |
 | work items, states, evidence, ages | decisions and their supersession chains |
-| timelines, messages, summaries | drift detections and proposed diffs |
-| recall (embeddings + BM25 + signals) | standup drafts |
+| timelines, messages, summaries | standup drafts |
+| recall (embeddings + BM25 + signals) | drift detections and proposed diffs |
 
-The right-hand column has no counterpart in the pipeline yet. Emptying it would
-have deleted working features, so it is carried over from `data/ledger.json`
-rather than silently dropped.
+The right-hand column has no counterpart in the pipeline yet, and each of the
+three is filled from a different place — none of them from the fixture:
+
+- **decisions** are read from the append-only file people write through the
+  message shortcut (`TAM_DECISIONS_PATH`, default `data/decisions.json`), merged
+  with any the ledger already carried. On a fresh clone the list is empty until
+  somebody files one; `check-api` prints the count.
+- **standup drafts** are *computed* from the items in hand, so the 08:45 DM and
+  the 09:25 digest cannot disagree about the same work item.
+- **drift** has no live source at all — it needs a ticket system to compare Slack
+  against, and nothing is connected, so it is empty. The fixture's example loads
+  only under `DEMO_FIXTURES=1`, and the renderer says on screen that it is one.
 
 Two translations happen in [tam-api.ts](../slack-bot/src/tam-api.ts), and both
 are worth knowing about because they are the bot adding something the pipeline
 did not say:
 
-- **`stalled`** does not exist upstream — the pipeline has `active`, `blocked`,
-  `resolved`. An active item quiet for longer than `TAM_STALE_DAYS` is rendered
-  stalled.
+- **The state names differ.** The pipeline has `active`, `blocked`, `resolved`;
+  the board has `blocked`, `stalled`, `moving`, `done`, in that order. The mapping
+  is `blocked → blocked`, `resolved → done`, `active → moving`, and `active` whose
+  last activity is older than `TAM_STALE_DAYS` → `stalled`. Only `stalled` is new
+  information; the other two are renames, which is why `/api/digest` and the board
+  can look like they disagree when they do not.
 - **Evidence for an active item.** The pipeline only writes an evidence sentence
   for a state *change*. Rather than render a blank claim, active items are
   anchored on their newest message, which keeps the "every claim is clickable"
@@ -754,8 +924,11 @@ store them. Meeting utterances have no Slack message and correctly get none.
 ## Evaluation
 
 ```bash
-cp data/eval_queries.example.json data/eval_queries.json   # then edit the ids
-python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full
+# evaluate defaults to data/eval_queries.json, which is gitignored — copy the
+# committed example, whose ids already match the committed sample:
+cp data/eval_queries.example.json data/eval_queries.json
+python3 -m tam.evaluation.evaluate --records data/processed/sample_messages.json \
+        --presets dense hybrid hybrid-rerank full
 python3 -m tam.evaluation.evaluate --eval-file data/eval_queries.weak.json --per-query
 ```
 
@@ -788,7 +961,9 @@ python3 -m tam.evaluation.evaluate --eval-file data/eval_queries.weak.json --pre
 [weak_labels.py](tam/evaluation/weak_labels.py) takes the labels Slack already contains: one
 message from a thread becomes the query, its thread-mates become the relevant
 set, and the message itself is excluded from its own ranking. It scales with the
-export and regenerates whenever the corpus does.
+export and regenerates whenever the corpus does — which is also its limit: a small
+export has few threads, so it produces few cases and `evaluate.py` still warns that
+there are too few. The remedy is a larger export, not another pass of this tool.
 
 It measures "given one message, can the pipeline find the rest of its
 conversation" — a proxy, easier than a real query in vocabulary and harder in
@@ -831,7 +1006,10 @@ open output/report_th.html
 It shows one real search with each hit marked ✓ / ○ against the labels, a
 found-vs-missed bar per query, and how much deeper results help. Note it counts
 **micro** (total found ÷ total labelled) while `evaluate.py` reports the **macro**
-mean of per-query recall, so the two differ slightly on the same run (75% vs 0.77).
+mean of per-query recall, so the two differ on the same run: on the private
+33-message export `report_th` renders `เจอข้อความที่ควรเจอ 16 จาก 19` (84%) where
+`evaluate --presets dense` reports R@10 0.88. Same hits, two averages — a query
+with 8 labels pulls the micro figure around and the macro one not at all.
 
 ## Files
 
@@ -863,7 +1041,8 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
 | **Reports** | |
 | [visualize.py](tam/report/visualize.py) | Plotly HTML report of a search run, into `output/` |
 | [report_th.py](tam/report/report_th.py) | Plain-Thai version of the results, for non-ML readers |
-| `data/sample/` | Committed Thai/English sample export for testing without Slack |
+| `data/sample/slack_messages.sample.json` · `standup.vtt` | Committed Thai/English sample export and transcript — the offline quickstart |
+| `data/sample/synthetic_work_chat.json` | 1000 synthetic rows (927 kept, 77 threads) — the only committed corpus big enough for fine-tuning's 200-pair floor |
 | **Slack bot (TypeScript)** | |
 | [app.ts](../slack-bot/src/app.ts) | Bolt app: slash commands, shortcuts, modals, scheduled digest |
 | [src/blocks/](../slack-bot/src/blocks/) | Block Kit builders per surface (digest, item card, drift, recall) |
@@ -872,20 +1051,32 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
 | [slack-app-manifest.yaml](../slack-bot/slack-app-manifest.yaml) | Every scope, command and shortcut in one paste |
 | **Config** | |
 | [.env.example](.env.example) | Every variable the Python side reads, and what it costs you |
-| [../slack-bot/.env.example](../slack-bot/.env.example) | The eight the bot reads |
+| [../slack-bot/.env.example](../slack-bot/.env.example) | Every variable the bot reads, and what each one changes |
 | [slack-app-manifest.json](slack-app-manifest.json) | Read-only Slack app for the exporter — history scopes only |
 
 ## Known limitations
 
 - **Recall's relevance gate depends on the served model.** The hybrid score is
-  rank-derived (RRF), so it cannot express "nothing matched" — measured here, a
-  nonsense query scores 0.0301 and a good one 0.0306. Recall therefore gates on a
-  raw cosine from the `dense` preset, and that only works if the model puts
-  gibberish far from the corpus. `paraphrase-multilingual-MiniLM` scores
-  nonsense at 0.375 against 0.72 for a real query; `models/syn_finetuned` scores
-  it at **0.743**, above a genuine English query, so with that model no threshold
-  separates them. `npm run check-api` reports this. It is a property of the
-  model, not of the wiring.
+  rank-derived (RRF), so it cannot express "nothing matched" *at all*: the top hit
+  scores `1/61 + 1/61 = 0.0328` for a real question and for
+  `qqqzzzxxx wvwvwv jjjkkk zzzqqq` alike, because rank 1 in both stages is rank 1
+  in both stages whatever the query was. Recall therefore gates on a raw cosine
+  from the `dense` preset (`/api/search?preset=dense&k=1`), and that only works if
+  the model puts gibberish far from the corpus. Measured against the same
+  gibberish string `check-api` uses, on the 42-record Slack+meeting corpus, gate at
+  its default `TAM_MIN_COSINE=0.45`:
+
+  | model | gibberish | `Android Profile bug fixed?` | separable at 0.45 |
+  | --- | --- | --- | --- |
+  | `paraphrase-multilingual-MiniLM-L12-v2` | 0.388 | 0.847 | yes |
+  | `models/syn_finetuned` | **0.738** | 0.838 | no |
+
+  The fine-tuned model pulled everything together, gibberish included: 0.10 apart
+  with the floor below both, so no threshold survives. The margin is also
+  corpus-dependent — on the 27-record committed sample even MiniLM scores the
+  gibberish 0.481 and `check-api` fails the calibration step on purpose. It is a
+  property of the served model and the corpus, not of the wiring, and the fix is a
+  better model, never a higher `TAM_MIN_COSINE`.
 - **Brute-force search.** Every query scores every record with a NumPy dot
   product. Fine for thousands of messages, not for millions — that is what a
   vector database would be for later.
@@ -910,10 +1101,12 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
 - **Cosine scores are not calibrated.** 0.6 in one channel is not comparable to
   0.6 in another; treat the ranking as the signal, not the absolute number.
 - **The corpus and the label set are both too small to conclude anything about
-  models.** 33 messages, 4 labelled queries. Every pipeline lands within noise of
-  every other on nDCG, and the space transforms are actively degenerate at this
-  size. Nothing in the measured tables above should be quoted as a general
-  result; they are quoted here as what this machine actually produced.
+  models.** 33 messages and 4 labelled queries in the private export; 18 messages
+  and the same 4 in the committed sample. Every pipeline lands within noise of
+  every other on nDCG, the space transforms are actively degenerate at this size,
+  and the two corpora do not even agree on which preset wins. Nothing in the
+  measured tables above should be quoted as a general result; they are quoted here
+  as what this machine actually produced, on the corpus each table names.
 - **On short Thai chat messages the model matches register, not topic.** This is
   the biggest finding from running on a real Thai dev channel (53 messages).
   Same-thread pairs scored mean 0.275 / median 0.248; different-thread pairs
@@ -932,10 +1125,14 @@ mean of per-query recall, so the two differ slightly on the same run (75% vs 0.7
   head, not in text. No embedding can retrieve them from a topical query; they were
   deliberately left out of the labelled sets.
 - **Cross-lingual pairs score lower than same-language pairs.** Measured on the
-  sample data: the query `FE sorting เสร็จแล้วแต่ยังรอ BE API` scored the English
-  `FE done, waiting for API` at 0.80, but its closest Thai paraphrase only 0.31.
+  committed sample, and the paste under [Run](#run) is this: the query
+  `FE sorting เสร็จแล้วแต่ยังรอ BE API` scored the English `FE done, waiting for
+  API` at 0.80 and put it first, while its closest Thai paraphrase scored 0.31 and
+  landed last — barely inside the default top 10.
   Retrieval across languages works, yet an English near-match can outrank a Thai
   exact-match. If the real data is Thai-heavy, compare
   `paraphrase-multilingual-mpnet-base-v2` with `evaluate.py` before trusting the order.
 - **Single channel per export.** Re-running overwrites
-  `data/raw/slack_messages.json`; there is no incremental/merge mode yet.
+  `data/raw/slack_messages.json` — the *export* has no incremental mode. The
+  *prepare* step does: `prepare_messages --merge-into` unions by record id, and
+  plain `--out` now refuses rather than overwrite a corpus holding meeting records.

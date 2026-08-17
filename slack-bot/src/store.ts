@@ -17,7 +17,7 @@
  * state, not a bug.
  */
 
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Decision, Source } from './types.js';
@@ -37,20 +37,46 @@ export function decisionsPath(): string {
   return resolve(here, '../data/decisions.json');
 }
 
-function readJson<T>(path: string, fallback: T): T {
-  if (!existsSync(path)) return fallback;
+/**
+ * A store that cannot be parsed is not an empty store.
+ *
+ * Reading it as empty was safe on a display path and destructive on a write path:
+ * the next `saveOverride` wrote back the "empty" list it had just read, deleting
+ * every prior correction, and reported success — 'เขียนลง … แล้ว (1 รายการ)'. The
+ * two paths need different answers, so the caller says which it is.
+ */
+export class CorruptStoreError extends Error {
+  constructor(readonly path: string, cause: Error) {
+    super(`${path} อ่านไม่ได้ (${cause.message}) — ไฟล์ถูกแก้มือหรือเขียนค้างไว้`);
+    this.name = 'CorruptStoreError';
+  }
+}
+
+function readJson<T>(path: string, fallback: T, strict = false): T {
+  if (!existsSync(path)) return fallback; // absent really is empty
   try {
     return JSON.parse(readFileSync(path, 'utf8')) as T;
   } catch (err) {
-    // A corrupt store must not take the bot down, but it must be visible.
+    if (strict) throw new CorruptStoreError(path, err as Error);
+    // A corrupt store must not take a *rendering* path down, but it must be visible.
     console.error(`⚠  อ่าน ${path} ไม่ได้ (${(err as Error).message}) — ถือว่าว่าง`);
     return fallback;
   }
 }
 
+/**
+ * Write via temp file + rename, keeping the previous contents as `.bak`.
+ *
+ * `renameSync` inside one directory is atomic, so a crash or a full disk leaves
+ * either the old file or the new one — never the truncated half that the
+ * pipeline's `load_overrides` would then choke on mid-read.
+ */
 function writeJson(path: string, value: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
-  writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  const tmp = `${path}.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+  if (existsSync(path)) copyFileSync(path, `${path}.bak`);
+  renameSync(tmp, path);
 }
 
 // ---------------------------------------------------------------------------
@@ -65,8 +91,8 @@ export interface LinkOverride {
   at: string;
 }
 
-export function readOverrides(): LinkOverride[] {
-  const raw = readJson<unknown>(overridesPath(), []);
+export function readOverrides(strict = false): LinkOverride[] {
+  const raw = readJson<unknown>(overridesPath(), [], strict);
   if (Array.isArray(raw)) return raw as LinkOverride[];
   // Also tolerate the plain {record_id: key} map the linker's CLI writes.
   return Object.entries(raw as Record<string, string>).map(([record_id, key]) => ({
@@ -77,14 +103,49 @@ export function readOverrides(): LinkOverride[] {
   }));
 }
 
+/** A ticket identity as the linker defines it — `TICKET_PATTERN`, prefix + number. */
+const TICKET_KEY = /^[A-Z][A-Z0-9]{1,9}-\d+$/;
+/** The synthetic key tam-api.ts mints for a pipeline topic: the cluster's label. */
+const TOPIC_KEY = /^TAM-(\d+)$/;
+
+/**
+ * Translate a work item key into the namespace the linker actually keys on.
+ *
+ * `linker.py` assigns `ticket:REV-1421` and `cluster:7`, and `Link.ticket` is
+ * `key.split(":")[1] if key.startswith("ticket:")`. A bare `MOB-142` written here
+ * matched neither, so the override tier attached the message to a work item of
+ * one with no ticket — the human's correction was stored, honoured, and pointed
+ * nowhere. A pipeline `TAM-3` is the digest's topic key, which *is* the community
+ * label the cluster tier uses, so it maps to `cluster:3`.
+ *
+ * Anything else throws rather than being written: the linker would ignore it, and
+ * telling someone their correction is now the top tier when it is not is the
+ * fake-confirmation bug this file was written to end.
+ */
+export function linkerKey(key: string): string {
+  const k = key.trim();
+  if (!k) return ''; // the linker's documented "unlink this message"
+  if (k.includes(':')) return k; // already namespaced (hand-edited or a re-save)
+  const topic = TOPIC_KEY.exec(k.toUpperCase());
+  if (topic) return `cluster:${topic[1]}`;
+  if (TICKET_KEY.test(k.toUpperCase())) return `ticket:${k.toUpperCase()}`;
+  throw new Error(
+    `“${k}” ไม่ใช่ทั้ง ticket key และ topic key ของ pipeline — linker จะไม่รู้จัก key นี้`,
+  );
+}
+
 /**
  * Record a human's correction. Last write wins for a given record, so changing
  * your mind replaces rather than appends a contradiction the linker would have
  * to arbitrate.
+ *
+ * Reads strictly: a store that cannot be parsed must abort the write, because the
+ * alternative is overwriting corrections nobody can get back.
  */
 export function saveOverride(recordId: string, key: string, by: string, at: string): number {
-  const kept = readOverrides().filter((o) => o.record_id !== recordId);
-  kept.push({ record_id: recordId, key, by, at });
+  const namespaced = linkerKey(key);
+  const kept = readOverrides(true).filter((o) => o.record_id !== recordId);
+  kept.push({ record_id: recordId, key: namespaced, by, at });
   writeJson(overridesPath(), kept);
   return kept.length;
 }
@@ -93,8 +154,8 @@ export function saveOverride(recordId: string, key: string, by: string, at: stri
 // decisions
 // ---------------------------------------------------------------------------
 
-export function readDecisions(): Decision[] {
-  return readJson<Decision[]>(decisionsPath(), []);
+export function readDecisions(strict = false): Decision[] {
+  return readJson<Decision[]>(decisionsPath(), [], strict);
 }
 
 export interface NewDecision {
@@ -105,6 +166,16 @@ export interface NewDecision {
   evidence_id: string;
   /** Set when this decision replaces an earlier one, driving the recall chain. */
   supersedes?: string;
+  /**
+   * The record being superseded, when the caller found it outside this file.
+   *
+   * The chain is stored on the *prior* decision (`superseded_by`), and the list a
+   * caller picks from is the merged one — the generated ledger's decisions plus
+   * this file's. A prior that exists only in the ledger has nowhere to keep the
+   * link, so pass it here and it is carried into the store verbatim; without it
+   * the supersession a human just stated cannot be persisted at all.
+   */
+  supersedes_record?: Decision;
   related_items?: string[];
 }
 
@@ -113,9 +184,12 @@ export interface NewDecision {
  * directions so `decisionChain` can walk it. Supersession is the whole point of
  * the decision log — "we said X in May, Y in August" is only answerable if the
  * link is stored, not inferred later.
+ *
+ * Reads strictly, for the same reason `saveOverride` does: rewriting a file we
+ * could not read is how a decision log loses its history.
  */
 export function saveDecision(input: NewDecision): Decision {
-  const all = readDecisions();
+  const all = readDecisions(true);
   const id = `dec_${input.evidence_id.replace(/[^\w.-]/g, '_')}`;
 
   const decision: Decision = {
@@ -130,8 +204,20 @@ export function saveDecision(input: NewDecision): Decision {
 
   const kept = all.filter((d) => d.id !== id);
   if (input.supersedes) {
-    const prior = kept.find((d) => d.id === input.supersedes);
+    let prior = kept.find((d) => d.id === input.supersedes);
+    if (!prior && input.supersedes_record?.id === input.supersedes) {
+      prior = { ...input.supersedes_record };
+      kept.push(prior);
+    }
     if (prior) prior.superseded_by = id;
+    else {
+      // Saying "we said X in May, Y in August" and storing only August is the
+      // half-write this file exists to prevent, so it is at least reported.
+      console.error(
+        `⚠  ไม่มี decision ${input.supersedes} ใน ${decisionsPath()} — ` +
+          'บันทึก decision ใหม่แล้ว แต่ยังผูกเป็น chain ไม่ได้ (ส่ง supersedes_record มาด้วยถ้ามี)',
+      );
+    }
   }
   kept.push(decision);
   writeJson(decisionsPath(), kept);

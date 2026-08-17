@@ -38,7 +38,7 @@ Repository: <https://github.com/SirawithPra/scraping-slack-data>
 | macOS หรือ Linux | — | คำสั่งในคู่มือใช้ `python3` ไม่ใช่ `python` |
 | Python | 3.10+ | ทดสอบบน 3.10.17 |
 | Node.js | 20+ | ทดสอบบน v24.3.0 — ต้องมีเฉพาะเมื่อจะใช้ Slack bot |
-| พื้นที่ดิสก์ | ~1 GB | โมเดล embedding ~470 MB โหลดครั้งแรกครั้งเดียว |
+| พื้นที่ดิสก์ | ~1 GB | โมเดล embedding 458 MB โหลดครั้งแรกครั้งเดียว · **+2.1 GB** เมื่อใช้ preset ที่มี rerank (`hybrid-rerank`, `full`) เพราะต้องโหลด cross-encoder เพิ่ม |
 | Slack token | ไม่จำเป็น | **ลองได้โดยไม่ต้องมี** — ดูข้อ 4 |
 
 > ระบบไม่ส่งข้อมูลออกนอกเครื่อง โมเดลทุกตัวรันในเครื่อง ยกเว้นกรณีเดียวคือคุณตั้ง
@@ -68,9 +68,10 @@ python3 -m pip install -r requirements.txt
 
 ```bash
 python3 -m tam.retrieval.retrieve --help
+python3 -m pytest                    # ชุดทดสอบฝั่ง Python รันจาก pipeline/
 ```
 
-ถ้าขึ้น help ถือว่าฝั่ง Python พร้อม
+ถ้าขึ้น help และ pytest ผ่านหมด ถือว่าฝั่ง Python พร้อม
 
 ### 3.2 ตั้งค่า
 
@@ -98,7 +99,7 @@ cp .env.example .env          # อยู่ใน pipeline/
 เหมาะกับการตรวจว่าระบบทำงานก่อนไปขอ token
 
 ```bash
-# 1. เตรียมข้อมูลตัวอย่าง
+# 1. เตรียมข้อมูลตัวอย่าง — เก็บ 18 จาก 23 ข้อความ ได้ 22 record
 python3 -m tam.ingest.prepare_messages \
         --raw data/sample/slack_messages.sample.json \
         --out data/processed/sample_messages.json
@@ -107,16 +108,30 @@ python3 -m tam.ingest.prepare_messages \
 python3 -m tam.core --records data/processed/sample_messages.json \
         -q "FE sorting เสร็จแล้วแต่ยังรอ BE API"
 
-# 3. รวมบันทึกการประชุมเข้าไปด้วย
+# 3. สร้าง corpus ที่มีทั้ง Slack และที่ประชุม
+#    --merge-into รวมเข้า "ไฟล์ที่มีอยู่แล้ว" ดังนั้นต้องเตรียมฝั่ง Slack ลงไฟล์นั้นก่อน
+#    ไม่ทำขั้นแรกนี้ ไฟล์จะมีแต่บทประชุมล้วน
+python3 -m tam.ingest.prepare_messages \
+        --raw data/sample/slack_messages.sample.json \
+        --out data/processed/sample_combined.json
 python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt \
         --title "Daily standup" --started 2026-08-14T09:30 \
-        --merge-into data/processed/combined.json
+        --merge-into data/processed/sample_combined.json
 
 # 4. เปิด dashboard
-python3 -m tam.web.server --records data/processed/combined.json --port 8899
+python3 -m tam.web.server --records data/processed/sample_combined.json \
+        --days 3650 --port 8899
 ```
 
-เปิด <http://localhost:8899>
+ก่อนเสิร์ฟ มันจะพิมพ์ `Ready: 27 record(s), 5 topic(s), 1 blocked` แล้วเปิด
+<http://localhost:8899> ได้เลย — หน้า digest มีงาน 5 ชิ้น ติดอยู่ 1 ชิ้น และมีชิ้นหนึ่ง
+ที่มีข้อความทั้งจาก Slack และจากที่ประชุมอยู่ในงานเดียวกัน (ดูคอลัมน์ที่มา) กดเข้าไปดู
+timeline ได้
+
+> **`--days 3650` ไม่ได้พิมพ์ผิด** หน้าต่าง digest ค่า default คือ 7 วัน แต่ไฟล์ตัวอย่าง
+> ฝั่ง Slack ลงวันที่ 2025-08-01 ถ้าใช้ 7 วันจะเห็นแต่บทประชุม หน้า digest/blockers
+> เลยว่างเกือบหมด ตัวอย่างใช้หน้าต่างกว้าง ๆ ข้อมูลจริงใช้ `--days 7`
+> (ระบบยังพิมพ์อายุจริงของแต่ละงานให้เห็นอยู่ ไม่ได้ทำให้ดูสดกว่าความจริง)
 
 ---
 
@@ -159,6 +174,11 @@ python3 -m tam.ingest.export_slack        # → data/raw/slack_messages.json
 python3 -m tam.ingest.prepare_messages    # → data/processed/messages.json
 ```
 
+> **ดึงรอบต่อ ๆ ไป ถ้าเคย merge ประชุมเข้าไปแล้ว** ให้ใช้
+> `python3 -m tam.ingest.prepare_messages --merge-into data/processed/messages.json`
+> เพราะ `--out` เฉย ๆ จะทับไฟล์ทิ้ง — โปรแกรมตรวจเจอว่ามี record ประชุมอยู่แล้วก็จะ
+> ปฏิเสธและบอกให้ใช้ `--merge-into` แทน (ถ้าจะทับจริง ๆ ต้องใส่ `--force` เอง)
+
 > **ถ้าดึงช้ามาก ไม่ใช่บั๊ก** แอปที่สร้างหลัง 29 พ.ค. 2025 และไม่ได้อยู่บน Marketplace
 > ถูกจำกัด `conversations.history` เหลือราว 1 request/นาที (~15 ข้อความ/request)
 > ดึง 200 ข้อความอาจใช้หลายนาที โปรแกรมรอตาม `Retry-After` แล้วไปต่อเอง ปล่อยไว้ได้
@@ -174,16 +194,20 @@ python3 -m tam.web.server --records data/processed/messages.json --port 8899
 ## 6. Dashboard
 
 ```bash
-python3 -m tam.web.server --records data/processed/combined.json --port 8899
+python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
 ```
 
-ก่อนเปิดให้บริการ มันพิมพ์บอกว่าโหลดอะไรได้ — เป็นวิธีเช็คเร็วที่สุดว่าข้อมูลเข้าจริง:
+ก่อนเปิดให้บริการ มันพิมพ์บอกว่าโหลดอะไรได้ — เป็นวิธีเช็คเร็วที่สุดว่าข้อมูลเข้าจริง
+(ตัวเลขข้างล่างคือข้อมูลตัวอย่างจากข้อ 4):
 
 ```text
-INFO Building index from data/processed/combined.json
-INFO Reused 42 cached embedding(s) from data/processed/embeddings_….npz
-INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template
+INFO Building index from data/processed/sample_combined.json
+INFO Reused 27 cached embedding(s) from data/processed/embeddings_….npz
+INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template
 ```
+
+บรรทัดถัดจากนั้นมันพิมพ์ URL ทุกหน้า และ **token สำหรับ route ที่เขียนข้อมูล**
+(`X-TAM-Token`) ตั้ง `TAM_ADMIN_TOKEN` ไว้ถ้าอยากให้ token เดิมอยู่ข้าม restart
 
 ### หน้าจอ
 
@@ -191,7 +215,7 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template
 |---|---|
 | `/` | Digest — งานที่ขยับ เรียงใหม่สุดก่อน |
 | `/blockers` | เฉพาะที่ติด พร้อมข้อความที่เป็นหลักฐาน |
-| `/item/{key}` | งานหนึ่งชิ้น — timeline ข้าม Slack และที่ประชุม |
+| `/item/{key}` | งานหนึ่งชิ้น — timeline ข้าม Slack และที่ประชุม · `{key}` ใช้ `item_id` ที่คงที่ (ticket key หรือ `c30a929`) ส่วนเลข cluster ยังเปิดได้แต่ rebuild แล้วเปลี่ยนความหมาย |
 | `/search` | วางประโยคที่สงสัย ระบบหาข้อความต้นทางให้ |
 | `/upload` | อัปโหลด `.vtt` / `.srt` รวมเข้า corpus |
 
@@ -202,9 +226,13 @@ INFO Ready: 42 record(s), 5 topic(s), 1 blocked, summariser template
 ```bash
 curl localhost:8899/api/digest
 curl localhost:8899/api/blockers
-curl localhost:8899/api/item/1
+curl localhost:8899/api/item/c30a929       # {key} คือ item_id ที่ /api/digest ส่งมา — คงที่ข้าม rebuild
+curl localhost:8899/api/item/1             # เลข cluster ก็ยังใช้ได้ แต่ rebuild แล้วมันจะชี้งานคนละชิ้น
 curl "localhost:8899/api/search?q=Android&k=10"
-curl -X POST localhost:8899/api/reindex    # อ่านข้อมูลใหม่ ไม่ต้อง restart
+curl localhost:8899/api/health
+
+# route เดียวที่เขียนข้อมูล ต้องแนบ token ที่ server พิมพ์ตอน start
+curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" localhost:8899/api/reindex
 ```
 
 > **เปิดครั้งแรกช้า** เพราะต้อง embed ทั้ง corpus ครั้งถัดไปมันใช้ cache ใน
@@ -252,7 +280,7 @@ firewall** บอทต่อออกไปหา Slack เอง รันจ�
 | `/meowtam blocked` | เฉพาะที่ติด |
 | `/meowtam digest` | digest สำหรับ standup |
 | `/meowtam recall <ข้อความ>` | ค้นหา (ไทยได้) พร้อมสายการตัดสินใจของเรื่องนั้น |
-| `/meowtam PROJ-1` | งานชิ้นเดียวตาม ticket key |
+| `/meowtam MOB-142` | งานชิ้นเดียวตาม key — `MOB-142` มีอยู่ใน ledger ตัวอย่าง ถ้าตั้ง `TAM_API_URL` key จะเป็น `TAM-0`…`TAM-4` |
 | `/meowtam @someone` | คนนั้นกำลังทำอะไร |
 | `/meowtam reload` | อ่าน ledger ใหม่ ไม่ต้อง restart |
 
@@ -282,12 +310,15 @@ npm run ledger     # จัดเป็น work item + สถานะ + หล�
 
 ```bash
 npm run typecheck              # ตรวจ type ทั้งโปรเจกต์
+npm test                       # ชุดทดสอบฝั่งบอท
 npm run preview                # เรนเดอร์ทุกหน้าจอออฟไลน์ + ตรวจ Slack limits
 npm run preview -- digest      # ดัมพ์ payload เดียวไปวางใน Block Kit Builder
 ```
 
-`npm run preview` ตรวจทั้ง 8 หน้าจอ (digest, standup, item, board, drift,
-driftModal, recall, recallEmpty) โดยไม่ต่อเน็ต
+`npm run preview` เรนเดอร์ 8 หน้าจอ (digest, standup, item, board, drift,
+driftModal, recall, recallEmpty) บวกเคสที่ยาวสุดของสี่หน้าที่มีลิสต์ (board, standup,
+item, digest) แล้วตรวจว่า
+**ทุก payload ผ่าน Slack limits** โดยไม่ต่อเน็ต ถ้าหน้าไหนเกิน limit มันจะบอกชื่อหน้านั้น
 
 ---
 
@@ -299,7 +330,7 @@ embedding จริง — ตั้ง `TAM_API_URL` ใน `slack-bot/.env`
 ```bash
 # เทอร์มินัลที่ 1
 cd pipeline
-python3 -m tam.web.server --records data/processed/combined.json --port 8899
+python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
 
 # เทอร์มินัลที่ 2
 cd slack-bot
@@ -307,14 +338,40 @@ TAM_API_URL=http://127.0.0.1:8899 npm run check-api   # พิสูจน์ว
 TAM_API_URL=http://127.0.0.1:8899 npm start
 ```
 
-`check-api` ไล่ทั้งเส้นทางที่บอทใช้ตอน boot แล้วพิมพ์ผลออกมา ใช้ตรวจก่อนเดโมได้
+`check-api` ไล่ทั้งเส้นทางที่บอทใช้ตอน boot แล้วพิมพ์ผลออกมา ใช้ตรวจก่อนเดโมได้ —
+work item ทุกชิ้น, หลักฐานและ citation ชี้ข้อความที่มีจริง, permalink สร้างคืนได้กี่ข้อความ
+
+> **ขั้นสุดท้ายของ `check-api` คือ calibration และกับข้อมูลตัวอย่าง 27 record มัน "ไม่ผ่าน"**
+> มันยิง query ขยะสามแบบแล้วพิมพ์ cosine ของแต่ละอันให้เห็น บน corpus ตัวอย่างจะได้
+> ประมาณนี้:
+>
+> ```text
+>   0.481  ✕ ผ่าน gate  "qqqzzzxxx wvwvwv jjjkkk zzzqqq"
+>   0.210  · ถูกกรอง   "zxqv frobnicate wibble plumbus grommet"
+>   0.767  ✕ ผ่าน gate  "ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ"
+>   0.726  · query จริง "Profile module bug บน Android"
+> ```
+>
+> ขยะภาษาไทยได้ 0.767 **สูงกว่า query จริงที่ได้ 0.726** — ไม่มีเกณฑ์ไหนแยกสองอันนี้ได้
+> **นี่ไม่ใช่การติดตั้งพัง** เป็นข้อจำกัดของโมเดลกับ corpus เล็ก (corpus ยิ่งเล็ก เพื่อนบ้าน
+> ที่ใกล้สุดของข้อความขยะยิ่งใกล้ บน corpus 42 record ขยะชุดเดียวกันถูกกรองหมด)
+> ทางแก้คือเปลี่ยนโมเดล **ไม่ใช่ดัน `TAM_MIN_COSINE` ขึ้น** เพื่อกลบอาการ
+>
+> ข้อนี้ **ไม่ทำให้ `check-api` exit 1** เพราะมันวัดคุณสมบัติของโมเดล ไม่ใช่ว่าการต่อสองฝั่ง
+> สำเร็จหรือไม่ — exit code ตอบเฉพาะเรื่องการต่อ ถ้าอยากให้ calibration ทำให้ fail ด้วย
+> (เช่นใน CI บน corpus จริง) ใส่ `--strict-gate`
 
 **ตั้งแล้วจะไม่มี fallback** ถ้า pipeline ตอบไม่ได้ บอทจะไม่สตาร์ตและบอกวิธีแก้ —
 เพราะการแอบเสิร์ฟข้อมูลเก่าที่หน้าตาเหมือนของจริงอันตรายกว่าการไม่สตาร์ต
 
-| มาจาก pipeline | บอทเติมเอง |
+| มาจาก pipeline | บอทเติมเอง (ไม่มีตัวเทียบใน pipeline) |
 |---|---|
-| work item · สถานะ · หลักฐาน · timeline · ข้อความ · ประโยคสรุป · recall | decision (คนกดบันทึก) · standup draft (คำนวณจาก item) · drift (ยังไม่มี) |
+| work item · สถานะ · หลักฐาน · timeline · ข้อความ · ประโยคสรุป · recall | decision — อ่านจากไฟล์ที่คนกดบันทึกไว้จริง (`data/decisions.json`) ว่างจนกว่าจะมีคนกด · standup draft — คำนวณจาก item ที่ได้มา · drift — **ไม่มีแหล่งจริงเลย** ว่างจนกว่าจะต่อ ticket system |
+
+ชื่อสถานะสองฝั่งไม่เหมือนกัน pipeline ใช้ `active` / `blocked` / `resolved`
+บอร์ดของบอทใช้ `blocked` / `stalled` / `moving` / `done` แปลงกันแบบนี้:
+`blocked → blocked`, `resolved → done`, `active → moving` และ `active` ที่เงียบเกิน
+`TAM_STALE_DAYS` → `stalled` มีแค่ `stalled` ที่เป็นข้อมูลใหม่ อีกสองอันเป็นการเปลี่ยนชื่อ
 
 ดูภาพประกอบทั้งหมดได้ที่ [architecture.html](architecture.html)
 
@@ -322,29 +379,36 @@ TAM_API_URL=http://127.0.0.1:8899 npm start
 
 ## 8. คำสั่งที่ใช้บ่อย
 
+คำสั่งข้างล่างใช้ `data/processed/sample_combined.json` จากข้อ 4 เปลี่ยนเป็นไฟล์ของคุณ
+ได้ทุกอัน (แล้วเปลี่ยน `--days 3650` เป็น `--days 3` หรือ `7` ตามจริง)
+
 ```bash
 # ค้นหาแบบอธิบายว่าทำไมได้ผลนี้
-python3 -m tam.retrieval.retrieve -q "bug ใน Profile module แก้แล้วยัง" --explain
+python3 -m tam.retrieval.retrieve --records data/processed/sample_combined.json \
+        -q "BE sorting API พร้อมแล้วหรือยัง" --preset full --explain
 
-# ดูว่ามี preset อะไรให้เลือก
+# ดูว่ามี preset อะไรให้เลือก (แต่ละ preset อธิบายเฉพาะ stage ที่มันรัน)
 python3 -m tam.retrieval.retrieve --list-presets
 
-# งานที่ขยับ / งานที่ติด ใน 3 วันล่าสุด
-python3 -m tam.analysis.digest --records data/processed/combined.json --days 3
-python3 -m tam.analysis.digest --records data/processed/combined.json --blockers
+# งานที่ขยับ / งานที่ติด
+python3 -m tam.analysis.digest --records data/processed/sample_combined.json --days 3650
+python3 -m tam.analysis.digest --records data/processed/sample_combined.json --blockers
 
 # สรุปเป็นภาษาคน (ออฟไลน์)
-python3 -m tam.analysis.summarize --records data/processed/combined.json --days 3
+python3 -m tam.analysis.summarize --records data/processed/sample_combined.json --days 3650
 
-# วัดผลว่า preset ไหนดีกว่า
-python3 -m tam.evaluation.evaluate --presets dense hybrid hybrid-rerank full
+# วัดผลว่า preset ไหนดีกว่า — ต้องมีไฟล์ label, ตัวอย่างที่ commit ไว้ตรงกับข้อมูลตัวอย่าง
+python3 -m tam.evaluation.evaluate --records data/processed/sample_messages.json \
+        --eval-file data/eval_queries.example.json --presets dense hybrid hybrid-rerank full
 
-# รายงานกราฟ / รายงานภาษาไทย
-python3 -m tam.report.visualize
-python3 -m tam.report.report_th
+# รายงานกราฟ / รายงานภาษาไทย → output/report.html, output/report_th.html
+python3 -m tam.report.visualize  --records data/processed/sample_messages.json \
+        --eval-file data/eval_queries.example.json
+python3 -m tam.report.report_th  --records data/processed/sample_messages.json \
+        --eval-file data/eval_queries.example.json
 ```
 
-ทุกโมดูลรับ `--help` ใช้ได้ทั้ง 20 ตัว
+ทุกโมดูลรับ `--help` — ทั้ง 22 ตัว
 
 ---
 
@@ -360,7 +424,11 @@ python3 -m tam.report.report_th
 | เปิด dashboard ครั้งแรกช้า | กำลัง embed corpus ครั้งถัดไปใช้ cache |
 | `ModuleNotFoundError: tam` | ต้องรันจากโฟลเดอร์ `pipeline/` และ activate venv แล้ว |
 | bot ไม่ตอบ slash command | `SLACK_APP_TOKEN` ต้องมี scope `connections:write` |
-| ไม่มีอะไรใน digest | corpus ว่างหรือ `--days` แคบไป ลองเพิ่มเป็น `--days 30` |
+| ไม่มีอะไรใน digest | corpus ว่างหรือ `--days` แคบไป — ข้อมูลตัวอย่างฝั่ง Slack ลงวันที่ 2025-08-01 ต้องใช้ `--days 3650` (`--days 30` ก็ยังไม่เจอ) ข้อมูลจริงใช้ `--days 7` |
+| `/blockers` ว่าง แต่ digest มีงาน | ไม่ใช่บั๊ก — ไม่มีงานไหนติดจริงใน corpus นั้น สถานะมาจาก typed relation ระบบไม่แต่งให้ ข้อมูลตัวอย่างฝั่ง Slack ล้วนไม่มี blocker เลย ต้องรวมบทประชุมเข้าไปตามข้อ 4 |
+| `403` ตอนเรียก `POST /api/reindex` หรือ `/upload` | route ที่เขียนข้อมูลต้องแนบ token ที่ server พิมพ์ตอน start (`X-TAM-Token`) และ `Origin` ต้องเป็น host เดียวกัน |
+| `check-api` ขึ้น `✕ gate ไม่ทำงาน` | คาดไว้แล้วบน corpus ตัวอย่าง — โมเดล/corpus ชุดนั้นไม่แยก query ขยะออกจาก query จริง ดูข้อ 7.6 · ไม่ทำให้ exit 1 · เปลี่ยนโมเดล ไม่ใช่ดัน `TAM_MIN_COSINE` |
+| `--host 0.0.0.0` แล้วไม่ยอมเริ่ม | ตั้งใจ — server bind แค่ loopback ถ้าจะให้เครื่องอื่นเข้าถึงต้องใส่ `--expose` ด้วย เพราะ `/upload` เขียน corpus ได้ และ `--expose` เองก็บังคับให้ตั้ง `TAM_ADMIN_TOKEN` ก่อน เพื่อให้ token ที่แจกเป็นตัวที่คุณเลือกเอง |
 
 ---
 
@@ -371,10 +439,12 @@ python3 -m tam.report.report_th
 | `pipeline/data/raw/` | ข้อมูล export ดิบจาก Slack | **ไม่** |
 | `pipeline/data/processed/` | records + embedding cache ที่สร้างขึ้น | **ไม่** |
 | `pipeline/data/sample/` | ตัวอย่างไทย/อังกฤษ | ขึ้น (ตั้งใจ) |
-| `slack-bot/data/ledger.json` | ledger ตัวอย่าง | ขึ้น (ข้อมูลสังเคราะห์) |
+| `slack-bot/data/ledger.fixture.json` | ledger ตัวอย่าง (ข้อมูลสังเคราะห์) | ขึ้น (ตั้งใจ) |
+| `slack-bot/data/ledger.json` | ledger ที่ `npm run ledger` เขียนจาก export จริง — `npm run seed` คัดลอกจาก fixture ให้ถ้าไฟล์ยังไม่มี | **ไม่** |
 | `slack-bot/data/raw-slack.json` | export จริงของบอท | **ไม่** |
+| `slack-bot/data/decisions.json` | decision ที่คนกดบันทึกไว้ | **ไม่** |
 | `pipeline/.env`, `slack-bot/.env` | token ทั้งหมด | **ไม่** |
-| `pipeline/models/` | โมเดลที่ fine-tune แล้ว (~450 MB) | **ไม่** — เกิน limit GitHub |
+| `pipeline/models/` | โมเดลที่ fine-tune แล้ว (465 MB) | **ไม่** — เกิน limit GitHub |
 | `pipeline/output/` | รายงาน HTML | **ไม่** |
 
 ข้อมูลจริงและ token ทุกชิ้นอยู่แค่ในเครื่อง สิ่งที่อยู่ในรีโปคือโค้ดกับข้อมูลตัวอย่าง
@@ -384,9 +454,19 @@ python3 -m tam.report.report_th
 
 ## 11. ข้อจำกัดที่ควรรู้ก่อนใช้จริง
 
-- **บอทกับ pipeline ยังไม่ได้เชื่อมกัน** สองฝั่งอ่าน Slack เองและตัดสินใจว่า "งานหนึ่งชิ้น"
-  คืออะไรด้วยกฎต่างกัน (ฝั่ง Python cluster embeddings ด้วย Louvain graph ฝั่งบอท match
-  character trigram) ช่องเดียวกันจึงอาจได้ work item ไม่เหมือนกัน — นี่เป็นข้อจำกัดที่ใหญ่ที่สุด
+- **บอทเปลี่ยนชื่อสถานะและเพิ่มสถานะที่ pipeline ไม่มี** ตั้ง `TAM_API_URL` แล้วนิยาม
+  "งานหนึ่งชิ้น" มีเจ้าของเดียวคือฝั่ง Python (ข้อ 7.6) แต่บอร์ดของบอทยังเปลี่ยน
+  `active → moving`, `resolved → done` และเพิ่ม `stalled` ให้งานที่เงียบเกิน
+  `TAM_STALE_DAYS` ดังนั้น `/api/digest` กับบอร์ดจะดูเหมือนไม่ตรงกันได้ทั้งที่ตรงกัน
+  ถ้าไม่ตั้ง `TAM_API_URL` ฝั่งบอทจับกลุ่มด้วย character trigram ของตัวเองซึ่งได้
+  work item ไม่เหมือนฝั่ง Python — โหมดนั้นยังมีอยู่สำหรับเดโมออฟไลน์
+- **decision, standup draft และ drift ยังไม่มีของเทียบใน pipeline** decision อ่านจาก
+  ไฟล์ที่คนกดบันทึกเอง standup draft คำนวณจาก item ที่ได้มา และ **drift ไม่มีแหล่งข้อมูล
+  จริงเลย** ต้องต่อ ticket system ก่อน (ตัวอย่างใน fixture โหลดเฉพาะเมื่อตั้ง
+  `DEMO_FIXTURES=1` และหน้าจอจะติดป้ายบอกว่าเป็นตัวอย่าง)
+- **เกณฑ์ตัดความเกี่ยวข้องดีได้เท่าโมเดลกับ corpus ที่เสิร์ฟ** corpus เล็กทำให้ query ขยะ
+  อยู่ใกล้ข้อความจริงเกินไป บนข้อมูลตัวอย่าง 27 record query ขยะได้ cosine 0.481 เทียบเกณฑ์
+  0.45 คือแยกไม่ออก `npm run check-api` รายงานให้เห็นก่อนขึ้นเวที
 - **ยังไม่แปลง user id เป็นชื่อ** ผลลัพธ์แสดง `U01FE` ไม่ใช่ชื่อจริง ต้องเพิ่ม scope `users:read`
 - **ค้นหาแบบ brute-force** ทุก query คิดคะแนนกับทุก record ไหวระดับหลายพันข้อความ
   ไม่ไหวระดับล้าน
