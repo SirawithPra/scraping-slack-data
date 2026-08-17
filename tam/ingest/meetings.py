@@ -1,15 +1,15 @@
 """Turn a meeting transcript into the same records Slack produces.
 
 The point of this module is how little it does. A meeting is not a second
-pipeline — it is another `source` in the record schema `prepare_messages.py`
+pipeline — it is another `source` in the record schema `tam.ingest.prepare_messages`
 already emits:
 
     {"id": ..., "ts": ..., "user": ..., "text": ..., "thread_ts": ..., "source": ...}
 
 One utterance becomes one record; the whole meeting becomes one `thread_ts`.
 From there every existing module works untouched: graph.py clusters the meeting's
-topics, relations.py finds "this resolves what we discussed in Slack on Tuesday",
-retrieve.py searches Slack and meetings in one ranking. A meeting is just a
+topics, tam.analysis.relations finds "this resolves what we discussed in Slack on Tuesday",
+tam.retrieval.retrieve searches Slack and meetings in one ranking. A meeting is just a
 conversation that happened out loud.
 
 Three transcript shapes are accepted, because that is what the tools export:
@@ -213,7 +213,7 @@ def meeting_slug(title: str, started: datetime) -> str:
 def to_records(
     utterances: Iterable[Utterance], *, title: str, started: datetime, channel_id: str = "meeting"
 ) -> list[dict[str, Any]]:
-    """Records in the exact shape prepare_messages.py emits.
+    """Records in the exact shape tam.ingest.prepare_messages emits.
 
     `thread_ts` is the meeting itself: every utterance shares it, so the whole
     meeting is one conversation to signals.py and one guaranteed-cohesive group

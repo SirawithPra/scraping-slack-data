@@ -1,6 +1,6 @@
 """Export a Slack channel's messages and thread replies to data/raw/slack_messages.json.
 
-Raw message text is stored verbatim; cleaning happens in prepare_messages.py.
+Raw message text is stored verbatim; cleaning happens in tam.ingest.prepare_messages.
 """
 
 from __future__ import annotations

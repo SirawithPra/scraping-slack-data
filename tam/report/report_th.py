@@ -4,7 +4,7 @@
     python3 -m tam.report.report_th --records data/processed/demo_messages.json \
                          --eval-file data/eval_queries.demo.json
 
-ต่างจาก visualize.py ที่รายงานเป็นตัวเลข metric ไฟล์นี้เล่าเป็นภาษาคน:
+ต่างจาก tam.report.visualize ที่รายงานเป็นตัวเลข metric ไฟล์นี้เล่าเป็นภาษาคน:
 แทนที่จะบอก "Recall@10 = 0.70" จะบอกว่า "เจอ 7 จาก 10 ข้อความที่ควรเจอ"
 """
 

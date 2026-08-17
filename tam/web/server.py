@@ -217,7 +217,7 @@ def blockers_page() -> HTMLResponse:
     sections = [
         (
             "งานที่มี relation แบบ blocked_by แล้วยังไม่มี resolves ตามมา — "
-            "คำนวณจาก relations.py ล้วนๆ ไม่ผ่าน LLM",
+            "คำนวณจาก tam.analysis.relations ล้วนๆ ไม่ผ่าน LLM",
             body or "<p class='meta'>ไม่มีอะไรติด</p>",
         )
     ]
@@ -455,7 +455,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--records", type=Path, default=DEFAULT_RECORDS, help=f"Prepared records (default {DEFAULT_RECORDS})")
     parser.add_argument("--days", type=float, default=DEFAULT_WINDOW_DAYS, help=f"Digest window (default {DEFAULT_WINDOW_DAYS})")
     parser.add_argument("--language", default="th", choices=("th", "en"), help="Digest language (default th)")
-    parser.add_argument("--preset", default="hybrid", help=f"Search pipeline preset (default hybrid, see retrieve.py; {DEFAULT_PRESET} adds the reranker)")
+    parser.add_argument("--preset", default="hybrid", help=f"Search pipeline preset (default hybrid, see tam.retrieval.retrieve; {DEFAULT_PRESET} adds the reranker)")
     parser.add_argument("--host", default="127.0.0.1", help="Bind address (default 127.0.0.1)")
     parser.add_argument("--port", type=int, default=8000, help="Port (default 8000)")
     return parser.parse_args()

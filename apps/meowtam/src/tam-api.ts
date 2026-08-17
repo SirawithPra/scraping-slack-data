@@ -323,8 +323,13 @@ export async function fetchLedger(
  * rows, which is exactly the black-box behaviour this product exists to avoid.
  *
  * So: ask `dense` how close the nearest record actually is, and if nothing is
- * close, report nothing. Both calls reuse the server's already-embedded matrix,
- * so the second one costs almost nothing against a local server.
+ * close, report nothing without ranking anything.
+ *
+ * The two calls run in sequence, not in parallel. Issuing them together made the
+ * server load its embedding model twice at once — FastAPI runs sync endpoints in
+ * a threadpool, and on a cold server both requests raced the lazy load — which
+ * doubled peak memory and killed the process. Sequential also means a query that
+ * fails the gate never pays for the ranking call.
  *
  * The gate is only as good as the model. Measured on the sample corpus:
  *
@@ -343,13 +348,12 @@ export async function searchViaApi(
   k: number,
 ): Promise<ApiSearchHit[]> {
   const q = encodeURIComponent(query);
-  const [ranked, nearest] = await Promise.all([
-    get<{ hits: ApiSearchHit[] }>(cfg, `/api/search?q=${q}&k=${k}`),
-    get<{ hits: ApiSearchHit[] }>(cfg, `/api/search?q=${q}&k=1&preset=dense`),
-  ]);
 
+  const nearest = await get<{ hits: ApiSearchHit[] }>(cfg, `/api/search?q=${q}&k=1&preset=dense`);
   const top = nearest.hits?.[0]?.score ?? 0;
   if (top < cfg.minCosine) return [];
+
+  const ranked = await get<{ hits: ApiSearchHit[] }>(cfg, `/api/search?q=${q}&k=${k}`);
   return ranked.hits ?? [];
 }
 

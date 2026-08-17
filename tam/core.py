@@ -27,7 +27,7 @@ log = logging.getLogger("semantic_search")
 def load_records(path: Path, *, include_threads: bool = False) -> list[dict[str, Any]]:
     """Read prepared records; thread-context records are opt-in."""
     if not path.exists():
-        raise SystemExit(f"Missing {path}. Run prepare_messages.py first.")
+        raise SystemExit(f"Missing {path}. Run tam.ingest.prepare_messages first.")
     try:
         records = json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
@@ -37,7 +37,7 @@ def load_records(path: Path, *, include_threads: bool = False) -> list[dict[str,
     if not include_threads:
         records = [record for record in records if record.get("source") != "slack_thread"]
     if not records:
-        raise SystemExit(f"No searchable records in {path}. Re-run prepare_messages.py.")
+        raise SystemExit(f"No searchable records in {path}. Re-run tam.ingest.prepare_messages.")
     return records
 
 

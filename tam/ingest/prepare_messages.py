@@ -1,7 +1,7 @@
 """Flatten a Slack export into searchable records.
 
 Accepts either input format:
-  * export_slack.py output -- parents with a nested "replies" list
+  * tam.ingest.export_slack output -- parents with a nested "replies" list
   * a flat scraped export  -- one row per message, keyed by "message_id"
 
 Produces two kinds of record:
@@ -287,7 +287,7 @@ def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     args = parse_args()
     if not args.raw.exists():
-        raise SystemExit(f"Missing {args.raw}. Run export_slack.py first.")
+        raise SystemExit(f"Missing {args.raw}. Run tam.ingest.export_slack first.")
 
     records = prepare(load_export(args.raw))
     args.out.parent.mkdir(parents=True, exist_ok=True)

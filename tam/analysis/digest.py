@@ -7,7 +7,7 @@ This module answers the standup questions without generating a word of prose:
   their whole history — a bug reported last week and fixed this morning is one
   item, not two.
 * **What is stuck?**  An item whose latest typed relation is ``blocked_by`` and
-  has no ``resolves`` after it. That is a fact derived from relations.py, and the
+  has no ``resolves`` after it. That is a fact derived from tam.analysis.relations, and the
   evidence is a specific message you can open.
 * **Who is on it, and where was it discussed?**  Slack, the meeting, or both.
 
@@ -341,7 +341,7 @@ def main() -> None:
             print(f"     [{tag}] {record.get('user') or '-'}: {' '.join(str(record['text']).split())[:92]}")
 
     print(f"\n{len(digest.blocked)} blocked · {len(digest.resolved)} resolved · {len(digest.topics)} active topics")
-    print("state comes from typed relations (relations.py); nothing here is generated")
+    print("state comes from typed relations (tam.analysis.relations); nothing here is generated")
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@
  */
 
 import 'dotenv/config';
-import { apiConfig, ping } from '../src/tam-api.js';
+import { apiConfig, hitToMessage, ping, searchViaApi } from '../src/tam-api.js';
 import { hydrate, ledgerOrigin, sortedItems } from '../src/data.js';
 import { searchBest } from '../src/search.js';
 
@@ -116,7 +116,26 @@ console.log(
  */
 const NONSENSE = 'qqqzzzxxx wvwvwv jjjkkk zzzqqq';
 console.log(`\n→ calibration — query ที่ไม่มีความหมาย: “${NONSENSE}”`);
-const junk = await searchBest(NONSENSE, 5);
+
+// Call the API path directly rather than through searchBest(). searchBest falls
+// back to the local trigram engine on any error, and that engine also returns
+// nothing for gibberish — so an empty result there proves nothing. This must
+// fail loudly when the pipeline is unreachable, not quietly look like a pass.
+let junk: Awaited<ReturnType<typeof searchBest>> = [];
+try {
+  const raw = await searchViaApi(cfg, NONSENSE, 5);
+  junk = raw.map((h) => ({
+    message: hitToMessage(h, cfg),
+    score: h.score,
+    why: h.why ?? {},
+    terms: h.terms ?? [],
+    engine: 'pipeline' as const,
+  }));
+} catch (err) {
+  console.error(`✕ calibration ตรวจไม่ได้ — pipeline ตอบไม่ได้: ${(err as Error).message}`);
+  process.exit(1);
+}
+
 if (junk.length === 0) {
   console.log(`✓ gate ทำงาน — ไม่คืนผลลัพธ์ (floor: cosine ${cfg.minCosine})`);
 } else {
