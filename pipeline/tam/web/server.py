@@ -106,6 +106,13 @@ class State:
     # previous build serving, and without these nobody can tell that happened.
     last_attempt_at: str = ""
     last_error: str = ""
+    # The ticket side, refreshed with the corpus. Best-effort: YouTrack being
+    # unreachable must not stop a build, but it must not look like agreement either —
+    # `tracker_error` is what /api/tracker reports instead of an empty list.
+    drifts: list[dict[str, Any]] = field(default_factory=list)
+    silent: list[dict[str, Any]] = field(default_factory=list)
+    tracker_coverage: dict[str, int] = field(default_factory=dict)
+    tracker_error: str = ""
 
     def summary_for(self, key: int) -> TopicSummary | None:
         return next((summary for summary in self.summaries if summary.key == key), None)
@@ -171,6 +178,38 @@ def building() -> Iterator[None]:
         _build_lock.release()
 
 
+def read_tracker(digest: Digest, records: list[dict[str, Any]]) -> dict[str, Any]:
+    """The ticket side of the picture, or a recorded reason it is missing.
+
+    Deliberately best-effort. YouTrack is a separate service that can be down, rate
+    limited, or simply not configured, and none of that should stop a build of the Slack
+    half — but an empty drift list must never be mistakable for "the two sources agree".
+    So a failure is captured and reported to the caller, which is the same discipline the
+    rest of this file uses for a failed refresh.
+    """
+    from tam.analysis.drift import coverage, detect, silent_tickets
+    from tam.ingest.youtrack import YouTrackError, config, fetch_by_keys, fetch_project
+
+    try:
+        _, _, projects = config()
+    except YouTrackError as error:
+        return {"drifts": [], "silent": [], "coverage": {}, "error": str(error)}
+    try:
+        keys = [topic.item_id for topic in digest.topics if not str(topic.item_id).startswith("c")]
+        issues = fetch_by_keys(keys) if keys else []
+        every = fetch_project(projects[0]) if projects else []
+        return {
+            "drifts": [drift.as_dict() for drift in detect(digest.topics, issues)],
+            "silent": [quiet.as_dict() for quiet in silent_tickets(every, records)],
+            "coverage": {**coverage(digest.topics, issues), "tracker_issues": len(every),
+                         "tracker_open": sum(1 for i in every if not i.resolved)},
+            "error": "",
+        }
+    except YouTrackError as error:
+        log.warning("Tracker unavailable; serving the Slack half only: %s", error)
+        return {"drifts": [], "silent": [], "coverage": {}, "error": str(error)}
+
+
 def rebuild() -> State:
     """Build a new State from the corpus and publish it only if every step worked.
 
@@ -193,6 +232,7 @@ def rebuild() -> State:
             # ignored by every path that person can actually see.
             digest = build_digest(records, since=window_start(previous.days), overrides=read_overrides())
             summaries = summarize_digest(digest, language=previous.language)
+            tracker = read_tracker(digest, records)
         except BaseException as error:  # summarize_digest and build_retriever still exit like CLIs
             state = replace(previous, last_attempt_at=stamp, last_error=f"{type(error).__name__}: {error}")
             log.error("Rebuild failed; still serving the build from %s: %s", previous.built_at or "(nothing)", error)
@@ -205,6 +245,10 @@ def rebuild() -> State:
             summaries=summaries,
             built_at=stamp,
             built_at_iso=attempt.isoformat(timespec="seconds"),
+            drifts=tracker["drifts"],
+            silent=tracker["silent"],
+            tracker_coverage=tracker["coverage"],
+            tracker_error=tracker["error"],
             last_attempt_at=stamp,
             last_error="",
         )
@@ -696,6 +740,23 @@ def api_search(q: str = Query(...), k: int = Query(default=10, ge=1, le=50), pre
             ],
         }
     )
+
+
+@app.get("/api/tracker")
+def api_tracker() -> JSONResponse:
+    """Where Slack and the ticket tracker disagree, and which tickets went quiet.
+
+    `error` non-empty means the tracker could not be read — the empty lists beside it are
+    "unknown", not "nothing found", and a caller showing this to people has to say so.
+    """
+    build = live()
+    return JSONResponse({
+        "coverage": build.tracker_coverage,
+        "drift": build.drifts,
+        "silent": build.silent,
+        "error": build.tracker_error,
+        "built_at": build.built_at,
+    })
 
 
 @app.post("/api/reindex", dependencies=[Depends(require_admin)])

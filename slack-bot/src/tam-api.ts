@@ -537,3 +537,41 @@ export async function ping(cfg: ApiConfig): Promise<{ corpus_size: number; topic
   const d = await get<{ corpus_size: number; topics: unknown[] }>(cfg, '/api/digest');
   return { corpus_size: d.corpus_size, topics: (d.topics ?? []).length };
 }
+
+
+/**
+ * The ticket side of the picture, from the pipeline's `/api/tracker`.
+ *
+ * Fetched on demand rather than at boot: it changes when the corpus is rebuilt, not when
+ * a person types a command, and a slash command that waits on YouTrack would be slow for
+ * no reason. The pipeline already caches it with the build.
+ *
+ * An older pipeline has no such route. That is reported as an error the renderer shows,
+ * never as an empty result — "no stale tickets" and "we could not look" must not read the
+ * same on screen.
+ */
+export interface TrackerReport {
+  coverage: Record<string, number>;
+  drift: Array<{ ticket: string; ticket_state: string; our_state: string; detail: string; ticket_url: string }>;
+  silent: Array<{ ticket: string; state: string; url: string; summary: string; quiet_days: number; mentioned_in_slack: boolean }>;
+  error: string;
+  built_at: string;
+}
+
+export async function fetchTracker(cfg: ApiConfig): Promise<TrackerReport> {
+  try {
+    const body = await get<TrackerReport>(cfg, '/api/tracker');
+    return {
+      coverage: body.coverage ?? {},
+      drift: body.drift ?? [],
+      silent: body.silent ?? [],
+      error: body.error ?? '',
+      built_at: body.built_at ?? '',
+    };
+  } catch (err) {
+    return {
+      coverage: {}, drift: [], silent: [], built_at: '',
+      error: `อ่าน /api/tracker ไม่ได้: ${(err as Error).message} — pipeline เวอร์ชันเก่า หรือยังไม่ได้ตั้ง YouTrack`,
+    };
+  }
+}

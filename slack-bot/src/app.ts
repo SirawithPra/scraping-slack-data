@@ -6,7 +6,7 @@ import {
   ledger, hydrate, reload, ledgerOrigin, demoFixtures, sortedItems, itemsByState, findItem,
   findMessage, itemKeyForMessage, itemsFor, standupFor, driftFor,
 } from './data.js';
-import { apiConfig } from './tam-api.js';
+import { apiConfig, fetchTracker } from './tam-api.js';
 import { describePolicy, guardPosting, readPolicy } from './postguard.js';
 import {
   decisionsPath, overridesPath, readDecisions, saveDecision, saveOverride, storeSummary,
@@ -17,6 +17,7 @@ import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from './blocks/drift.js';
 import { recallBlocks } from './blocks/recall.js';
 import { formatBlocks } from './blocks/format.js';
+import { driftBlocks, silentBlocks } from './blocks/tracker.js';
 import { COMMANDS, CMD, context, section, esc, clamp } from './blocks/common.js';
 
 const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
@@ -142,6 +143,19 @@ app.command(new RegExp(`^/(${COMMANDS.join('|')})$`), async ({ command, ack, res
     // /meowtam digest
     if (lower === 'digest' || lower === 'standup') {
       await respond({ blocks: digestBlocks(), text: 'digest' });
+      return;
+    }
+
+    // /meowtam silent | drift  → the ticket side, which Slack cannot contain
+    if (lower === 'silent' || lower === 'quiet' || lower === 'drift') {
+      const cfg = apiConfig();
+      if (!cfg) {
+        await respond({ text: 'ต้องตั้ง TAM_API_URL ให้บอทอ่านจาก pipeline ก่อน — ข้อมูล ticket มาจากฝั่งนั้น' });
+        return;
+      }
+      const report = await fetchTracker(cfg);
+      const blocks = lower === 'drift' ? driftBlocks(report) : silentBlocks(report);
+      await respond({ blocks: blocks as any, text: lower === 'drift' ? 'drift' : 'ticket ที่เงียบ' });
       return;
     }
 
