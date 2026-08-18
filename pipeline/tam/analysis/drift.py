@@ -12,9 +12,18 @@ Three kinds, each a different mistake with a different fix:
     YouTrack says resolved; Slack is still discussing it, after the ticket closed.
     Usually a ticket closed early, or follow-up work nobody opened a ticket for.
 
+`ticket_closed_but_slack_blocked`
+    The sharpest one: the ticket is resolved while a person has said they are stuck on
+    it. Named for what it is — the first version of this called it
+    `slack_blocked_but_ticket_open` and only ever emitted it when the ticket was
+    *closed*, so the machine-readable field contradicted the `ticket_state` beside it
+    while the Thai `detail` said the right thing.
+
 `slack_blocked_but_ticket_open`
-    Slack says somebody is stuck; the ticket looks like ordinary progress. The board
-    is telling a standup that work is moving when a person has said it is not.
+    Slack says somebody is stuck; the ticket is still open and looks like ordinary
+    progress — often sitting in Backlog, which means nobody is on the thing somebody is
+    waiting for. The board tells a standup that work is moving when a person has said
+    it is not.
 
 `slack_done_but_ticket_open`
     The conversation concluded; the ticket is still open. Either it needs closing or
@@ -131,10 +140,9 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
 
         if issue.resolved and topic.state == "blocked":
             # The sharpest one: a person has said they are stuck on work the board
-            # believes is finished. Reported as blocked-vs-open because that is the
-            # direction that matters — somebody is waiting.
+            # believes is finished.
             drifts.append(Drift(
-                kind="slack_blocked_but_ticket_open",
+                kind="ticket_closed_but_slack_blocked",
                 item_id=topic.item_id, ticket=issue.key, ticket_state=issue.state,
                 ticket_url=issue.url, our_state=topic.state,
                 evidence_id=topic.evidence_id or last_id,
@@ -152,6 +160,22 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
                 detail=(
                     f"ticket ปิดแล้ว ({issue.state}) เมื่อ {format_timestamp(str(issue.updated))} "
                     f"แต่ยังมีคนพูดถึง {issue.key} อีก {hours:.0f} ชั่วโมงหลังจากนั้น"
+                ),
+            ))
+        elif not issue.resolved and topic.state == "blocked":
+            # The case the docstring promised and the code never emitted. Measured before
+            # adding it, because a rule that fires on every open ticket would bury the
+            # other three: on the real project it finds one — a ticket in Backlog that
+            # somebody in Slack is waiting on, which is worth moving.
+            drifts.append(Drift(
+                kind="slack_blocked_but_ticket_open",
+                item_id=topic.item_id, ticket=issue.key, ticket_state=issue.state,
+                ticket_url=issue.url, our_state=topic.state,
+                evidence_id=topic.evidence_id or last_id,
+                evidence=topic.evidence or "",
+                detail=(
+                    f"ใน Slack ติดอยู่ แต่ ticket ยังเปิดปกติ ({issue.state or 'ไม่ทราบสถานะ'}) "
+                    "— ไม่มีใครถืองานที่มีคนรอ"
                 ),
             ))
         elif not issue.resolved and topic.state == "resolved":

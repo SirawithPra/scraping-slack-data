@@ -44,6 +44,7 @@ from slack_sdk.errors import SlackApiError
 from tam.core import DEFAULT_RECORDS, format_timestamp, read_records, TamDataError
 from tam.ingest.export_slack import ERROR_HINTS, check_token_shape, export_channel, member_channels, merge_exports, newest_ts, verify_auth
 from tam.ingest.prepare_messages import load_export, merge_records, prepare
+from tam.ingest.youtrack import MIN_TICKET_CHARS, YouTrackError, fetch_tickets
 from tam.core import write_records
 from tam.ingest.quoted import annotate, bot_ids
 from tam.ingest.users import load_names
@@ -87,6 +88,7 @@ def parse_args() -> argparse.Namespace:
         help="Dashboard to rebuild afterwards (default http://127.0.0.1:8899)",
     )
     parser.add_argument("--no-reindex", action="store_true", help="Skip the rebuild; just refresh the corpus")
+    parser.add_argument("--no-tickets", action="store_true", help="Skip the ticket refresh; Slack only")
     parser.add_argument("--dry-run", action="store_true", help="Say what would happen without calling Slack")
     return parser.parse_args()
 
@@ -138,13 +140,40 @@ def main() -> None:
         out.write_text(json.dumps(combined, ensure_ascii=False, indent=2), encoding="utf-8")
         log.info("#%s: +%d new, %d total", name, added, len(combined))
 
+    # ---- step 2: the tickets ----------------------------------------------
+    # Deliberately before the quiet-morning check and not inside it. A ticket moving
+    # from "In progress" to "Ready for test" is news even on a morning when nobody
+    # posted, and the whole point of the second source is that it changes when Slack
+    # does not — so refreshing tickets only when Slack was busy would hide exactly the
+    # cases the comparison exists to find.
+    ticket_count = 0
+    if not args.no_tickets:
+        try:
+            issues = fetch_tickets()
+            if issues:
+                records = [issue.as_record() for issue in issues]
+                records = [r for r in records if len(str(r.get("text", "")).strip()) >= MIN_TICKET_CHARS]
+                existing = read_records(args.records, include_threads=True) if args.records.exists() else []
+                combined, replaced = merge_records(existing, records)
+                write_records(args.records, combined)
+                ticket_count = len(records)
+                log.info("tickets: %d fetched, %d replaced, %d record(s) in corpus", len(records), replaced, len(combined))
+        except YouTrackError as error:
+            # Not fatal: the Slack half of the refresh is still worth doing, and a
+            # tracker that cannot be read has to say so rather than look like agreement.
+            print(f"\n  ข้าม ticket: {error}")
+
     if not fresh_total:
         # The quiet-morning path. Rewriting the corpus for zero new messages would
-        # re-embed nothing useful and churn the cache, so stop here and say why.
-        print(f"\nไม่มีข้อความใหม่ในทั้ง {len(channels)} ช่อง — ไม่แตะ corpus และไม่ rebuild")
-        return
+        # re-embed nothing useful and churn the cache, so stop here and say why —
+        # unless the tickets changed, which is its own reason to rebuild.
+        print(f"\nไม่มีข้อความใหม่ในทั้ง {len(channels)} ช่อง", end="")
+        if not ticket_count:
+            print(" — ไม่แตะ corpus และไม่ rebuild")
+            return
+        print(f" · แต่ดึง ticket มา {ticket_count} ใบ — rebuild ต่อ")
 
-    # ---- step 2: merge into the corpus ------------------------------------
+    # ---- step 3: merge the messages into the corpus -----------------------
     bots = bot_ids(load_names())
     merged_count = 0
     for cid, name in channels:
@@ -157,8 +186,10 @@ def main() -> None:
         write_records(args.records, combined)
         merged_count = len(combined)
         log.info("#%s: merged, %d replaced, %d record(s) in corpus", name, replaced, merged_count)
+    if not merged_count and args.records.exists():
+        merged_count = len(read_records(args.records, include_threads=True))
 
-    # ---- step 3: rebuild the dashboard ------------------------------------
+    # ---- step 4: rebuild the dashboard ------------------------------------
     if args.no_reindex:
         print(f"\ncorpus: {merged_count} record(s) · ข้าม rebuild ตามที่สั่ง")
         return

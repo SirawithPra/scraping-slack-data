@@ -427,6 +427,22 @@ def build_digest(
         member_records = [records[index] for index in members]
         if len(member_records) < min_messages:
             continue
+        # A work item is something people talked about; a ticket annotates one, and must
+        # never be able to create one on its own. Measured when the tracker was first
+        # merged into the corpus: of 194 issues, 82 landed in topics with real
+        # conversation — the win this merge exists for — while 112 collapsed into three
+        # topics that had almost no messages at all, the largest holding 108 issues
+        # beside 2 unrelated lines. That topic would render as one work item named
+        # "api, then, view" with 110 messages, and it is not a work item, it is a
+        # backlog. Tickets nobody has discussed already have a report that handles them
+        # properly, with dates and a quiet-days threshold: `tam.analysis.drift`'s silent
+        # list. Requiring conversation to at least match the tracker records states the
+        # intent — this digest is a record of what people said, annotated with tickets —
+        # rather than tuning a number, and the issues stay in the corpus either way, so
+        # retrieval and the comparison still reach every one of them.
+        talked = sum(1 for record in member_records if record.get("source") != "youtrack")
+        if talked * 2 < len(member_records):
+            continue
         # Only topics touched inside the window belong in this digest.
         if not any(since <= timestamp(record) <= until for record in member_records):
             continue

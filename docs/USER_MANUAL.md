@@ -449,7 +449,7 @@ Slack บอกว่า *คนคุยอะไรกัน* ticket บอก
 ```bash
 YOUTRACK_URL=https://<your-org>.youtrack.cloud   # ไม่ต้องมี /api ต่อท้าย
 YOUTRACK_TOKEN=perm-...                          # Profile → Account Security → Authentication → New token
-YOUTRACK_PROJECT=PROJ                            # ตัวย่อโปรเจกต์ ว่างไว้ = ทุกโปรเจกต์ที่มองเห็น
+YOUTRACK_PROJECTS=PROJ,OTHER                     # ตัวย่อโปรเจกต์ คั่นด้วย comma — **ต้องตั้ง** ว่างไว้ = ไม่ดึงอะไรเลย
 ```
 
 หา token ที่ **avatar มุมขวาบน → Profile → Account Security → Authentication → New token…**

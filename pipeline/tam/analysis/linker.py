@@ -223,8 +223,21 @@ def link_records(
         tiers[index] = tier
         evidence[index] = reason
 
+    # ---- tier: tracker ------------------------------------------------------
+    # A record that came from the tracker *is* its ticket. Every other tier here infers
+    # a link from prose and can be wrong; this one is the ticket's own identity, carried
+    # in a field rather than written in the body — which is why reading only the text
+    # misses it entirely. Assigned before `explicit` so the ticket's own key wins over
+    # any key its description happens to mention.
+    for index, record in enumerate(records):
+        own = str(record.get("youtrack_key") or "").strip().upper()
+        if own:
+            assign(index, f"ticket:{own}", "explicit", f"record นี้คือ ticket {own} เอง")
+
     # ---- tier: explicit -----------------------------------------------------
     for index, record in enumerate(records):
+        if str(record.get("youtrack_key") or "").strip():
+            continue  # already carries its own identity, and that outranks its prose
         candidates = ticket_keys(str(record.get("text", "")), trusted)
         if not candidates:
             continue

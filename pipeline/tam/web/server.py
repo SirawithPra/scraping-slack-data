@@ -467,6 +467,21 @@ def blockers_page() -> HTMLResponse:
     return HTMLResponse(nav("/blockers") + build_page("Blockers", tiles, sections, f"{build.days:g} วันล่าสุด"))
 
 
+def ticket_link(record: dict[str, Any]) -> str:
+    """A ticket's own link, for records that have no Slack permalink and never will.
+
+    Without this a merged tracker reads as a wall of text the reader cannot follow to
+    the source, which is the one thing every other record on this page offers.
+    """
+    url = str(record.get("youtrack_url") or "").strip()
+    if not url:
+        return ""
+    key = esc(str(record.get("youtrack_key") or "ticket"))
+    state = str(record.get("youtrack_state") or "").strip()
+    tail = f" · {esc(state)}" if state else ""
+    return f' <a class="meta" href="{esc(url)}" target="_blank" rel="noopener">{key}{tail} ↗</a>'
+
+
 @app.get("/item/{key}", response_class=HTMLResponse)
 def item_page(key: str) -> HTMLResponse:
     build, digest = require_build()
@@ -486,7 +501,8 @@ def item_page(key: str) -> HTMLResponse:
     every = "".join(
         f'<p class="msg"><span class="tag">{esc(record.get("source") or "slack")}</span> '
         f'<span class="who">{esc(format_timestamp(str(record.get("ts", ""))))} '
-        f'{esc(names().of(record.get("user")) or "-")}</span> {esc(names().in_text(" ".join(str(record["text"]).split()))[:300])}</p>'
+        f'{esc(names().of(record.get("user")) or "-")}</span> {esc(names().in_text(" ".join(str(record["text"]).split()))[:300])}'
+        f"{ticket_link(record)}</p>"
         for record in topic.records
     )
 
@@ -525,7 +541,7 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
         for hit in hits:
             terms = ", ".join(hit.terms[:6])
             body += (
-                f'<div class="topic active"><h3>{hit.rank}. '
+                f'<div class="topic active"><h3>{hit.rank}.{ticket_link(hit.record)} '
                 f'<span class="tag">{esc(hit.record.get("source") or "slack")}</span> '
                 f'<span class="who">{esc(names().of(hit.record.get("user")) or "-")} · '
                 f'{esc(format_timestamp(str(hit.record.get("ts", ""))))}</span></h3>'
@@ -692,6 +708,12 @@ def api_item(key: str) -> JSONResponse:
                     "user_name": names().of(record.get("user")),
                     "source": record.get("source"),
                     "text": record["text"],
+                    # A ticket record has no Slack permalink and never will, so without
+                    # its own url it renders as text nobody can open — which is the same
+                    # as not having merged the tracker in at all.
+                    "url": record.get("youtrack_url") or "",
+                    "ticket": record.get("youtrack_key") or "",
+                    "ticket_state": record.get("youtrack_state") or "",
                 }
                 for record in topic.records
             ],

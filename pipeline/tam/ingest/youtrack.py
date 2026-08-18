@@ -29,6 +29,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -56,6 +57,70 @@ class YouTrackError(Exception):
     """The API could not be used, with a message worth showing a person."""
 
 
+#: A description line that carries no information. Measured on the real project before
+#: writing this: of 155 issues with a description, 38 open with `### **URL:**`, 20 with a
+#: bare Figma image, and 17 with `**Brief Info:**` — so "the first two lines" taken
+#: literally feeds boilerplate to the embedder for half the tickets, and every ticket
+#: that shares a template then looks like every other one.
+#:
+#: Headings go whole, not by matching the words inside them: the first attempt listed the
+#: shapes it had seen (`### **URL:**`) and let `##### ➡️ Background / Problem Statement`
+#: through, because an emoji is not in `[\w -/]`. A heading names the section under it, so
+#: the content is always the next line.
+#:
+#: Table rows go too, content and all. 32 issues carry one in their opening lines, and
+#: dropping them leaves 20 with only a title — which is the better trade: a row like
+#: `| NO | Test Case | Pre-Condition |` says nothing about the subject while making every
+#: QA test-case ticket look identical to every other, and those titles ("[QA][TC]Edit
+#: Reward Detail") already say what the ticket is about.
+_MARKUP_ONLY = re.compile(
+    r"""^(?:
+          \#{1,6}.*                              # any heading: it labels the section below it
+        | \**[\w \-/]{0,30}:?\**                # the same without the hashes
+        | !\[[^\]]*\]\([^)]*\)                  # an image
+        | \[[^\]]*\]\([^)]*\)                   # a bare link
+        | \|.*                                  # any table row, rule or content alike
+        | [-*_=]{3,}                            # a horizontal rule
+        | \s*
+       )$""",
+    re.X,
+)
+#: Enough for a title and a sentence or two of context. The point of the cap is that a
+#: ticket record has to stay comparable in size to a Slack message: the real project's
+#: median message is 46 characters and its median ticket 582, with one 14,556-character
+#: QA test-case table, and a corpus where a fifth of the records are an order of
+#: magnitude longer than the rest is one where the long ones decide every cluster.
+EMBED_BUDGET = 400
+EMBED_LINES = 2
+
+
+def embed_text(summary: str, description: str, *, lines: int = EMBED_LINES, budget: int = EMBED_BUDGET) -> str:
+    """The title, plus the first lines of the description that actually say something.
+
+    Deliberately not the whole description. The full text is still available in
+    YouTrack and is reachable by the key this record carries; what goes in the corpus is
+    the part that lets retrieval and clustering recognise which conversation this ticket
+    belongs to, which is what the title and the opening of the body do.
+    """
+    kept: list[str] = []
+    for raw in str(description or "").splitlines():
+        line = raw.strip()
+        if not line or _MARKUP_ONLY.match(line):
+            continue
+        # Strip the emphasis so "**Feature:** Event detail" reads as prose to the
+        # tokeniser rather than as punctuation.
+        line = re.sub(r"[*_`]+", "", line).strip()
+        if len(line) < 15:
+            continue
+        kept.append(line)
+        if len(kept) >= lines:
+            break
+    text = "\n".join([str(summary or "").strip(), *kept]).strip()
+    if len(text) <= budget:
+        return text
+    return text[:budget].rstrip() + "…"
+
+
 @dataclass
 class Issue:
     """One ticket, reduced to the fields a comparison needs."""
@@ -79,7 +144,7 @@ class Issue:
         """
         return {
             "id": f"yt_{self.key}",
-            "text": f"{self.summary}\n\n{self.description}".strip(),
+            "text": embed_text(self.summary, self.description),
             "user": "",
             "ts": self.updated or self.created,
             "source": "youtrack",
@@ -217,6 +282,53 @@ def fetch_project(project: str, limit: int = 1000) -> list[Issue]:
         if len(rows) < PAGE:
             break
     return out[:limit]
+
+
+#: A ticket whose title and opening lines together say almost nothing — no description
+#: and a title like "fix" — would join clusters on nothing but its own emptiness. Measured:
+#: exactly one issue of 195 falls under this on the real project.
+MIN_TICKET_CHARS = 12
+
+
+def fetch_tickets(limit: int = 1000) -> list[Issue]:
+    """Every issue in every configured project, ready to merge into the corpus.
+
+    The corpus half of this module. `fetch_project` and `fetch_by_keys` answer questions
+    about named issues; this one answers "what is in the tracker", which is what the
+    dashboard needs in order to hold both sources at once instead of comparing them from
+    a distance.
+
+    Raises YouTrackError when nothing is configured, so a caller can carry on with the
+    Slack half rather than reporting a tracker it never read as one that agreed.
+    """
+    _, _, wanted = config()  # raises when unset, before any request goes out
+    if not wanted:
+        # Refusing here rather than returning []. An empty project list reads as "the
+        # tracker is empty" everywhere downstream: the corpus gains nothing, the digest
+        # shows Slack only, and /api/tracker reports agreement it never checked. The
+        # variable is plural and comma-separated, which is exactly the kind of name a
+        # caller gets singular on the first try.
+        # The listing is a convenience, so it must not become the error. Asking the API
+        # what is visible needs the network, and when that is also down the caller would
+        # be told about DNS instead of about the variable they have to set.
+        try:
+            visible = ", ".join(str(p.get("shortName") or "") for p in projects())
+        except YouTrackError:
+            visible = ""
+        hint = f" This token can see: {visible}" if visible else ""
+        raise YouTrackError(
+            "YOUTRACK_PROJECTS is not set, so there is nothing to fetch — set it to a "
+            f"comma-separated list of project short names.{hint}"
+        )
+    found: list[Issue] = []
+    seen: set[str] = set()
+    for project in wanted:
+        for issue in fetch_project(project, limit=limit):
+            if issue.key in seen:
+                continue
+            seen.add(issue.key)
+            found.append(issue)
+    return found
 
 
 def whoami() -> dict[str, Any]:
