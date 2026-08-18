@@ -72,14 +72,19 @@ from tam.ingest.meetings import merge_into, merge_utterances, parse_iso, parse_t
 from tam.retrieval.retrieve import DEFAULT_PRESET, Hit, build_retriever
 from tam.core import DEFAULT_RECORDS, TamDataError, format_timestamp, read_records
 from tam.analysis.summarize import TopicSummary, backend_name, summarize_digest
-from tam.report.visualize import GRID, INK, INK_MUTED, INK_SECONDARY, SERIES_1, SERIES_2, SURFACE, build_page, stat_tile
+from tam.ingest.notes import merge_into as merge_note
+from tam.ingest.notes import to_record as note_record
+from tam.report.visualize import build_page, stat_tile
 
 log = logging.getLogger("server")
 
+#: Semantic colour is separate from the accent on purpose: "blocked" has to read as a
+#: state, and if it borrows the paw coral that carries the brand then every heading looks
+#: like a warning. These are CSS variables rather than hex so both themes resolve.
 STATE_STYLE = {
-    "blocked": (SERIES_2, "ติดอยู่ / blocked"),
-    "resolved": ("#0ca30c", "ปิดแล้ว / resolved"),
-    "active": (SERIES_1, "กำลังทำ / active"),
+    "blocked": ("var(--state-blocked)", "ติดอยู่ / blocked"),
+    "resolved": ("var(--state-resolved)", "ปิดแล้ว / resolved"),
+    "active": ("var(--state-active)", "กำลังทำ / active"),
 }
 
 
@@ -312,38 +317,90 @@ def esc(value: Any) -> str:
 
 
 def page_styles() -> str:
-    """The few extras build_page does not already provide."""
-    return f"""<style>
-  nav {{ display: flex; gap: 18px; margin: -12px 0 26px; font-size: 14px; }}
-  nav a {{ color: {INK_SECONDARY}; text-decoration: none; border-bottom: 2px solid transparent; padding-bottom: 3px; }}
-  nav a:hover, nav a.on {{ color: {INK}; border-bottom-color: {SERIES_1}; }}
-  .topic {{ border-left: 3px solid {GRID}; padding: 2px 0 2px 14px; margin: 0 0 22px; }}
-  .topic.blocked {{ border-left-color: {SERIES_2}; }}
-  .topic.resolved {{ border-left-color: #0ca30c; }}
-  .topic.active {{ border-left-color: {SERIES_1}; }}
-  .topic h3 {{ margin: 0 0 4px; font-size: 16px; }}
-  .topic h3 a {{ color: {INK}; text-decoration: none; }}
-  .topic h3 a:hover {{ text-decoration: underline; }}
-  .meta {{ font-size: 12px; color: {INK_MUTED}; margin: 0 0 8px; }}
-  .detail {{ font-size: 14px; margin: 0 0 8px; }}
-  .next {{ font-size: 14px; color: {INK_SECONDARY}; margin: 0 0 8px; }}
-  .msg {{ font-size: 13px; color: {INK_SECONDARY}; margin: 3px 0; }}
-  .who {{ color: {INK_MUTED}; }}
-  .tag {{ font-size: 11px; padding: 1px 6px; border-radius: 4px; border: 1px solid {GRID}; color: {INK_MUTED}; }}
-  .warn {{ color: {SERIES_2}; font-size: 12px; }}
-  form.search {{ display: flex; gap: 8px; margin: 0 0 20px; }}
-  form.search input[type=text] {{ flex: 1; padding: 9px 12px; font-size: 14px; border: 1px solid {GRID};
-      border-radius: 8px; background: {SURFACE}; color: {INK}; font-family: inherit; }}
-  button {{ padding: 9px 16px; font-size: 14px; border: 0; border-radius: 8px; background: {SERIES_1};
-      color: #fff; cursor: pointer; font-family: inherit; }}
-  .event {{ display: grid; grid-template-columns: 120px 1fr; gap: 10px; margin: 0 0 14px; font-size: 13px; }}
-  .event .when {{ color: {INK_MUTED}; font-variant-numeric: tabular-nums; }}
-  .rel {{ font-weight: 600; }}
+    """The dashboard's own layer on top of build_page's tokens.
+
+    Everything here reads a variable rather than a hex value, so the page follows the
+    reader's theme. It used to interpolate the light constants directly, which meant a
+    dark-mode reader got light text on a light card.
+    """
+    return """<style>
+  :root {
+    --state-blocked:#C4553A; --state-resolved:#3E7C6A; --state-active:#B98A2E;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --state-blocked:#F0866A; --state-resolved:#6FBFA4; --state-active:#E0B45E;
+    }
+  }
+  :root[data-theme="dark"] {
+    --state-blocked:#F0866A; --state-resolved:#6FBFA4; --state-active:#E0B45E;
+  }
+
+  nav { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 26px; font-size: 14px; }
+  nav a { color: var(--ink2); text-decoration: none; padding: 5px 12px; border-radius: 999px;
+          border: 1px solid transparent; }
+  nav a:hover { color: var(--ink); background: var(--page); border-color: var(--grid); }
+  nav a.on { color: var(--ink); background: var(--page); border-color: var(--accent); font-weight: 600; }
+
+  /* A work item is a card, and the stripe down its left is its state. The paw marks the
+     row as one of the bot's own findings — the same mark it signs Slack messages with. */
+  .topic { position: relative; background: var(--surface); border: 1px solid var(--grid);
+           border-left: 4px solid var(--grid); border-radius: var(--r-md);
+           padding: 13px 16px 12px 40px; margin: 0 0 14px; }
+  .topic::before { content: ""; position: absolute; left: 15px; top: 16px; width: 15px; height: 15px;
+           background: var(--paw); opacity: .55;
+           -webkit-mask: var(--paw-svg) center/contain no-repeat; mask: var(--paw-svg) center/contain no-repeat; }
+  .topic.blocked { border-left-color: var(--state-blocked); }
+  .topic.blocked::before { background: var(--state-blocked); opacity: 1; }
+  .topic.resolved { border-left-color: var(--state-resolved); }
+  .topic.active { border-left-color: var(--state-active); }
+  .topic h3 { margin: 0 0 3px; font-size: 16px; letter-spacing: -.01em; }
+  .topic h3 a { color: var(--ink); text-decoration: none; }
+  .topic h3 a:hover { text-decoration: underline; text-decoration-color: var(--accent); }
+
+  .meta { font-size: 12px; color: var(--ink3); margin: 0 0 7px; }
+  .detail { font-size: 14px; margin: 0 0 7px; }
+  .next { font-size: 14px; color: var(--ink2); margin: 0 0 7px; }
+  .msg { font-size: 13px; color: var(--ink2); margin: 3px 0; }
+  .who { color: var(--ink3); }
+  .tag { font-size: 10px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--grid);
+         color: var(--ink3); text-transform: uppercase; letter-spacing: .06em; }
+  .warn { color: var(--warn); font-size: 12px; }
+
+  form.search { display: flex; gap: 9px; margin: 0 0 22px; }
+  form.search input[type=text] { flex: 1; padding: 11px 15px; font-size: 14px;
+      border: 1px solid var(--grid); border-radius: 999px; background: var(--surface);
+      color: var(--ink); font-family: inherit; }
+  form.search input[type=text]::placeholder { color: var(--ink3); }
+  button { padding: 11px 20px; font-size: 14px; font-weight: 600; border: 0; border-radius: 999px;
+      background: var(--accent); color: var(--on-accent); cursor: pointer; font-family: inherit; }
+  button:hover { filter: brightness(1.06); }
+
+  /* The paste box is the primary control on /upload, so it gets the room to look like
+     one rather than a field somebody squeezed in. */
+  textarea { width: 100%; padding: 13px 15px; font-size: 14px; line-height: 1.65;
+      border: 1px solid var(--grid); border-radius: var(--r-md); background: var(--surface);
+      color: var(--ink); font-family: inherit; resize: vertical; margin: 0 0 11px; }
+  textarea::placeholder { color: var(--ink3); }
+  textarea:focus, form.search input[type=text]:focus, .row input:focus { border-color: var(--accent); outline: none; }
+  .row { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin: 0 0 12px; }
+  .row input[type=text], .row input[type=datetime-local] { flex: 1 1 170px; min-width: 0;
+      padding: 10px 14px; font-size: 14px; border: 1px solid var(--grid);
+      border-radius: 999px; background: var(--surface); color: var(--ink); font-family: inherit; }
+  .row input[type=file] { flex: 1 1 240px; font-size: 13px; color: var(--ink2); }
+  .row input::placeholder { color: var(--ink3); }
+  .row button { flex: 0 0 auto; }
+
+  .event { display: grid; grid-template-columns: 116px 1fr; gap: 12px; margin: 0 0 14px; font-size: 13px; }
+  .event .when { color: var(--ink3); font-variant-numeric: tabular-nums; }
+  .rel { font-weight: 650; color: var(--accent-2); }
+  /* A whisker rather than a rule: same job, and it belongs to this page's own world. */
+  .event + .event { border-top: 1px solid var(--grid); padding-top: 12px; }
 </style>"""
 
 
 def nav(current: str) -> str:
-    links = [("/", "Digest"), ("/blockers", "Blockers"), ("/search", "Ground a note"), ("/upload", "Add meeting")]
+    links = [("/", "Digest"), ("/blockers", "Blockers"), ("/search", "Ground a note"), ("/upload", "Add notes")]
     return "<nav>" + "".join(
         f'<a href="{path}" class="{"on" if path == current else ""}">{esc(label)}</a>' for path, label in links
     ) + "</nav>" + page_styles()
@@ -570,27 +627,81 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
 @app.get("/upload", response_class=HTMLResponse)
 def upload_page() -> HTMLResponse:
     now = datetime.now().strftime("%Y-%m-%dT%H:%M")
-    body = (
-        '<form class="search" method="post" action="/upload" enctype="multipart/form-data">'
+    # Notes first and transcript second, in that order on purpose: this team rarely has a
+    # recording. What actually happens is that somebody writes the notes by hand and posts
+    # them into Slack, so the paste box is the common path and the file picker is the
+    # exception. The form that gets used should not be the one underneath.
+    notes = (
+        '<form method="post" action="/upload/notes">'
+        '<textarea name="notes" rows="9" required '
+        'placeholder="วางโน้ตที่จดไว้เลย เช่น&#10;&#10;*Sprint planning 19 ส.ค.*&#10;'
+        '• Pending Mild - list all field&#10;• Tat จะขึ้น my vehicle พรุ่งนี้&#10;'
+        '• รอ api จากพี่มอสก่อน ถึงจะต่อได้"></textarea>'
+        '<div class="row">'
+        '<input type="text" name="title" placeholder="เรื่องอะไร (ไม่ใส่ก็ได้)">'
+        '<input type="text" name="author" placeholder="ใครจด — Slack id หรือชื่อ">'
+        f'<input type="datetime-local" name="when" value="{esc(now)}">'
+        f'<input type="hidden" name="token" value="{esc(admin_token)}">'
+        '<button type="submit">เพิ่มเข้า corpus</button>'
+        '</div></form>'
+        '<p class="meta">หนึ่งครั้งที่วาง = <strong>หนึ่ง record</strong> เหมือนโพสต์เดียวใน Slack '
+        'ไม่ได้แยกเป็นบรรทัด เพราะบรรทัดถูกอ่านอยู่แล้วข้างใน record — '
+        'บรรทัดที่ขึ้นต้นว่า <code>Pending …</code> หรือมี <code>รอ</code> จะถูกจับเป็นงานที่ติด พร้อมอ้างบรรทัดนั้นเป็นหลักฐาน</p>'
+        '<p class="meta">วางข้อความเดิมซ้ำในวันเดียวกัน = <strong>แทนที่ของเดิม</strong> ไม่ใช่เพิ่มอันใหม่ '
+        '(id มาจากเนื้อหา) แก้แล้ววางใหม่ได้เลย</p>'
+    )
+    transcript = (
+        '<form method="post" action="/upload" enctype="multipart/form-data">'
+        '<div class="row">'
         '<input type="file" name="transcript" accept=".vtt,.srt,.txt,.json" required>'
         '<input type="text" name="title" placeholder="ชื่อการประชุม">'
         f'<input type="datetime-local" name="started" value="{esc(now)}">'
-        # Same-origin HTML can read this; a cross-site page cannot, which is the point.
         f'<input type="hidden" name="token" value="{esc(admin_token)}">'
-        '<button type="submit">เพิ่มเข้า corpus</button></form>'
+        '<button type="submit">เพิ่มเข้า corpus</button>'
+        '</div></form>'
         '<p class="meta">รองรับ WebVTT (.vtt) จาก Zoom/Meet/Teams, .srt, บรรทัดแบบ "ชื่อ: ข้อความ" (.txt) '
-        'และ JSON จาก ASR</p>'
-        '<p class="meta">เวลาเริ่มประชุมเป็นตัวระบุตัวตนของการประชุม — อัปทับด้วยชื่อและเวลาเดิม '
-        'จะแทนที่ของเดิม ถ้าเวลาต่างกันจะถือเป็นคนละครั้ง</p>'
+        'และ JSON จาก ASR · เวลาเริ่มประชุมเป็นตัวระบุตัวตนของการประชุม ชื่อและเวลาเดิมจะแทนที่ของเดิม</p>'
     )
     sections = [
         (
-            "transcript จะถูกแปลงเป็น record หน้าตาเดียวกับข้อความ Slack แล้ว index ใหม่ทั้งชุด — "
-            "หลังจากนั้นการประชุมจะถูกจัดกลุ่ม ค้นหา และเชื่อมโยงกับ Slack ได้เหมือนกันหมด",
-            body,
-        )
+            "วางโน้ตที่จดด้วยมือ — ปกติที่ใช้กันจริง ข้อความจะกลายเป็น record หน้าตาเดียวกับ "
+            "ข้อความ Slack แล้ว index ใหม่ทั้งชุด จัดกลุ่ม ค้นหา และเชื่อมกับ Slack ได้เหมือนกันหมด",
+            notes,
+        ),
+        ("ถ้ามีไฟล์ถอดเสียงจากการประชุม — ใช้ทางนี้", transcript),
     ]
-    return HTMLResponse(nav("/upload") + build_page("Add a meeting", [], sections, "meeting → records"))
+    return HTMLResponse(nav("/upload") + build_page("Add notes", [], sections, "โน้ต / ประชุม → records"))
+
+
+@app.post("/upload/notes")
+def upload_notes(
+    request: Request,
+    notes: str = Form(...),
+    title: str = Form(default=""),
+    author: str = Form(default=""),
+    when: str = Form(default=""),
+    token: str = Form(default=""),
+    x_tam_token: str = Header(default=""),
+) -> RedirectResponse:
+    """Ingest a typed note, then rebuild. Sync for the same reason as the transcript route."""
+    check_origin(request)
+    check_token(token or x_tam_token)
+    moment = parse_started(when) if when.strip() else datetime.now(tz=timezone.utc)
+    try:
+        record = note_record(notes, title=title, author=author, when=moment)
+    except ValueError as error:  # their paste, their fault: a 400, not a 500
+        raise HTTPException(status_code=400, detail=str(error)) from error
+    try:
+        with building():  # held across the write and the rebuild, as /upload does
+            total, replaced = merge_note(record, live().records_path)
+            log.info("Note %s %s — corpus holds %d record(s)", record["id"], "replaced" if replaced else "added", total)
+            try:
+                rebuild()
+            except (TamDataError, SystemExit) as error:
+                raise HTTPException(status_code=500, detail=f"Ingested, but the rebuild failed: {error}") from error
+    except TamDataError as error:
+        raise HTTPException(status_code=500, detail=f"Cannot update the corpus: {error}") from error
+    return RedirectResponse(url="/", status_code=303)
 
 
 def parse_started(value: str) -> datetime:

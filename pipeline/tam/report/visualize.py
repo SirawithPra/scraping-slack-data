@@ -26,20 +26,42 @@ from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_reco
 DEFAULT_OUTPUT = Path("output/report.html")
 DEFAULT_KS = (1, 3, 5, 10)
 
-# Chart chrome and ink (light surface), from the validated reference palette.
-SURFACE = "#fcfcfb"
-PAGE = "#f9f9f7"
-INK = "#0b0b0b"
-INK_SECONDARY = "#52514e"
-INK_MUTED = "#898781"
-GRID = "#e1e0d9"
-AXIS = "#c3c2b7"
-SERIES_1 = "#2a78d6"  # categorical slot 1, blue
-SERIES_2 = "#eb6834"  # categorical slot 2, orange
-# Sequential blue ramp, light -> dark. One hue, never a rainbow.
-BLUE_SCALE = [[0.0, "#cde2fb"], [0.25, "#86b6ef"], [0.5, "#3987e5"], [0.75, "#256abf"], [1.0, "#0d366b"]]
-FONT = 'system-ui, -apple-system, "Segoe UI", "Noto Sans Thai", "Sukhumvit Set", sans-serif'
-DE_EMPHASIS = "#c3c2b7"  # neutral for "absence"; never a second hue
+# Chart chrome and ink. The bot is called Meowtam and has signed every message with a paw
+# since it was written, so the palette is the cat's rather than a generic dashboard blue:
+# warm paper, a dark-tabby ink, and a paw-pad coral as the one accent. The neutrals carry
+# a brown bias on purpose — a pure mid-grey beside a warm accent reads as unconsidered.
+SURFACE = "#FFFDFC"
+PAGE = "#FBF7F4"          # warm paper with a faint pink cast, not the usual cream
+INK = "#241C1A"           # warm near-black; pure #000 goes cold against the coral
+INK_SECONDARY = "#5E4E49"
+INK_MUTED = "#756259"
+GRID = "#EADFD9"
+AXIS = "#D3C2BA"
+SERIES_1 = "#E4735A"      # categorical slot 1 — paw pad
+SERIES_2 = "#3E7C6A"      # categorical slot 2 — cat-eye green, and the contrast to coral
+# Sequential coral ramp, light -> dark. One hue, never a rainbow.
+BLUE_SCALE = [[0.0, "#FBE0D8"], [0.25, "#F2AE9C"], [0.5, "#E4735A"], [0.75, "#BE4F39"], [1.0, "#7C2E1F"]]
+# No webfont: the CSP on published pages blocks font CDNs, and the content is Thai, so a
+# missing face would silently fall back and lose the script's shaping. Character comes from
+# weight, spacing and scale instead.
+FONT = '"Noto Sans Thai", "Sukhumvit Set", system-ui, -apple-system, "Segoe UI", sans-serif'
+DE_EMPHASIS = "#D3C2BA"  # neutral for "absence"; never a second hue
+
+# Dark counterparts, so the dashboard follows the reader's system instead of forcing a
+# bright page at night. Same coral in both: it holds on warm charcoal and on warm paper.
+DARK = {
+    "surface": "#221A18",
+    "page": "#191312",
+    "ink": "#F6EDE9",
+    "ink2": "#C6B2AA",
+    "ink3": "#96837C",
+    "grid": "#3A2C28",
+    "accent": "#F08D75",
+    "accent2": "#6FBFA4",
+    "warn": "#E0A860",
+}
+WARN = "#C07A18"          # tabby amber, for "read this number carefully"
+GOOD = "#3E7C6A"
 
 log = logging.getLogger("visualize")
 
@@ -288,33 +310,86 @@ def build_page(title: str, tiles: list[str], sections: list[tuple[str, str]], su
         for note, figure_html in sections
     )
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title>
 <style>
-  :root {{ color-scheme: light; }}
-  body {{ margin: 0; padding: 32px 20px 64px; background: {PAGE}; color: {INK};
-         font-family: {FONT}; line-height: 1.55; }}
+  /* Tokens live on bare :root so the un-stamped document — which is what most readers
+     get, because "system" is the default theme — resolves a complete palette. The dark
+     block only redefines tokens, and is guarded so an explicit light choice beats a dark
+     OS. Nothing below sets a colour outside a token. */
+  :root {{
+    --page:{PAGE}; --surface:{SURFACE}; --ink:{INK}; --ink2:{INK_SECONDARY}; --ink3:{INK_MUTED};
+    --grid:{GRID}; --accent:{SERIES_1}; --accent-2:{SERIES_2}; --warn:{WARN};
+    --paw:{SERIES_1}; --on-accent:{SURFACE};
+    /* The mark itself, inline: one pad and four toes. A mask rather than an <img> so it
+       takes --paw and follows the theme, and inline so there is no request to make. */
+    --paw-svg:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
+    --r-lg:16px; --r-md:12px; --r-sm:8px;
+    --shadow:0 1px 2px rgba(36,28,26,.05), 0 10px 28px -18px rgba(36,28,26,.30);
+  }}
+  @media (prefers-color-scheme: dark) {{
+    :root:not([data-theme="light"]) {{
+      --page:{DARK["page"]}; --surface:{DARK["surface"]}; --ink:{DARK["ink"]};
+      --ink2:{DARK["ink2"]}; --ink3:{DARK["ink3"]}; --grid:{DARK["grid"]};
+      --accent:{DARK["accent"]}; --accent-2:{DARK["accent2"]}; --warn:{DARK["warn"]};
+      --paw:{DARK["accent"]}; --on-accent:#2A1E1A;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
+    }}
+  }}
+  :root[data-theme="dark"] {{
+    --page:{DARK["page"]}; --surface:{DARK["surface"]}; --ink:{DARK["ink"]};
+    --ink2:{DARK["ink2"]}; --ink3:{DARK["ink3"]}; --grid:{DARK["grid"]};
+    --accent:{DARK["accent"]}; --accent-2:{DARK["accent2"]}; --warn:{DARK["warn"]};
+    --paw:{DARK["accent"]}; --on-accent:#2A1E1A;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
+  }}
+
+  * {{ box-sizing: border-box; }}
+  body {{ margin: 0; padding: 30px 20px 72px; background: var(--page); color: var(--ink);
+         font-family: {FONT}; line-height: 1.6; -webkit-font-smoothing: antialiased; }}
   main {{ max-width: 1080px; margin: 0 auto; }}
-  h1 {{ font-size: 22px; margin: 0 0 4px; }}
-  .sub {{ color: {INK_SECONDARY}; font-size: 14px; margin: 0 0 28px; }}
-  .tiles {{ display: grid; gap: 12px; margin-bottom: 32px;
-            grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); }}
-  .tile {{ background: {SURFACE}; border: 1px solid rgba(11,11,11,0.10);
-           border-radius: 10px; padding: 14px 16px; }}
-  .tile-label {{ font-size: 12px; color: {INK_SECONDARY}; }}
-  .tile-value {{ font-size: 30px; font-weight: 600; color: {INK}; margin: 2px 0; }}
-  .tile-note {{ font-size: 11px; color: {INK_MUTED}; }}
-  section {{ background: {SURFACE}; border: 1px solid rgba(11,11,11,0.10); border-radius: 10px;
-             padding: 18px 18px 8px; margin-bottom: 24px; }}
-  .lede {{ margin: 0 0 4px; font-size: 13px; color: {INK_SECONDARY}; }}
+
+  /* The paw is the product's own mark — the bot has signed every Slack message with one
+     since it was written — so it carries the heading rather than decorating it. */
+  h1 {{ font-size: 25px; line-height: 1.25; margin: 0 0 6px; letter-spacing: -.015em;
+        text-wrap: balance; display: flex; align-items: center; gap: 10px; }}
+  h1::before {{ content: ""; flex: none; width: 26px; height: 26px;
+        background: var(--paw); border-radius: 50%;
+        -webkit-mask: var(--paw-svg) center/contain no-repeat; mask: var(--paw-svg) center/contain no-repeat; }}
+  .sub {{ color: var(--ink2); font-size: 14px; margin: 0 0 26px; }}
+
+  .tiles {{ display: grid; gap: 14px; margin-bottom: 30px;
+            grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }}
+  /* Two ears, and only on the stat tiles. They mark "this is a counted thing" — every
+     card that gets them is one, so the shape means something rather than appearing
+     everywhere as a motif. */
+  .tile {{ position: relative; background: var(--surface); border: 1px solid var(--grid);
+           border-radius: var(--r-lg); padding: 15px 17px; box-shadow: var(--shadow); }}
+  .tile::before, .tile::after {{ content: ""; position: absolute; top: -9px; width: 0; height: 0;
+           border-left: 9px solid transparent; border-right: 9px solid transparent;
+           border-bottom: 11px solid var(--grid); }}
+  .tile::before {{ left: 16px; transform: rotate(-14deg); }}
+  .tile::after {{ left: 40px; transform: rotate(14deg); }}
+  .tile-label {{ font-size: 11px; color: var(--ink2); text-transform: uppercase; letter-spacing: .07em; }}
+  .tile-value {{ font-size: 31px; font-weight: 650; color: var(--ink); margin: 3px 0;
+                 font-variant-numeric: tabular-nums; letter-spacing: -.02em; }}
+  .tile-note {{ font-size: 11px; color: var(--ink3); }}
+
+  section {{ background: var(--surface); border: 1px solid var(--grid); border-radius: var(--r-lg);
+             padding: 20px 20px 10px; margin-bottom: 22px; box-shadow: var(--shadow); }}
+  .lede {{ margin: 0 0 6px; font-size: 13px; color: var(--ink2); }}
   .table-view {{ margin: 4px 0 16px; font-size: 13px; }}
-  .table-view summary {{ cursor: pointer; color: {INK_SECONDARY}; }}
+  .table-view summary {{ cursor: pointer; color: var(--accent); }}
   table {{ border-collapse: collapse; width: 100%; margin-top: 12px; }}
-  th, td {{ text-align: left; padding: 7px 10px; border-bottom: 1px solid {GRID}; vertical-align: top; }}
-  th {{ color: {INK_MUTED}; font-weight: 600; font-size: 12px; }}
+  th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }}
+  th {{ color: var(--ink3); font-weight: 650; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }}
   td.num {{ font-variant-numeric: tabular-nums; white-space: nowrap; }}
+  /* Wide content scrolls inside its own box so the page body never moves sideways. */
   .plot-wrap {{ overflow-x: auto; }}
+  a {{ color: var(--accent); }}
+  :focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+  @media (prefers-reduced-motion: reduce) {{ * {{ transition: none !important; animation: none !important; }} }}
 </style></head>
 <body><main>
 <h1>{html.escape(title)}</h1>

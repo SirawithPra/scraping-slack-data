@@ -8,7 +8,10 @@
  */
 
 export type State = 'blocked' | 'stalled' | 'moving' | 'done';
-export type Source = 'slack' | 'meeting' | 'youtrack' | 'notion';
+// `note` is a note somebody typed and pasted in, which is not the same as a transcript:
+// on this team a meeting usually leaves hand-written notes rather than a recording, and
+// calling those `meeting` would claim a transcript that never existed.
+export type Source = 'slack' | 'meeting' | 'note' | 'youtrack' | 'notion';
 
 export interface Message {
   id: string;

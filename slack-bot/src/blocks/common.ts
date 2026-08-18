@@ -15,6 +15,7 @@ export const STATE_LABEL: Record<State, string> = {
 export const SOURCE_ICON: Record<Source, string> = {
   slack: '💬',
   meeting: '🎙',
+  note: '📝',
   youtrack: '🎫',
   notion: '📄',
 };

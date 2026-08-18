@@ -2,13 +2,16 @@
 <style>
   /* ---------- tokens: complete light palette on bare :root ---------- */
   :root{
-    --ground:#F2F5F6; --surface:#FFFFFF; --surface-2:#E9EFF1; --surface-3:#DCE6E9;
-    --ink:#16242E; --ink-2:#47606D; --ink-3:#76909D;
-    --rule:#CBD9DE; --rule-strong:#A9BFC7;
-    --accent:#0E7C86; --accent-soft:#D9EDEF; --accent-ink:#FFFFFF;
-    --warn:#A85B08; --warn-soft:#F7E9D6;
-    --good:#17694A; --good-soft:#DCEDE4;
-    --shadow:0 1px 2px rgba(22,36,46,.06), 0 8px 24px -12px rgba(22,36,46,.18);
+    /* Meowtam's own palette: warm paper, dark-tabby ink, paw-pad coral. Two corals on
+       purpose — --accent carries text and has to hold contrast on paper, while --paw is
+       the bright one and is only ever a large fill or a mark, never a word. */
+    --ground:#FBF7F4; --surface:#FFFDFC; --surface-2:#F5EDE8; --surface-3:#EDE0D9;
+    --ink:#241C1A; --ink-2:#5E4E49; --ink-3:#756259;
+    --rule:#EADFD9; --rule-strong:#D3C2BA;
+    --accent:#BF5138; --accent-soft:#FBE7E0; --accent-ink:#FFFDFC; --paw:#E4735A;
+    --warn:#95610F; --warn-soft:#F7EBD8;
+    --good:#2F6455; --good-soft:#DDEBE5;
+    --shadow:0 1px 2px rgba(36,28,26,.05), 0 10px 28px -16px rgba(36,28,26,.26);
 
     --f-display:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI","Helvetica Neue",sans-serif;
     --f-body:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI","Helvetica Neue",sans-serif;
@@ -19,23 +22,23 @@
   }
   @media (prefers-color-scheme:dark){
     :root:not([data-theme="light"]){
-      --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
-      --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
-      --rule:#2A3E48; --rule-strong:#3B535F;
-      --accent:#4FC5CE; --accent-soft:#16333A; --accent-ink:#06232A;
-      --warn:#E0A048; --warn-soft:#33260F;
-      --good:#5FC79B; --good-soft:#122E23;
-      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.6);
+      --ground:#191312; --surface:#221A18; --surface-2:#2B211E; --surface-3:#362925;
+      --ink:#F6EDE9; --ink-2:#C6B2AA; --ink-3:#96837C;
+      --rule:#3A2C28; --rule-strong:#4E3B35;
+      --accent:#F08D75; --accent-soft:#3A211B; --accent-ink:#2A1E1A; --paw:#F08D75;
+      --warn:#E0A860; --warn-soft:#33260F;
+      --good:#6FBFA4; --good-soft:#15302A;
+      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
     }
   }
   :root[data-theme="dark"]{
-    --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
-    --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
-    --rule:#2A3E48; --rule-strong:#3B535F;
-    --accent:#4FC5CE; --accent-soft:#16333A; --accent-ink:#06232A;
-    --warn:#E0A048; --warn-soft:#33260F;
-    --good:#5FC79B; --good-soft:#122E23;
-    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px -14px rgba(0,0,0,.6);
+    --ground:#191312; --surface:#221A18; --surface-2:#2B211E; --surface-3:#362925;
+    --ink:#F6EDE9; --ink-2:#C6B2AA; --ink-3:#96837C;
+    --rule:#3A2C28; --rule-strong:#4E3B35;
+    --accent:#F08D75; --accent-soft:#3A211B; --accent-ink:#2A1E1A; --paw:#F08D75;
+    --warn:#E0A860; --warn-soft:#33260F;
+    --good:#6FBFA4; --good-soft:#15302A;
+    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
   }
 
   *{box-sizing:border-box}
@@ -156,6 +159,38 @@
     .slide{break-after:page; box-shadow:none; animation:none}
     .masthead,.foot{display:none}
   }
+
+    /* ---------- the cat, used where it carries something ---------- */
+    /* The bot signs every Slack message with a paw, so the mark is the product's, not a
+       decoration. Inline as a mask: it takes --paw, follows the theme, and makes no
+       request — the CSP on a published page blocks external images anyway. */
+    :root{
+      --paw-svg:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
+    }
+    /* Rounder than before, consistently. 5px reads as a browser default; this reads as a
+       decision, and it is the cheapest way to make a dense deck feel less severe. */
+    .card, .stat, .tw, pre{border-radius:12px}
+    .slide{border-radius:16px}
+    .num{border-radius:999px; padding:2px 10px}
+
+    /* A paw replaces the list bullet: same job, and it is this deck's own marker. */
+    .slide-body ul{list-style:none; padding-left:0}
+    .slide-body ul > li{position:relative; padding-left:1.5em}
+    .slide-body ul > li::before{
+      content:""; position:absolute; left:0; top:.42em; width:.72em; height:.72em;
+      background:var(--paw); opacity:.75;
+      -webkit-mask:var(--paw-svg) center/contain no-repeat; mask:var(--paw-svg) center/contain no-repeat;
+    }
+    /* Two ears on the stat tiles only. Every card that gets them is a counted thing, so
+       the shape says which cards those are instead of appearing on all of them. */
+    .stat{position:relative; overflow:visible; margin-top:7px}
+    .stat::before, .stat::after{
+      content:""; position:absolute; top:-8px; width:0; height:0;
+      border-left:8px solid transparent; border-right:8px solid transparent;
+      border-bottom:10px solid var(--rule-strong);
+    }
+    .stat::before{left:14px; transform:rotate(-14deg)}
+    .stat::after{left:36px; transform:rotate(14deg)}
 </style>
 
 <div class="deck">
