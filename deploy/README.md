@@ -19,6 +19,7 @@ cd deploy && ./install.sh
 |---|---|---|
 | `com.tam.dashboard` | เปิด dashboard ที่ port 8899 และเปิดใหม่ถ้าตาย | ตอน login และตลอดเวลา |
 | `com.tam.daily` | `python3 -m tam.ingest.daily` — ดึงทุกช่อง → merge → rebuild | **08:30 ทุกวัน** |
+| `com.tam.bot` | บอท Slack (Socket Mode) — `/meowtam` ใช้ได้โดยไม่ต้องเปิด terminal | ตอน login และตลอดเวลา |
 
 log อยู่ที่ `deploy/logs/` — `dashboard.log` และ `daily.log` เก็บทั้ง stdout และ stderr
 เพราะงานที่รันเองแล้วเงียบตอนพัง คือสิ่งที่แย่ที่สุด
@@ -48,6 +49,19 @@ cd deploy && ./uninstall.sh
 ```
 
 ถอนแล้วไม่เหลืออะไรค้าง — ไม่แตะข้อมูล ไม่แตะ `.env` และ dashboard ที่รันอยู่จะถูกหยุด
+
+## บอทกับ dashboard แข่งกันตอน login
+
+`com.tam.bot` ปฏิเสธที่จะสตาร์ตถ้าอ่าน `TAM_API_URL` ไม่ได้ เพราะการเสิร์ฟบอร์ดเก่าที่หน้าตา
+เหมือนของจริงอันตรายกว่าการไม่สตาร์ต และตอน login มันมักแพ้ dashboard ที่ต้องโหลดโมเดล 2.1 GB
+ก่อน **จึงเป็นเรื่องปกติที่ `launchctl list` จะเห็น `com.tam.bot` เป็น `exit=1` ช่วงแรก**
+KeepAlive กับ `ThrottleInterval 60` จะลองใหม่ทุกนาทีจนต่อได้ — วัดจริงแล้วมันฟื้นเอง
+
+ถ้ามันวนล้มไม่หยุด แปลว่า dashboard ไม่ขึ้น อ่าน `logs/dashboard.log` ไม่ใช่ `logs/bot.log`
+
+```bash
+tail -f logs/bot.log        # "🐾 Meowtam พร้อมแล้ว" = ต่อ Slack ได้แล้ว
+```
 
 ## ข้อควรรู้
 

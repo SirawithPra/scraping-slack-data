@@ -157,6 +157,36 @@ def declared_blockers(records: Sequence[dict[str, Any]]) -> list[tuple[dict[str,
     return found
 
 
+def cleared_blockers(records: Sequence[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every message whose blockers slot was answered, and answered "none".
+
+    This is the counter-evidence to `declared_blockers`, and it has to come from the
+    same person rather than from anywhere in the cluster. Measured on the real export:
+    all three declared blockers sit in one 71-message, 69-day topic that a `closed`
+    cue elsewhere marks resolved, so a cluster-wide "something finished later" test
+    silently retires every declaration in it — including "waiting for clearing user on
+    dev", which nobody had cleared. Whoever wrote a blocker is the one who gets to say
+    it is gone.
+
+    Kept as loose as `declared_blockers` on purpose: a bare "Blockers: -" is as clear a
+    statement as the full four-question form.
+    """
+    found: list[dict[str, Any]] = []
+    for record in records:
+        slots = parse(str(record.get("text", "")))
+        answered = slots.get("blockers")
+        if not answered:
+            continue
+        substantive = [
+            answer
+            for answer in answered
+            if not EMPTY_ANSWER.match(answer) and len(answer.strip(" •*-–—")) >= MIN_ANSWER_CHARS
+        ]
+        if not substantive:
+            found.append(record)
+    return found
+
+
 def standups(records: Sequence[dict[str, Any]]) -> list[Standup]:
     """Every standup form in a corpus, oldest first."""
     found: list[Standup] = []

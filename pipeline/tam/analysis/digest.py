@@ -44,7 +44,7 @@ from tam.analysis.linker import Link, link_records, load_overrides
 from tam.analysis.relations import Relation, extract_relations
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
 from tam.ingest.quoted import for_analysis
-from tam.ingest.standup import declared_blockers
+from tam.ingest.standup import cleared_blockers, declared_blockers
 from tam.ingest.users import Names
 from tam.retrieval.signals import SignalIndex, timestamp
 
@@ -201,6 +201,7 @@ class Digest:
 def apply_declarations(
     topic_records: Sequence[dict[str, Any]],
     declarations: dict[str, list[str]],
+    clearances: dict[str, float],
     state: str,
     evidence: str,
     evidence_id: str,
@@ -209,27 +210,43 @@ def apply_declarations(
     """Let a self-declared blocker override an inferred state.
 
     `declarations` maps a record id to what its author wrote under the blockers
-    heading. If one of this topic's messages carries such a declaration and nothing
-    state-bearing happened after it, the item is blocked and the evidence is the
-    person's own words — no cue, no inference, and nothing to argue about.
+    heading. If one of this topic's messages carries such a declaration that nobody has
+    since withdrawn, the item is blocked and the evidence is the person's own words —
+    no cue, no inference, and nothing to argue about.
 
-    A later `resolves` still wins, because somebody declaring a blocker on Monday and
-    reporting it fixed on Thursday is not blocked now. That is the same rule
-    `infer_state` uses, applied across the two kinds of evidence.
+    `clearances` maps a user to the last time they answered the blockers question with
+    "none". That, and not a cue elsewhere in the cluster, is what retires a
+    declaration. The distinction was measured, not assumed: this used to defer to any
+    later `resolved` state in the same topic, and on the real export all three declared
+    blockers land in one 71-message, 69-day cluster that a `closed` cue marks resolved
+    on its last day — so every declaration in it was silently retired, including
+    "waiting for clearing user on dev because data issues", which nobody had cleared.
+    A cluster that wide is a channel, not a work item, and its tail says nothing about
+    any one message in it. The same error, in the same shape, once made every drift
+    finding an artifact (see `analysis/drift._mentioning`).
+
+    Whoever wrote a blocker is the one who gets to say it is gone, so each declaration
+    is tested against its own author's later "none" — not against the cluster's, and
+    not against anybody else's.
     """
     declared = [
         (record, declarations[str(record["id"])])
         for record in topic_records
         if str(record["id"]) in declarations
     ]
-    if not declared:
+    # Test every declaration, not just the newest: a person can clear Monday's blocker
+    # while Tuesday's still stands, and taking the newest first would let the cleared
+    # one decide for both.
+    standing = [
+        (record, answers)
+        for record, answers in declared
+        if clearances.get(str(record.get("user") or ""), -np.inf) <= timestamp(record)
+    ]
+    if not standing:
         return state, evidence, evidence_id, state_since
 
-    record, answers = max(declared, key=lambda pair: timestamp(pair[0]))
+    record, answers = max(standing, key=lambda pair: timestamp(pair[0]))
     when = timestamp(record)
-    if state == "resolved" and np.isfinite(state_since) and state_since > when:
-        return state, evidence, evidence_id, state_since
-
     marker = format_timestamp(str(record.get("ts", "")))
     answer = " / ".join(answers)[:120]
     return "blocked", f'blocked since {marker} — คนกรอกเองว่า "{answer}"', str(record["id"]), when
@@ -389,6 +406,14 @@ def build_digest(
     # Self-declared blockers, keyed by the message that carries them. Computed once per
     # build: reading the form is a property of the corpus, not of a topic.
     declarations = {str(record["id"]): answers for record, answers in declared_blockers(records)}
+    # The latest "no blockers" per person. Only the declarer's own withdrawal retires
+    # their declaration — see apply_declarations for the measurement that forced this.
+    clearances: dict[str, float] = {}
+    for record in cleared_blockers(records):
+        user = str(record.get("user") or "")
+        moment = timestamp(record)
+        if np.isfinite(moment):
+            clearances[user] = max(clearances.get(user, -np.inf), moment)
     # Same clustering the linker would compute, handed to it, so the work items
     # here and the links there cannot disagree about who is in which cluster.
     links = {
@@ -419,7 +444,7 @@ def build_digest(
         # real export only one of the three such declarations contains any word from the
         # blocked_by cue list, so this finds what no keyword list can.
         state, evidence, evidence_id, state_since = apply_declarations(
-            member_records, declarations, state, evidence, evidence_id, state_since
+            member_records, declarations, clearances, state, evidence, evidence_id, state_since
         )
         topics.append(
             Topic(

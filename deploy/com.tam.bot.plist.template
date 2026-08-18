@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The Slack bot, kept alive.
+
+  `node --import tsx` rather than `npm start` or `tsx src/app.ts`, because launchd
+  watches the process it starts and both of those fork. Measured here: `node
+  node_modules/.bin/tsx src/app.ts` leaves a 51 MB parent idle in kevent while a 141 MB
+  child holds the Slack websocket, so KeepAlive guards the wrong process and the child's
+  console output never reaches StandardOutPath — the job looks dead in the log while the
+  bot is in fact answering. `--import` loads the TypeScript hook into this process, so
+  there is one PID, KeepAlive means what it says, and the log fills.
+
+  KeepAlive matters more here than for the dashboard. The bot refuses to start when
+  TAM_API_URL is set and the pipeline cannot answer — serving a stale board that looks
+  current is worse than not starting — and at login it usually loses that race, because
+  the dashboard has a 2.1 GB model to load first. So the first few attempts are expected
+  to fail; ThrottleInterval spaces them out and it connects once the dashboard is up.
+  A crash loop that never resolves means the dashboard is down, and the log says so.
+
+  Tokens stay in slack-bot/.env, not here: a plist in ~/Library/LaunchAgents is readable
+  by every account on the machine. WorkingDirectory is slack-bot/ so dotenv finds it.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tam.bot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>--import</string><string>tsx</string>
+    <string>src/app.ts</string>
+  </array>
+  <key>WorkingDirectory</key><string>__BOT__</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>StandardOutPath</key><string>__LOGS__/bot.log</string>
+  <key>StandardErrorPath</key><string>__LOGS__/bot.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <!-- Socket Mode dials out, so no inbound port and no public URL is needed. The
+         node bin directory has to be on PATH for tsx's own child processes. -->
+    <key>PATH</key><string>__NODEBIN__:/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+  </dict>
+</dict>
+</plist>
