@@ -1,33 +1,29 @@
 <title>ตาม (Tam) — Flow</title>
 <style>
+  /* Same tokens as deck.html and the dashboard — one project, one look. Dark is the
+     design and lives on the bare :root; light is behind an explicit stamp, for a
+     projector in a bright room. Nothing below sets a colour outside a token, and every
+     diagram draws in currentColor so both themes get a correct figure for free. */
   :root{
-    --ground:#F2F5F6; --surface:#FFFFFF; --surface-2:#E9EFF1; --surface-3:#DCE6E9;
-    --ink:#16242E; --ink-2:#47606D; --ink-3:#76909D;
-    --rule:#CBD9DE;
-    --accent:#0E7C86; --accent-soft:#D9EDEF;
-    --warn:#A85B08; --warn-soft:#F7E9D6;
-    --good:#17694A; --good-soft:#DCEDE4;
-    --f-body:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --ground:#0C0A09; --surface:#141110; --surface-2:#1B1716; --surface-3:#241F1D;
+    --ink:#F5EFEC; --ink-2:#A99C97; --ink-3:#948781;
+    --rule:#241F1D; --rule-2:#332C29;
+    --accent:#F0866A; --accent-dim:#8E4634; --accent-soft:rgba(240,134,106,.10);
+    --warn:#E0A860; --warn-soft:rgba(224,168,96,.10);
+    --good:#6FBFA4; --good-soft:rgba(111,191,164,.10);
+    --f-body:"Noto Sans Thai","Sukhumvit Set",system-ui,-apple-system,"Segoe UI",sans-serif;
     --f-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-    --s-1:.8rem; --s0:.95rem; --s1:1.05rem; --s2:1.3rem; --s3:1.7rem;
+    --s-2:.7rem; --s-1:.79rem; --s0:.93rem; --s1:1.05rem; --s2:1.3rem; --s3:1.7rem; --s4:2.35rem;
+    --u:4px; --r:3px;
+    --paw:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
   }
-  @media (prefers-color-scheme:dark){
-    :root:not([data-theme="light"]){
-      --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
-      --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
-      --rule:#2A3E48;
-      --accent:#4FC5CE; --accent-soft:#16333A;
-      --warn:#E0A048; --warn-soft:#33260F;
-      --good:#5FC79B; --good-soft:#122E23;
-    }
-  }
-  :root[data-theme="dark"]{
-    --ground:#101A20; --surface:#16232B; --surface-2:#1D2C35; --surface-3:#25363F;
-    --ink:#E7EFF2; --ink-2:#A6BCC5; --ink-3:#728B96;
-    --rule:#2A3E48;
-    --accent:#4FC5CE; --accent-soft:#16333A;
-    --warn:#E0A048; --warn-soft:#33260F;
-    --good:#5FC79B; --good-soft:#122E23;
+  :root[data-theme="light"]{
+    --ground:#FBF7F4; --surface:#FFFDFC; --surface-2:#F5EDE8; --surface-3:#EDE0D9;
+    --ink:#241C1A; --ink-2:#5E4E49; --ink-3:#756259;
+    --rule:#EADFD9; --rule-2:#D3C2BA;
+    --accent:#BF5138; --accent-dim:#E4735A; --accent-soft:rgba(191,81,56,.08);
+    --warn:#95610F; --warn-soft:rgba(149,97,15,.08);
+    --good:#2F6455; --good-soft:rgba(47,100,85,.08);
   }
 
   *{box-sizing:border-box}
@@ -74,6 +70,25 @@
   .flow-warn{stroke:var(--warn);stroke-width:1.8;fill:none;stroke-dasharray:5 4}
 
   @media (max-width:640px){ .wrap{padding:22px 14px 60px} :root{--s3:1.4rem;--s2:1.15rem} }
+
+  /* ---------- added with sections 6-8 ---------- */
+  /* `.tdim-t` is the HTML sibling of the SVG `.tdim`: the same recessive note, but in a
+     paragraph rather than inside a drawing, where the SVG text classes do not apply. */
+  .tdim-t{color:var(--ink-3);font-size:var(--s-1)}
+  /* A table wide enough to need scrolling must scroll inside its own box, or the page
+     body moves sideways and every diagram above it shifts with it. */
+  .tw{overflow-x:auto}
+  table{border-collapse:collapse;width:100%;font-size:var(--s-1);min-width:520px}
+  th,td{text-align:left;padding:calc(var(--u)*3) calc(var(--u)*4);
+        border-bottom:1px solid var(--rule);vertical-align:top}
+  thead th{font-family:var(--f-mono);font-size:var(--s-2);text-transform:uppercase;
+           letter-spacing:.11em;color:var(--ink-3);font-weight:600;background:var(--surface-2);
+           white-space:nowrap}
+  tbody tr:last-child td{border-bottom:0}
+  td strong{color:var(--ink)}
+  td code{font-family:var(--f-mono);font-size:.9em;background:var(--surface-2);
+          border:1px solid var(--rule);border-radius:2px;padding:.05em .3em}
+  td em{font-style:normal;color:var(--accent)}
 </style>
 
 <div class="wrap">
@@ -490,6 +505,320 @@
     ที่ server คิดมาให้ (<code>cross-encoder</code> ก็ลองเอามาเป็นด่านแล้วไม่ผ่านการวัด — เหตุผลอยู่ในคอมเมนต์ของ
     <code>searchWithRelevance</code>) วัดซ้ำที่หน้างานด้วย <code>npm run check-api</code> เพราะเกณฑ์เป็นคุณสมบัติของ
     corpus คู่กับโมเดล ไม่ใช่ค่าคงที่</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>6 · หลักการคิด — และการวัดที่ทำให้ได้หลักการนั้น</h2>
+  <p>ห้าข้อนี้ไม่ได้ตั้งไว้ก่อนเริ่มเขียน ทุกข้อมาจากบั๊กที่วัดเจอแล้วต้องกลับไปแก้กลไก
+     ไม่ใช่แก้ตัวเลข — คอลัมน์ขวาคือเรื่องที่ทำให้ได้ข้อนั้นมา</p>
+
+  <div class="tw" style="overflow-x:auto;border:1px solid var(--rule);border-radius:var(--r)">
+  <table>
+    <thead><tr><th>หลักการ</th><th>เจอมาจากอะไร</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>ทุกคำตอบต้องชี้ข้อความที่เป็นหลักฐาน</strong><br>
+            <span class="tdim-t">ถ้าอธิบายไม่ได้ว่ารู้มาจากไหน ก็ไม่ต้องพูด</span></td>
+        <td>สถานะทุกอันเก็บ <code>evidence_id</code> ของข้อความที่ทำให้สรุปแบบนั้น
+            พอเก็บแล้วบั๊กโผล่เอง — <code>PROJ-157</code> ถูกมาร์คว่าปิดแล้วโดยอ้าง
+            <em>“added permission done krub”</em> ซึ่งไม่มีคำว่า PROJ-157 อยู่เลย</td>
+      </tr>
+      <tr>
+        <td><strong>กฎที่อธิบายได้ ชนะโมเดลที่เดาเก่ง</strong><br>
+            <span class="tdim-t">ใช้ embedding หา ใช้กฎตัดสิน</span></td>
+        <td>สถานะมาจาก typed relation ที่ระบุ cue ได้ ไม่ได้มาจาก LLM
+            เวลาผิดจึงชี้ได้ว่าผิดที่บรรทัดไหนแล้วแก้ได้ — และแก้ไปแล้วสามครั้งด้วยวิธีนี้</td>
+      </tr>
+      <tr>
+        <td><strong>วัดสองทิศทาง ไม่ใช่ทิศที่นับง่าย</strong><br>
+            <span class="tdim-t">เลขที่ขึ้นง่ายมักขึ้นเพราะเหตุผลผิด</span></td>
+        <td>จะเพิ่ม resolution ของการจับกลุ่ม ต้องวัดทั้ง <em>ยุบเกิน</em> และ <em>ผ่าเกิน</em>
+            พร้อมกัน ปรากฏว่าลดทั้งคู่ — ไม่มี tradeoff ที่กลัวไว้ (ดูกราฟ 7a)</td>
+      </tr>
+      <tr>
+        <td><strong>เทียบกับเรื่องเดียวกัน ไม่ใช่กับสิ่งที่อยู่ใกล้กัน</strong><br>
+            <span class="tdim-t">อยู่คลัสเตอร์เดียวกัน ไม่ใช่หลักฐาน</span></td>
+        <td>บั๊กชนิดเดียวกันเกิดสามครั้ง: drift เทียบกับหางของคลัสเตอร์ · คำประกาศว่าติดถูกยกเลิก
+            ด้วย cue ของคนอื่น · ticket ถูกเทียบเพราะ record มันนั่งอยู่ในก้อนเดียวกัน
+            ทั้งสามครั้งแก้ด้วยการบังคับว่าต้องเป็น<strong>เรื่องเดียวกัน</strong></td>
+      </tr>
+      <tr>
+        <td><strong>“ไม่รู้” ต้องต่างจาก “ไม่มี”</strong><br>
+            <span class="tdim-t">ลิสต์ว่างเป็นคำตอบได้ ถ้ามันบอกว่าว่างเพราะอะไร</span></td>
+        <td>recall ปฏิเสธ query ที่ไม่มีคำร่วมกับ corpus แทนที่จะเดาห้าอัน ·
+            <code>/api/tracker</code> ส่ง <code>error</code> มาคู่กับลิสต์ว่างเมื่ออ่าน ticket ไม่ได้
+            และหน้าจอเขียนว่า <em>“เรายังไม่รู้”</em> ไม่ใช่ <em>“ไม่มีงานค้าง”</em></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 860 208" role="img" width="100%" height="auto"
+         aria-label="ห่วงโซ่หลักฐาน จากการ์ดในหน้าจอ ย้อนไปยัง item แล้วไปยังข้อความต้นทาง แล้วไปยัง permalink ใน Slack โดยแต่ละขั้นเก็บ id ของขั้นก่อนหน้าไว้">
+      <defs>
+        <marker id="e1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0,0 L10,5 L0,10 z" fill="var(--accent)"/>
+        </marker>
+      </defs>
+      <text class="tdim" x="0" y="12">หลักการข้อ 1 — ห่วงโซ่ที่ต้องต่อกันได้ทุกขั้น ไม่มีขั้นไหนขาด</text>
+
+      <rect class="box-hi" x="0" y="30" width="176" height="62" rx="3"/>
+      <text class="tb" x="14" y="52">การ์ดบนหน้าจอ</text>
+      <text class="tdim" x="14" y="70">blocked since 18 ส.ค.</text>
+      <text class="tdim" x="14" y="84">“mkt ต้องรอ …”</text>
+
+      <rect class="box" x="228" y="30" width="176" height="62" rx="3"/>
+      <text class="tb" x="242" y="52">work item</text>
+      <text class="tdim" x="242" y="70">item_id · evidence_id</text>
+      <text class="tdim" x="242" y="84">state_since</text>
+
+      <rect class="box" x="456" y="30" width="176" height="62" rx="3"/>
+      <text class="tb" x="470" y="52">ข้อความต้นทาง</text>
+      <text class="tdim" x="470" y="70">record id · user · ts</text>
+      <text class="tdim" x="470" y="84">ข้อความจริงเต็ม ๆ</text>
+
+      <rect class="box-good" x="684" y="30" width="176" height="62" rx="3"/>
+      <text class="tb" x="698" y="52">Slack permalink</text>
+      <text class="tdim" x="698" y="70">เปิดอ่านในบริบทเดิม</text>
+      <text class="tdim" x="698" y="84">660/713 สร้างได้</text>
+
+      <path class="flow-acc" marker-end="url(#e1)" d="M176,61 L222,61"/>
+      <path class="flow-acc" marker-end="url(#e1)" d="M404,61 L450,61"/>
+      <path class="flow-acc" marker-end="url(#e1)" d="M632,61 L678,61"/>
+      <text class="tdim" x="180" y="52">อ้าง</text>
+      <text class="tdim" x="408" y="52">อ้าง</text>
+      <text class="tdim" x="636" y="52">อ้าง</text>
+
+      <path class="band" d="M0,124 L860,124"/>
+      <text class="twarn" x="0" y="146">ที่ขั้นไหนก็ได้ ถ้าตัวเชื่อมหายไป ระบบต้องบอกว่าไม่รู้ — ห้ามข้ามไปแสดงผลลัพธ์ที่อธิบายที่มาไม่ได้</text>
+      <text class="tdim" x="0" y="168">ข้อความจากที่ประชุมกับ ticket ไม่มี Slack permalink ตามธรรมชาติ — ระบบจึงพูดว่า “ไม่ได้มาจาก Slack”</text>
+      <text class="tdim" x="0" y="186">ไม่ใช่พูดว่า “ลิงก์เสีย” และ ticket ได้ลิงก์ของตัวเองไปที่ YouTrack แทน</text>
+    </svg>
+    <figcaption><b>หลักฐานต้องต่อกันได้สี่ขั้น</b> ทุกอย่างที่ระบบพูดกดย้อนไปถึงข้อความที่คนพิมพ์จริงได้
+      — และเมื่อขั้นใดขั้นหนึ่งขาด หน้าที่ของระบบคือบอกว่าขาด ไม่ใช่เดาให้เต็ม</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>7 · กราฟจากตัวเลขที่วัดจริง</h2>
+  <p>ทุกตัวเลขในหัวข้อนี้มาจากการรันบน corpus จริง ไม่ใช่ตัวอย่าง —
+     <span class="tdim-t">ตัวเลขปัจจุบันรวมบันทึกประชุมที่ mock ไว้สองอันเพื่อทดสอบการรวมสามแหล่ง</span></p>
+
+  <figure>
+    <svg viewBox="0 0 860 300" role="img" width="100%" height="auto"
+         aria-label="กราฟเส้นสองเส้นเทียบค่า resolution ของการจับกลุ่ม เส้นแรกคือจำนวน ticket ต่างกันในคลัสเตอร์ที่แย่สุด ลดจาก 19 เหลือ 7 เส้นที่สองคือสัดส่วน ticket ที่ข้อความอ้างถึงกระจายข้ามคลัสเตอร์ ลดจาก 31 เปอร์เซ็นต์เหลือ 8 เปอร์เซ็นต์ ทั้งสองเส้นลดพร้อมกัน">
+      <text class="tdim" x="0" y="12">7a · ยุบเกิน กับ ผ่าเกิน — วัดพร้อมกันแล้วลดพร้อมกัน</text>
+
+      <path class="band" d="M56,44 L56,236"/>
+      <path class="band" d="M56,236 L820,236"/>
+      <text class="tdim" x="0" y="48">แย่</text>
+      <text class="tdim" x="0" y="240">ดี</text>
+
+      <text class="tdim" x="56" y="256" text-anchor="middle">1.0</text>
+      <text class="tdim" x="247" y="256" text-anchor="middle">2.0</text>
+      <text class="tdim" x="629" y="256" text-anchor="middle">4.0</text>
+      <text class="tdim" x="820" y="256" text-anchor="middle">6.0</text>
+      <text class="tdim" x="438" y="276" text-anchor="middle">resolution ของ Louvain</text>
+
+      <polyline class="flow-acc" points="56,52 247,88 629,196 820,196"/>
+      <circle cx="56" cy="52" r="4" fill="var(--accent)"/>
+      <circle cx="247" cy="88" r="4" fill="var(--accent)"/>
+      <circle cx="629" cy="196" r="5.5" fill="var(--accent)"/>
+      <circle cx="820" cy="196" r="4" fill="var(--accent)"/>
+      <text class="tacc" x="66" y="46">19 ใบ</text>
+      <text class="tacc" x="257" y="82">16</text>
+      <text class="tacc" x="600" y="188">7</text>
+      <text class="tacc" x="792" y="188">7</text>
+      <text class="tacc" x="66" y="70">ticket ต่างกันในคลัสเตอร์ที่แย่สุด — ยิ่งน้อยยิ่งไม่ยุบรวมงานต่างเรื่อง</text>
+
+      <polyline class="flow" stroke="var(--good)" stroke-dasharray="5 4" points="56,72 247,148 629,184 820,190"/>
+      <circle cx="56" cy="72" r="4" fill="var(--good)"/>
+      <circle cx="247" cy="148" r="4" fill="var(--good)"/>
+      <circle cx="629" cy="184" r="5.5" fill="var(--good)"/>
+      <circle cx="820" cy="190" r="4" fill="var(--good)"/>
+      <text class="tgood" x="66" y="112">31%</text>
+      <text class="tgood" x="257" y="166">15%</text>
+      <text class="tgood" x="644" y="176">9%</text>
+      <text class="tgood" x="66" y="130">ticket ที่ข้อความอ้างถึงกระจายข้ามคลัสเตอร์ — ยิ่งน้อยยิ่งไม่ผ่างานจริงเป็นเสี่ยง</text>
+
+      <path class="band" d="M629,44 L629,236"/>
+      <text class="tacc" x="639" y="60">เลือก 4.0</text>
+      <text class="tdim" x="639" y="76">เหนือจากนี้ผลนิ่ง (7→7, 9%→8%)</text>
+      <text class="tdim" x="639" y="90">แต่ standup ต้องอ่านมากขึ้น</text>
+      <text class="twarn" x="0" y="296">ต้นทุนที่ต้องพูด: งานที่แสดงครอบคลุม record ลดจาก 90% เหลือ 85% เพราะก้อนเดี่ยวตกใต้เกณฑ์ — ยังค้นเจอ แค่ไม่ถูกเรียกว่างาน</text>
+    </svg>
+    <figcaption><b>เหตุผลที่ไม่ควรเพิ่ม resolution กลับกลายเป็นเหตุผลที่ควรเพิ่ม</b>
+      ที่ค่าต่ำ ก้อนใหญ่ดูดข้อความตามช่องและเวลา ไม่ใช่ตามเรื่อง คนสองคนที่คุย ticket เดียวกัน
+      ในสองที่จึงไปอยู่สองก้อน — <b>1.0 แย่กว่าทั้งสองทาง</b> จึงไม่มี tradeoff ให้เลือก</figcaption>
+  </figure>
+
+  <figure>
+    <svg viewBox="0 0 860 268" role="img" width="100%" height="auto"
+         aria-label="กราฟกระจายเทียบเจ็ดโมเดล แกนนอนคือความแม่น triplet แกนตั้งคือ cosine ที่ query ขยะทำได้ bge-m3 อยู่มุมล่างขวาคือดีทั้งสองแกน โมเดลที่เทรนเองสองตัวอยู่บนคือแย่กว่าทั้งสองแกน">
+      <text class="tdim" x="0" y="12">7b · โมเดลที่เทรนเองแพ้ทั้งสองแกน ไม่ใช่แค่แกนเดียว</text>
+
+      <path class="band" d="M64,36 L64,214"/>
+      <path class="band" d="M64,214 L800,214"/>
+      <text class="tdim" x="0" y="42">0.98</text>
+      <text class="tdim" x="0" y="218">0.70</text>
+      <text class="tdim" x="0" y="120">cosine</text>
+      <text class="tdim" x="0" y="134">ของ query</text>
+      <text class="tdim" x="0" y="148">ขยะ</text>
+      <text class="tdim" x="0" y="164" style="fill:var(--good)">ยิ่งต่ำ</text>
+      <text class="tdim" x="0" y="178" style="fill:var(--good)">ยิ่งดี</text>
+      <text class="tdim" x="120" y="234">59%</text>
+      <text class="tdim" x="700" y="234">64%</text>
+      <text class="tdim" x="432" y="254" text-anchor="middle">triplet accuracy บน thread ที่กันไว้ — ยิ่งขวายิ่งดี</text>
+
+      <circle cx="196" cy="46" r="6" fill="var(--warn)"/>
+      <text class="twarn" x="210" y="42">real_finetuned</text>
+      <text class="tdim" x="210" y="58">61.4% · ขยะได้ 0.971</text>
+
+      <circle cx="160" cy="58" r="6" fill="var(--warn)"/>
+      <text class="twarn" x="174" y="82">syn_finetuned</text>
+      <text class="tdim" x="174" y="98">60.9% · ขยะได้ 0.964</text>
+
+      <circle cx="120" cy="106" r="6" fill="var(--ink-3)"/>
+      <text class="tdim" x="134" y="110">MiniLM (ของเดิม) · 59.4% · ขยะได้ 0.918</text>
+
+      <circle cx="726" cy="196" r="8" fill="var(--accent)"/>
+      <text class="tacc" x="600" y="182">bge-m3 · ที่เลือกใช้</text>
+      <text class="tdim" x="600" y="166">63.7% · ขยะได้ 0.731</text>
+
+      <path class="flow" stroke="var(--good)" stroke-dasharray="4 4" d="M690,214 L800,214 L800,160"/>
+      <text class="tgood" x="690" y="150">มุมนี้คือดีทั้งสองแกน</text>
+
+      <text class="twarn" x="0" y="266">เทรนเองแล้ว accuracy ขึ้นเล็กน้อยแต่ cosine ของ query ขยะพุ่งขึ้น = space ยุบ ระบบจะตอบทุก query อย่างมั่นใจ จึงไม่ได้ใช้ทั้งสองตัว</text>
+    </svg>
+    <figcaption><b>ถ้าวัดแกนเดียวจะเลือกผิด</b> ดูแค่ accuracy โมเดลที่เทรนเองชนะของเดิม
+      แต่พอวัดว่ามัน<b>ปฏิเสธ query ที่ไม่เกี่ยวได้ไหม</b>ด้วย มันแย่กว่าชัดเจน — และนั่นคือแกนที่ผู้ใช้รู้สึกจริง</figcaption>
+  </figure>
+
+  <figure>
+    <svg viewBox="0 0 860 250" role="img" width="100%" height="auto"
+         aria-label="แผนภาพเปรียบเทียบการอ่าน blocker ระดับข้อความกับระดับบรรทัด ระดับข้อความเข้าถึงได้สี่ข้อความ ระดับบรรทัดได้ยี่สิบแปดบรรทัดจากสิบเก้าโพสต์ และรายงานออกมาห้างาน">
+      <text class="tdim" x="0" y="12">7c · หน่วยของสัญญาณ — ไม่ใช่ลิสต์คำ</text>
+
+      <rect class="box" x="0" y="34" width="250" height="150" rx="3"/>
+      <text class="tb" x="16" y="58">อ่านทั้งข้อความ</text>
+      <text class="tdim" x="16" y="78">cue อยู่ที่ไหนก็ได้ในโพสต์</text>
+      <rect x="16" y="92" width="26" height="20" class="box-warn" rx="2"/>
+      <text class="twarn" x="52" y="107">4 ข้อความ ที่เข้าถึงได้</text>
+      <text class="tdim" x="16" y="132">โพสต์ที่มี pending ยาว median</text>
+      <text class="tdim" x="16" y="148">529 ตัวอักษร เทียบทั้ง corpus 46</text>
+      <text class="tdim" x="16" y="164">14 จาก 15 เป็นโพสต์หลายบรรทัด</text>
+
+      <rect class="box-hi" x="300" y="34" width="250" height="150" rx="3"/>
+      <text class="tb" x="316" y="58">อ่านทีละบรรทัด</text>
+      <text class="tdim" x="316" y="78">บรรทัดคือหน่วยที่ทีมเขียนจริง</text>
+      <rect x="316" y="92" width="182" height="20" class="box-hi" rx="2"/>
+      <text class="tacc" x="316" y="130">28 บรรทัด จาก 19 โพสต์</text>
+      <text class="tdim" x="316" y="148">• Pending Mild - list all field</text>
+      <text class="tdim" x="316" y="164">• insurance pending from mild</text>
+
+      <rect class="box-good" x="600" y="34" width="260" height="150" rx="3"/>
+      <text class="tb" x="616" y="58">ที่รายงานออกมา</text>
+      <text class="tgood" x="616" y="86" style="font-size:26px;font-weight:700">5</text>
+      <text class="tdim" x="650" y="86">งานที่ติด</text>
+      <text class="tdim" x="616" y="112">หลักฐานคือ<tspan style="fill:var(--accent)">บรรทัดนั้น</tspan> ไม่ใช่โพสต์ทั้งก้อน</text>
+      <text class="tdim" x="616" y="134">2 บรรทัดระบุตัวคนที่รออยู่</text>
+      <text class="tdim" x="616" y="156">ที่เหลือเรียกชื่อเล่น จึงไม่เดา id</text>
+
+      <path class="flow-acc" marker-end="url(#e1)" d="M250,109 L294,109"/>
+      <path class="flow" stroke="var(--good)" marker-end="url(#e1)" d="M550,109 L594,109"/>
+
+      <text class="twarn" x="0" y="212">ลอง `pending` เป็น cue ระดับข้อความแล้ว blocked ขึ้นจาก 2 เป็น 3 — แต่หลักฐานของอันใหม่คือโพสต์ “Sprint 3 is officially end RECAP”</text>
+      <text class="twarn" x="0" y="230">ซึ่งเป็นสรุปสปรินต์ ไม่ใช่การบอกว่าใครติด จึงถอนออก · ระบบที่อ้างสรุปสปรินต์เป็นหลักฐานว่ามีคนติด น่าเชื่อถือน้อยลง ไม่ใช่มากขึ้น</text>
+      <text class="tdim" x="0" y="248">คำที่วัดแล้วไม่เพิ่ม: `ค้าง` ปนกับ “แอปแฮงค์” · `ติด` เกือบทั้งหมดคือ “ติดธุระ” · `ฝาก` เป็นการขอ ไม่ใช่การติด</text>
+    </svg>
+    <figcaption><b>คอขวดคือระดับของสัญญาณ</b> ทีมเขียน blocker เป็นบรรทัดหนึ่งในโพสต์ที่ยาวกว่าข้อความปกติ 12 เท่า
+      อ่านทั้งโพสต์จึงได้ cue ที่ถูกแต่อ้างที่มาผิด — <b>เปลี่ยนหน่วย ไม่ใช่เติมคำ</b></figcaption>
+  </figure>
+
+  <figure>
+    <svg viewBox="0 0 860 236" role="img" width="100%" height="auto"
+         aria-label="กราฟแท่งแสดงจำนวนวันที่ ticket เปิดค้างไม่ถูกแตะ มีสองยอดชัดเจน สิบเอ็ดใบที่ห้าสิบเจ็ดวันและสิบใบที่ยี่สิบสามวัน">
+      <text class="tdim" x="0" y="12">7d · ticket ที่เงียบ — รูปแบบ ไม่ใช่ลิสต์</text>
+
+      <path class="band" d="M40,180 L820,180"/>
+      <text class="tdim" x="0" y="184">0</text>
+      <text class="tdim" x="0" y="60">11</text>
+
+      <rect x="60" y="168" width="52" height="12" fill="var(--ink-3)"/>
+      <text class="tdim" x="86" y="200" text-anchor="middle">72 วัน</text>
+      <text class="tdim" x="86" y="160" text-anchor="middle">1</text>
+
+      <rect x="180" y="52" width="52" height="128" fill="var(--accent)"/>
+      <text class="tacc" x="206" y="200" text-anchor="middle">57 วัน</text>
+      <text class="tacc" x="206" y="44" text-anchor="middle">11 ใบ</text>
+
+      <rect x="300" y="168" width="52" height="12" fill="var(--ink-3)"/>
+      <text class="tdim" x="326" y="200" text-anchor="middle">45</text>
+      <text class="tdim" x="326" y="160" text-anchor="middle">1</text>
+
+      <rect x="360" y="168" width="52" height="12" fill="var(--ink-3)"/>
+      <text class="tdim" x="386" y="200" text-anchor="middle">42</text>
+      <text class="tdim" x="386" y="160" text-anchor="middle">1</text>
+
+      <rect x="600" y="64" width="52" height="116" fill="var(--accent)"/>
+      <text class="tacc" x="626" y="200" text-anchor="middle">23 วัน</text>
+      <text class="tacc" x="626" y="56" text-anchor="middle">10 ใบ</text>
+
+      <path class="band" d="M700,40 L700,180"/>
+      <text class="tgood" x="710" y="56">เกณฑ์ 21 วัน</text>
+      <text class="tdim" x="710" y="72">p25=5 · median=8 · p75=22</text>
+      <text class="tdim" x="710" y="88">และตกในช่องว่างที่ไม่มี</text>
+      <text class="tdim" x="710" y="104">ticket ใบไหนอยู่เลย (14–21)</text>
+
+      <text class="tdim" x="0" y="222">สองยอดคืองานสองก้อนที่ถูกดันเข้า Ready for test วันเดียวกันแต่ละก้อน แล้วไม่มีใครหยิบต่อ — 22 จาก 24 ใบอยู่สถานะเดียวกันนี้</text>
+    </svg>
+    <figcaption><b>เกณฑ์มาจากการกระจายของทีมเอง</b> ไม่ใช่ตัวเลขกลม ๆ — และเลือกจุดที่ตกใน<b>ช่องว่างธรรมชาติ</b>
+      เพื่อให้เลื่อนหนึ่งวันคำตอบไม่เปลี่ยน · สิ่งที่มีค่าคือรูปร่างของสองยอด ไม่ใช่จำนวน 24</figcaption>
+  </figure>
+</section>
+
+<section>
+  <h2>8 · สองแหล่งกลายเป็น corpus เดียว — และกฎที่กันไม่ให้มันกลืนกัน</h2>
+  <figure>
+    <svg viewBox="0 0 860 330" role="img" width="100%" height="auto"
+         aria-label="ผังแสดง ticket จาก YouTrack และข้อความ Slack เข้าสู่ corpus เดียวกัน โดย ticket เก็บแค่ชื่อและสองบรรทัดแรกของ description และงานหนึ่งชิ้นต้องมีบทสนทนาไม่น้อยกว่าจำนวน ticket ในก้อนนั้น">
+      <text class="tdim" x="0" y="12">8 · ticket เข้า corpus แต่ห้ามตั้งตัวเป็นงานเอง</text>
+
+      <rect class="box" x="0" y="32" width="200" height="74" rx="3"/>
+      <text class="tb" x="14" y="54">ticket 195 ใบ</text>
+      <text class="tdim" x="14" y="72">summary + description</text>
+      <text class="twarn" x="14" y="92">median 582 ตัวอักษร · สุด 14,556</text>
+
+      <rect class="box-hi" x="264" y="32" width="212" height="74" rx="3"/>
+      <text class="tb" x="278" y="54">ตัดเหลือชื่อ + 2 บรรทัด</text>
+      <text class="tdim" x="278" y="72">ข้ามหัวข้อ · รูป · แถวตาราง</text>
+      <text class="tacc" x="278" y="92">median เหลือ 140 · Slack อยู่ที่ 46</text>
+
+      <rect class="box" x="0" y="140" width="200" height="56" rx="3"/>
+      <text class="tb" x="14" y="162">ข้อความ Slack</text>
+      <text class="tdim" x="14" y="180">974 + reply ในเธรด 170</text>
+
+      <rect class="box-good" x="560" y="72" width="300" height="82" rx="3"/>
+      <text class="tb" x="574" y="94">corpus เดียว · embed ชุดเดียว</text>
+      <text class="tdim" x="574" y="114">ค้นครั้งเดียวเจอทั้งสองแหล่ง</text>
+      <text class="tdim" x="574" y="132">1,192 record ที่ index อยู่</text>
+
+      <path class="flow-acc" marker-end="url(#e1)" d="M200,69 L258,69"/>
+      <path class="flow-acc" marker-end="url(#e1)" d="M476,86 L554,102"/>
+      <path class="flow" marker-end="url(#e1)" d="M200,168 L554,132"/>
+      <text class="tdim" x="212" y="60">ตัด</text>
+
+      <path class="band" d="M0,222 L860,222"/>
+      <text class="tb" x="0" y="248">กฎเดียวที่กันก้อน ticket ล้วน</text>
+      <text class="t" x="0" y="270">บทสนทนาในก้อนต้อง<tspan style="fill:var(--accent)">ไม่น้อยกว่า</tspan> ticket ในก้อนนั้น มิฉะนั้นไม่นับเป็นงาน</text>
+      <text class="tdim" x="0" y="292">วัดแล้ว: 82 จาก 194 ใบไปเกาะกับบทสนทนาจริง — อีก 112 ใบยุบเป็น 3 ก้อนที่แทบไม่มีคนคุย ก้อนใหญ่สุดมี ticket 108 ใบ + Slack 2 ข้อความ</text>
+      <text class="tdim" x="0" y="310">ก้อนแบบนั้นจะโผล่เป็น “งานหนึ่งชิ้น” ชื่อ api, then, view ซึ่งไม่ใช่งาน มันคือ backlog</text>
+      <text class="tgood" x="0" y="328">ทั้ง 195 ใบยังค้นเจอครบ และยังถูกเทียบครบ — ที่ถูกกันคือการโผล่บน digest เท่านั้น เพราะ /meowtam silent ดูแลเรื่องนี้ได้ดีกว่าอยู่แล้ว</text>
+    </svg>
+    <figcaption><b>เข้า corpus ได้ แต่สร้างงานเองไม่ได้</b> ticket เป็นส่วนขยายของงานที่คนคุยกัน
+      ไม่ใช่ต้นกำเนิดของงาน — และ ticket ที่ไม่มีใครคุยถึงมีรายงานของตัวเองที่ทำได้ละเอียดกว่า</figcaption>
   </figure>
 </section>
 

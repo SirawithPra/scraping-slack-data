@@ -307,7 +307,7 @@
       <span class="meta">18 ส.ค. 2569 · ส่ง 19 ส.ค. 2569</span>
     </div>
     <figure class="cat cat--hero">
-      <img src="img/cat-1.jpg" alt="แมวประจำโปรเจกต์" onerror="this.remove()">
+      <img src="img/cat-1.jpg" alt="แมวประจำโปรเจกต์" onerror="tryNext(this)">
       <figcaption>01 · on duty</figcaption>
     </figure>
   </header>
@@ -334,7 +334,7 @@
     <div class="slide-head"><span class="num">02</span><span class="eyebrow">ปัญหา</span></div>
     <div class="slide-body">
       <figure class="cat cat--wide">
-        <img src="img/cat-2.jpg" alt="แมวอ่านแชนเนล" onerror="this.remove()">
+        <img src="img/cat-2.jpg" alt="แมวอ่านแชนเนล" onerror="tryNext(this)">
         <figcaption>02 · reading the channel</figcaption>
       </figure>
       <h2>สถานะจริงของงานอยู่ใน 4 ที่ และครบอยู่ที่เดียว — ในหัวคน</h2>
@@ -458,7 +458,7 @@ slack-bot/   Slack bot — npm project แยก</pre>
     <div class="slide-head"><span class="num">06</span><span class="eyebrow">ต้นแบบ · Dashboard บนข้อมูลจริง</span></div>
     <div class="slide-body">
       <figure class="cat cat--wide">
-        <img src="img/cat-3.jpg" alt="แมวเฝ้า dashboard" onerror="this.remove()">
+        <img src="img/cat-3.jpg" alt="แมวเฝ้า dashboard" onerror="tryNext(this)">
         <figcaption>03 · on the dashboard</figcaption>
       </figure>
       <h2>รันบนข้อมูลจริงอยู่ตอนนี้ — และโมเดลถูกเปลี่ยนเพราะการวัด</h2>
@@ -492,7 +492,7 @@ $ curl -s http://127.0.0.1:8899/api/blockers        # ชื่อถูกแ�
     <div class="slide-head"><span class="num">07</span><span class="eyebrow">ต้นแบบ · Slack</span></div>
     <div class="slide-body">
       <figure class="cat cat--wide">
-        <img src="img/cat-4.jpg" alt="แมวใน Slack" onerror="this.remove()">
+        <img src="img/cat-4.jpg" alt="แมวใน Slack" onerror="tryNext(this)">
         <figcaption>04 · in the channel</figcaption>
       </figure>
       <h2>ใช้งานในหน้าต่าง Slack ไม่ต้องเปิดเว็บ</h2>
@@ -591,7 +591,7 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template</pre>
     <div class="slide-head"><span class="num">10</span><span class="eyebrow">สิ่งที่การวัดแก้ · ข้อจำกัด · ก้าวถัดไป</span></div>
     <div class="slide-body">
       <figure class="cat cat--wide">
-        <img src="img/cat-5.jpg" alt="แมวกับงานที่เหลือ" onerror="this.remove()">
+        <img src="img/cat-5.jpg" alt="แมวกับงานที่เหลือ" onerror="tryNext(this)">
         <figcaption>05 · what is left</figcaption>
       </figure>
       <h2>เกณฑ์ตัดความเกี่ยวข้องกรองผิดสัญญาณมาตลอด — การวัดคือสิ่งที่จับได้</h2>
@@ -640,6 +640,22 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template</pre>
   </section>
 
   <script>
+  /* Whatever extension the photo happens to have. The first version demanded `.jpg` and
+     the first real photo dropped in was a `.jpeg`, so nothing appeared and nothing said
+     why — the slot had removed its own broken image exactly as designed. Walking a
+     candidate list costs nine lines and removes the one instruction a person has to get
+     right. HEIC is in the list but browsers cannot decode it; it is here so the console
+     shows an attempt rather than silence. */
+  function tryNext(img) {
+    var order = ['jpg', 'jpeg', 'png', 'webp', 'JPG', 'JPEG', 'PNG', 'avif', 'heic'];
+    var at = Number(img.dataset.at || 0) + 1;
+    var base = (img.dataset.base || img.getAttribute('src')).replace(/\.[^.\/]+$/, '');
+    img.dataset.base = base;
+    if (at >= order.length) { img.remove(); return; }   // out of guesses: show the placeholder
+    img.dataset.at = at;
+    img.src = base + '.' + order[at];
+  }
+
   /* The switch exists for one situation: a projector in a bright room, where a dark deck
      is unreadable. Dark stays the default because that is the design; the choice is
      remembered so it survives the reload nobody wants to do mid-presentation. */
@@ -656,5 +672,9 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template</pre>
     });
   })();
 </script>
-<p class="foot">ตาม (Tam) · draft deck 10 สไลด์ · ปรับปรุง 18 ส.ค. 2569</p>
+<p class="foot" style="margin-bottom:calc(var(--u)*3)">
+    ฝั่ง tech อ่านต่อได้ที่ <a href="architecture.html">architecture.html</a> — flow 8 หัวข้อ · diagram 12 ภาพ ·
+    หลักการคิด 5 ข้อพร้อมการวัดที่ทำให้ได้ข้อนั้น · และกราฟจากตัวเลขจริง 4 อัน
+  </p>
+  <p class="foot">ตาม (Tam) · draft deck 10 สไลด์ · ปรับปรุง 18 ส.ค. 2569</p>
 </div>
