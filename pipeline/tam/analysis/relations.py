@@ -37,10 +37,12 @@ import json
 import logging
 import re
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
+from pythainlp.tokenize import word_tokenize
 import plotly.graph_objects as go
 from dotenv import load_dotenv
 
@@ -156,16 +158,65 @@ LATIN_RE = re.compile(r"[A-Za-z]")
 _cue_patterns: dict[str, re.Pattern[str]] = {}
 
 
+@lru_cache(maxsize=4096)
+def _thai_tokens(text: str) -> tuple[tuple[str, ...], tuple[int, ...]]:
+    """(tokens, the character offset each token starts at).
+
+    Cached because every relation type asks the same message about its own cues, so a
+    corpus-sized run tokenises each text once instead of once per cue.
+    """
+    tokens = tuple(word_tokenize(text, engine="newmm"))
+    offsets: list[int] = []
+    cursor = 0
+    for token in tokens:
+        found = text.find(token, cursor)
+        if found < 0:  # engine normalised something away; keep the offsets monotonic
+            found = cursor
+        offsets.append(found)
+        cursor = found + len(token)
+    return tokens, tuple(offsets)
+
+
+def thai_offset(text: str, cue: str) -> int:
+    """Where `cue` occurs in `text` as a run of whole words, or -1.
+
+    Thai writes without spaces, so there is no boundary character to anchor a search
+    to — which is why this used to be `text.find(cue)`, and why that was wrong in both
+    directions on the real corpus.
+
+    Substring search over-matches: `รอ` occurs inside `รอบ`, `กรอก` and `หรอ`, so the
+    bare cue hit 92 messages of which almost none were about waiting, and `ต้องรอ`
+    matched inside a sentence about asking a user tomorrow. Matching single tokens
+    instead under-matches, and worse: the cue list is full of multi-syllable phrases
+    (`ยังรอ`, `ยังไม่มา`, `ยังทำไม่ได้`) that the tokeniser splits, so `ไม่ได้` as one
+    token never appears and those cues could never fire at all.
+
+    Tokenising both sides and looking for the cue's tokens as a contiguous run handles
+    both: `ยังรอ` is `[ยัง, รอ]` and matches `ยังรอ api อยู่`, while `รอบนี้` is
+    `[รอบ, นี้]` and does not contain `[รอ]`. This is the fix `docs/EXPERIMENTS.md` §7
+    named and nothing implemented.
+    """
+    haystack, offsets = _thai_tokens(text)
+    needle = tuple(word_tokenize(cue, engine="newmm"))
+    if not needle:
+        return -1
+    limit = len(haystack) - len(needle)
+    for start in range(limit + 1):
+        if haystack[start : start + len(needle)] == needle:
+            return offsets[start]
+    return -1
+
+
 def cue_offset(text: str, cue: str) -> int:
     """Where `cue` occurs in `text`, or -1.
 
     Latin cues need word boundaries or they match inside other words — a bare
     substring search finds "no" in "Android", "know" and "now", which turned every
-    message into an answer. Thai cues stay substring searches: Thai does not put
-    spaces between words, so there is no boundary to anchor to.
+    message into an answer. Thai cues are matched as whole words too, by tokenising
+    both sides — see `thai_offset` for why substring search failed both ways.
     """
     if not LATIN_RE.search(cue):
-        return text.find(cue)
+        return thai_offset(text, cue)
     pattern = _cue_patterns.get(cue)
     if pattern is None:
         pattern = _cue_patterns[cue] = re.compile(rf"(?<![A-Za-z]){re.escape(cue)}(?![A-Za-z])")
