@@ -342,6 +342,7 @@ def merge_records(
 
     The same discipline tam.ingest.meetings.merge_into uses, so refreshing Slack
     into a corpus that also holds meetings updates the Slack half in place.
+
     """
     incoming = {str(record["id"]) for record in records}
     kept = [record for record in existing if str(record.get("id")) not in incoming]

@@ -34,6 +34,8 @@ saying "success" is not a teammate reporting that work is done.
 
 from __future__ import annotations
 
+import logging
+import os
 import re
 from typing import Any, Sequence
 
@@ -82,19 +84,49 @@ def for_analysis(record: dict[str, Any]) -> str:
     return analysis_text(str(record.get("text", "")))
 
 
+def self_user() -> str:
+    """This bot's own Slack user id, if configured.
+
+    Meowtam posts a digest into channels it also reads, and that digest quotes item
+    labels, evidence text and ticket keys. Left in the corpus it clusters with the very
+    items it describes — measured, one such post produced a confident drift finding
+    about the bot's own summary of the work.
+
+    The exporter skips these going forward, but a corpus built before that keeps them:
+    dropping a record from an export is invisible to an id-keyed merge, which can add
+    and replace but not forget. So the filter is applied here too, on the way in, from
+    an id stated outright rather than inferred from what an export stopped containing —
+    the inference version had a hole exactly where it mattered, on a channel whose
+    remaining messages were all filtered as noise.
+    """
+    return os.getenv("TAM_SELF_USER", "").strip()
+
+
 def annotate(records: Sequence[dict[str, Any]], bots: set[str] | None = None) -> list[dict[str, Any]]:
-    """Add `analysis_text` and `is_bot` to every record, leaving `text` untouched.
+    """Add `analysis_text` and `is_bot`, and drop what this bot wrote itself.
 
     `bots` is the set of user ids Slack marks as bots — read it from the name cache
-    (`tam.ingest.users`), not from the id prefix.
+    (`tam.ingest.users`), not from the id prefix, because on a real workspace every
+    bot-authored message had a `U…` id and the prefix test caught none of them.
+
+    Other bots are kept: a deploy notification is a real event worth clustering. Only
+    this bot's own output is removed, because reading one's own summary of yesterday is
+    not evidence of anything.
     """
     bots = bots or set()
+    mine = self_user()
     out: list[dict[str, Any]] = []
+    dropped = 0
     for record in records:
+        if mine and str(record.get("user") or "") == mine:
+            dropped += 1
+            continue
         copy = dict(record)
         copy["analysis_text"] = analysis_text(str(record.get("text", "")))
         copy["is_bot"] = str(record.get("user") or "") in bots
         out.append(copy)
+    if dropped:
+        log.info("Dropped %d record(s) this bot posted itself (TAM_SELF_USER)", dropped)
     return out
 
 
