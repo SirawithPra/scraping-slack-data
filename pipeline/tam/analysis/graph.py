@@ -90,6 +90,14 @@ class EdgeWeights:
     time: float = 0.3
     anchors: float = 0.8
     meeting_thread: float = 0.25
+    #: Two messages in the same Slack channel. Small on purpose and not a partition:
+    #: a real work item does cross channels — a bug reported in QA and fixed in dev is
+    #: one item — so this nudges rather than forbids. Without it, measured on a
+    #: 936-message export from four channels, 24 of 37 topics spanned more than one
+    #: channel and one spanned all four, with a median span of 40 days. Those are genre
+    #: clusters ("the standups", "the CMS work"), not work items, and a cluster that
+    #: wide lets one short acknowledgement decide the state of weeks of work.
+    channel: float = 0.35
 
 
 def build_graph(
@@ -163,6 +171,7 @@ def build_graph(
             + thread_weight * pair["thread"]
             + weights.time * pair["time"]
             + weights.anchors * pair["anchors"]
+            + weights.channel * pair["channel"]
         )
         if weight >= min_weight:
             graph.add_edge(left, right, weight=float(weight), **pair)
