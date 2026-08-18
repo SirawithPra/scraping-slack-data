@@ -1,0 +1,492 @@
+<title>ตาม — Standup Evidence Engine</title>
+<style>
+  /* Light is the base palette. Every colour is a token so the two themes stay a set. */
+  :root {
+    --ground: #eef1f2;
+    --panel: #ffffff;
+    --panel-2: #f6f8f9;
+    --ink: #16232b;
+    --ink-2: #465b67;
+    --ink-3: #78909d;
+    --rule: #cfd8dc;
+    --rule-soft: #e3e9eb;
+    --signal: #0f766e;        /* measured / verified */
+    --warn: #b45309;          /* honest limitation */
+    --stop: #9f1239;          /* concern */
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+    --text: system-ui, -apple-system, "Sukhumvit Set", "Noto Sans Thai", "Helvetica Neue", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #141e25;
+      --panel: #1d2b36;       /* the project's own Slack app background_color */
+      --panel-2: #22323e;
+      --ink: #e8eef1;
+      --ink-2: #a8bcc7;
+      --ink-3: #7b93a1;
+      --rule: #33475622;
+      --rule-soft: #2b3d49;
+      --signal: #5eead4;
+      --warn: #fbbf24;
+      --stop: #fb7185;
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #141e25; --panel: #1d2b36; --panel-2: #22323e;
+    --ink: #e8eef1; --ink-2: #a8bcc7; --ink-3: #7b93a1;
+    --rule: #33475622; --rule-soft: #2b3d49;
+    --signal: #5eead4; --warn: #fbbf24; --stop: #fb7185;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--text);
+    font-size: 16.5px;
+    line-height: 1.62;
+    margin: 0;
+    padding: 0 20px 120px;
+  }
+  .wrap { max-width: 940px; margin: 0 auto; }
+  .measure { max-width: 68ch; }
+
+  /* masthead */
+  header.top { padding: 84px 0 40px; border-bottom: 1px solid var(--rule-soft); }
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: .16em;
+    text-transform: uppercase; color: var(--ink-3); margin: 0 0 18px;
+  }
+  h1 {
+    font-size: clamp(34px, 5.4vw, 54px); line-height: 1.06; letter-spacing: -.02em;
+    margin: 0 0 22px; text-wrap: balance; font-weight: 650;
+  }
+  .thesis { font-size: 19px; color: var(--ink-2); margin: 0; }
+  .thesis strong { color: var(--ink); font-weight: 620; }
+
+  h2 {
+    font-size: 25px; letter-spacing: -.01em; margin: 76px 0 6px;
+    text-wrap: balance; font-weight: 640;
+  }
+  h2 .num {
+    font-family: var(--mono); font-size: 12px; color: var(--signal);
+    letter-spacing: .1em; display: block; margin-bottom: 10px; font-weight: 500;
+  }
+  h3 { font-size: 17.5px; margin: 40px 0 8px; font-weight: 620; }
+  p { margin: 0 0 16px; }
+  a { color: var(--signal); text-decoration: none; border-bottom: 1px solid currentColor; }
+  a:focus-visible { outline: 2px solid var(--signal); outline-offset: 3px; }
+  code {
+    font-family: var(--mono); font-size: .875em;
+    background: var(--panel-2); padding: 1px 5px; border-radius: 3px;
+  }
+
+  /* the evidence rail — the page's one structural device, and it means something:
+     any claim that carries a number has the command that produced it beside it. */
+  .ev {
+    border-left: 2px solid var(--signal); padding: 2px 0 2px 16px;
+    margin: 22px 0; color: var(--ink-2);
+  }
+  .ev .k {
+    font-family: var(--mono); font-size: 11px; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--signal); display: block; margin-bottom: 5px;
+  }
+  .ev code { background: none; padding: 0; color: var(--ink-2); font-size: 13px; }
+
+  table { width: 100%; border-collapse: collapse; margin: 22px 0; font-size: 14.5px; }
+  caption {
+    text-align: left; color: var(--ink-3); font-size: 13px;
+    padding-bottom: 10px; font-family: var(--mono);
+  }
+  th, td { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--rule-soft); vertical-align: top; }
+  th { font-size: 12px; letter-spacing: .07em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; }
+  td.n, th.n { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  tr.win td { background: var(--panel-2); }
+  tr.win td:first-child { box-shadow: inset 3px 0 0 var(--signal); padding-left: 12px; }
+  .scroll { overflow-x: auto; }
+
+  figure { margin: 34px 0; }
+  figure svg { width: 100%; height: auto; display: block; color: var(--ink-2); }
+  /* SVG presentation attributes do not reliably accept var(), so every colour and the
+     mono face come from real CSS rules here instead of from fill="var(--x)". */
+  figure svg text { font-family: var(--mono); fill: currentColor; }
+  figure svg .go { fill: var(--signal); }
+  figure svg .no { fill: var(--stop); }
+  figure svg .hm { fill: var(--warn); }
+  figure svg rect, figure svg path, figure svg line { stroke: currentColor; }
+  figure svg rect.go, figure svg path.go { stroke: var(--signal); }
+  figure svg rect.no { stroke: var(--stop); }
+  figure svg rect.hm, figure svg path.hm { stroke: var(--warn); }
+  figure svg .dim { opacity: .72; }
+  figcaption { font-size: 13.5px; color: var(--ink-3); margin-top: 12px; max-width: 70ch; }
+
+  .cards { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); margin: 24px 0; }
+  .card { background: var(--panel); border: 1px solid var(--rule-soft); padding: 18px 18px 20px; }
+  .card .big {
+    font-family: var(--mono); font-size: 27px; font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em; display: block; margin-bottom: 4px;
+  }
+  .card .lab { font-size: 13px; color: var(--ink-3); }
+  .card p { font-size: 13.5px; color: var(--ink-2); margin: 10px 0 0; }
+
+  .flag { border-left: 2px solid var(--warn); padding-left: 16px; margin: 22px 0; }
+  .flag.stop { border-left-color: var(--stop); }
+  .flag .t { font-weight: 640; display: block; margin-bottom: 4px; }
+  .flag p { color: var(--ink-2); margin: 0; font-size: 15px; }
+
+  ul, ol { margin: 0 0 16px; padding-left: 22px; }
+  li { margin-bottom: 8px; }
+  hr { border: 0; border-top: 1px solid var(--rule-soft); margin: 70px 0 0; }
+  .foot { color: var(--ink-3); font-size: 13.5px; padding-top: 24px; }
+  @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">ต้นแบบใช้งานได้ · ข้อมูลจริง 4 ช่อง · 18 ส.ค. 2569</p>
+  <h1>ตาม — รู้ว่าอะไรติด<br>ก่อนเข้า standup</h1>
+  <p class="thesis measure">
+    อ่าน Slack กับบันทึกประชุม รวมเป็น <strong>“งาน” หนึ่งชิ้น</strong> แล้วบอกว่าอะไรติด
+    ติดเพราะอะไร และ <strong>หลักฐานอยู่ข้อความไหน</strong> —
+    สถานะคำนวณด้วยกฎที่ตรวจสอบได้ ไม่ได้ให้โมเดลภาษาเดา
+  </p>
+</header>
+
+<h2><span class="num">01</span>ทำงานยังไง</h2>
+<p class="measure">
+  เส้นทางเดียวจากข้อความดิบไปถึงสามหน้าจอ ทุกกล่องเป็นโมดูลที่รันแยกได้และตรวจผลได้เอง
+</p>
+
+<figure>
+  <svg viewBox="0 0 940 300" role="img"
+       aria-label="แผนภาพเส้นทางข้อมูล: Slack export และบทประชุมเข้าสู่การล้างข้อมูล ได้ records แล้วแตกเป็นสามสาย คือ retrieval สำหรับค้นหา graph สำหรับจัดกลุ่มเป็นงาน และ relations สำหรับหาความสัมพันธ์แบบมีชนิด จากนั้น digest รวมเป็นสถานะพร้อมหลักฐาน ออกสู่ CLI dashboard และ Slack bot">
+    <defs>
+      <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,1 L9,5 L0,9 z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <g font-size="11.5" fill="currentColor" stroke="none">
+      <!-- sources -->
+      <rect x="1" y="34" width="132" height="34" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="67" y="55" text-anchor="middle">Slack export</text>
+      <rect x="1" y="86" width="132" height="34" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="67" y="107" text-anchor="middle">บทประชุม .vtt</text>
+      <!-- clean -->
+      <rect x="181" y="52" width="120" height="50" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="241" y="73" text-anchor="middle">ล้าง / รวม</text>
+      <text x="241" y="90" text-anchor="middle" font-size="10" opacity=".72">records</text>
+      <!-- three lanes -->
+      <rect x="356" y="6" width="176" height="42" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="444" y="23" text-anchor="middle">retrieval</text>
+      <text x="444" y="38" text-anchor="middle" font-size="10" opacity=".72">dense + BM25 + signals</text>
+      <rect x="356" y="62" width="176" height="42" fill="none" class="go" stroke-width="1.5"/>
+      <text x="444" y="79" text-anchor="middle" class="go">graph → งาน</text>
+      <text x="444" y="94" text-anchor="middle" font-size="10" class="go" opacity=".8">Louvain community</text>
+      <rect x="356" y="118" width="176" height="42" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="444" y="135" text-anchor="middle">relations แบบมีชนิด</text>
+      <text x="444" y="150" text-anchor="middle" font-size="10" opacity=".72">blocked_by / resolves / …</text>
+      <!-- digest -->
+      <rect x="588" y="52" width="132" height="58" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="654" y="73" text-anchor="middle">digest</text>
+      <text x="654" y="89" text-anchor="middle" font-size="10" opacity=".72">สถานะ + หลักฐาน</text>
+      <text x="654" y="103" text-anchor="middle" font-size="10" opacity=".72">(กฎ ไม่ใช่โมเดล)</text>
+      <!-- surfaces -->
+      <rect x="776" y="16" width="162" height="30" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="857" y="35" text-anchor="middle">CLI</text>
+      <rect x="776" y="66" width="162" height="30" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="857" y="85" text-anchor="middle">Dashboard + JSON API</text>
+      <rect x="776" y="116" width="162" height="30" fill="none" stroke="currentColor" stroke-width="1"/>
+      <text x="857" y="135" text-anchor="middle">Slack bot</text>
+
+      <!-- edges -->
+      <g stroke="currentColor" stroke-width="1" fill="none" marker-end="url(#a1)">
+        <path d="M133,51 L181,64"/>
+        <path d="M133,103 L181,91"/>
+        <path d="M301,70 L356,32"/>
+        <path d="M301,77 L356,83"/>
+        <path d="M301,84 L356,134"/>
+        <path d="M532,83 L588,81"/>
+        <path d="M532,32 L560,32 L560,74 L588,74"/>
+        <path d="M532,134 L560,134 L560,92 L588,92"/>
+        <path d="M720,74 L748,74 L748,31 L776,31"/>
+        <path d="M720,81 L776,81"/>
+        <path d="M720,88 L748,88 L748,131 L776,131"/>
+      </g>
+      <!-- write-back -->
+      <path d="M857,146 L857,196 L241,196 L241,102" class="hm" stroke-width="1.4"
+            stroke-dasharray="5 4" fill="none" marker-end="url(#a1)"/>
+      <text x="549" y="212" text-anchor="middle" class="hm" font-size="11">คนแก้ผิด → เขียนไฟล์ override → ชนะทุกชั้นรอบถัดไป</text>
+
+      <text x="1" y="252" font-size="11" opacity=".75">ทุกกล่องรันแยกได้:</text>
+      <text x="1" y="270" font-size="11" opacity=".75">python3 -m tam.&lt;area&gt;.&lt;module&gt; --help   ·   21 CLI ตอบ --help ทั้งหมด</text>
+    </g>
+  </svg>
+  <figcaption>
+    <strong>รูป 1</strong> — สองแหล่งเข้า สามสายวิเคราะห์ หนึ่งจุดรวม สามหน้าจอออก
+    เส้นประคือวงจรที่ทำให้ต่างจากถาม AI แล้วจบ: สิ่งที่คนแก้ย้อนกลับเข้าไปเป็นชั้นที่ชนะทุกชั้น
+  </figcaption>
+</figure>
+
+<h2><span class="num">02</span>กลไกที่เป็นหัวใจ</h2>
+<p class="measure">
+  แยกให้ชัดว่าอะไรคำนวณ อะไรเขียน โมเดลภาษาได้เขียนแค่ประโยคเดียว และประโยคนั้นยังต้องผ่านการตรวจ
+</p>
+
+<figure>
+  <svg viewBox="0 0 940 250" role="img"
+       aria-label="แผนภาพขอบเขตของโมเดล: สถานะ ผู้เกี่ยวข้อง และหลักฐาน คำนวณจากกฎเหนือ relations ส่วนโมเดลภาษาเขียนได้แค่ประโยคสรุป ซึ่งต้องอ้าง message id ที่ระบบตรวจว่ามีจริง ถ้าไม่มีจะถูกตัดและติดป้าย unverified">
+    <defs>
+      <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0,1 L9,5 L0,9 z" fill="currentColor"/>
+      </marker>
+    </defs>
+    <g font-size="11.5" fill="currentColor">
+      <rect x="1" y="30" width="250" height="112" fill="none" class="go" stroke-width="1.5"/>
+      <text x="126" y="52" text-anchor="middle" class="go" font-size="12">คำนวณด้วยกฎ — ตรวจซ้ำได้</text>
+      <text x="16" y="76">· ข้อความนี้อยู่งานชิ้นไหน</text>
+      <text x="16" y="95">· ติด / เสร็จ / กำลังทำ</text>
+      <text x="16" y="114">· ใครเกี่ยวข้อง</text>
+      <text x="16" y="133">· หลักฐานคือข้อความ id ไหน</text>
+
+      <rect x="330" y="30" width="230" height="112" fill="none" stroke="currentColor" stroke-width="1" stroke-dasharray="4 3"/>
+      <text x="445" y="52" text-anchor="middle" font-size="12">โมเดลภาษาเขียนได้แค่นี้</text>
+      <text x="345" y="80">· ประโยคสรุปหนึ่งประโยค</text>
+      <text x="345" y="99" opacity=".7">(default เป็น template ไม่ใช่โมเดล)</text>
+      <text x="345" y="124" opacity=".7">สถานะไม่ผ่านทางนี้เลย</text>
+
+      <rect x="640" y="30" width="298" height="112" fill="none" class="hm" stroke-width="1.4"/>
+      <text x="789" y="52" text-anchor="middle" class="hm" font-size="12">ด่านตรวจ citation</text>
+      <text x="656" y="78">โมเดลอ้าง id → ระบบเช็คว่ามีจริง</text>
+      <text x="656" y="100">มีจริง → แสดง พร้อมลิงก์กดได้</text>
+      <text x="656" y="122" class="hm">ไม่มีจริง → ตัด + ป้าย unverified</text>
+
+      <g stroke="currentColor" stroke-width="1" fill="none" marker-end="url(#a2)">
+        <path d="M251,86 L330,86"/>
+        <path d="M560,86 L640,86"/>
+      </g>
+      <text x="290" y="80" text-anchor="middle" font-size="10" opacity=".7">ส่งข้อเท็จจริงไปให้</text>
+      <text x="600" y="80" text-anchor="middle" font-size="10" opacity=".7">ผลลัพธ์ผ่านด่าน</text>
+
+      <text x="1" y="186" font-size="11.5" class="go">ผลที่ตามมา — ระบบกล้าตอบว่า “ไม่มี”</text>
+      <text x="1" y="207" font-size="11" opacity=".8">บนข้อมูลจริง 936 ข้อความ หน้า /blockers ว่าง ทั้งที่เป็นฟีเจอร์เรือธง</text>
+      <text x="1" y="226" font-size="11" opacity=".8">เพราะไม่มี relation ไหนพิสูจน์ว่าติด — ไม่ใช่เพราะพัง และไม่แต่งขึ้นมาให้หน้าจอดูมีอะไร</text>
+    </g>
+  </svg>
+  <figcaption>
+    <strong>รูป 2</strong> — เส้นแบ่งความรับผิดชอบ ทุกอย่างที่เป็นข้อเท็จจริงคำนวณจากกฎ
+    โมเดลได้เขียนแค่ประโยค และประโยคนั้นต้องอ้างข้อความที่มีอยู่จริงถึงจะขึ้นหน้าจอ
+  </figcaption>
+</figure>
+
+<h2><span class="num">03</span>ผลลัพธ์บนข้อมูลจริง</h2>
+
+<div class="cards">
+  <div class="card"><span class="big">1,057</span><span class="lab">ข้อความจริง 4 ช่อง</span>
+    <p>402 ข้อความหลัก + 655 reply · เดิมมีแค่ 22 ข้อความ</p></div>
+  <div class="card"><span class="big">34</span><span class="lab">งานที่ระบบแยกออกมา</span>
+    <p>จาก 936 record หลังล้าง · 17 กำลังทำ · 17 ปิดแล้ว</p></div>
+  <div class="card"><span class="big">8</span><span class="lab">งานที่ได้ ticket จริงเป็นชื่อ</span>
+    <p>linker เจอ key ในข้อความเอง เช่น <code>PROJ-142</code> · ที่เหลือใช้ hash ที่คงที่</p></div>
+  <div class="card"><span class="big">72</span><span class="lab">เทสอัตโนมัติ</span>
+    <p>Python 19 · TypeScript 53 · พิสูจน์แล้วว่าจับ regression ได้จริง</p></div>
+</div>
+
+<div class="ev">
+  <span class="k">วัดจาก</span>
+  <code>curl localhost:8899/api/health</code> → <code>936 records · 34 topics · BAAI/bge-m3</code><br>
+  <code>cd pipeline &amp;&amp; python3 -m pytest -q</code> → <code>19 passed</code> ·
+  <code>cd slack-bot &amp;&amp; npm test</code> → <code>53 pass</code>
+</div>
+
+<h3>เลือกโมเดลด้วยการวัด ไม่ใช่ด้วยชื่อ</h3>
+<p class="measure">
+  วัดบน corpus จริง โดยกัน thread ไว้ 24 thread ที่โมเดลไม่เคยเห็น
+  <em>แม่น</em> = ให้ข้อความหนึ่ง บอกได้ไหมว่าเพื่อนใน thread เดียวกันใกล้กว่าคนแปลกหน้า (50% = เดาสุ่ม)
+</p>
+<div class="scroll">
+<table>
+  <caption>เทียบ 7 โมเดลบน 1,102 record · held-out 24 thread</caption>
+  <thead><tr><th>โมเดล</th><th class="n">แม่น</th><th class="n">ขยะได้ cosine</th><th class="n">context</th><th>สรุป</th></tr></thead>
+  <tbody>
+    <tr><td>paraphrase-multilingual-MiniLM</td><td class="n">59.4%</td><td class="n">0.918</td><td class="n">128</td><td>ตัวเดิม — อ่อนสุด</td></tr>
+    <tr><td>paraphrase-multilingual-mpnet</td><td class="n">63.1%</td><td class="n">0.925</td><td class="n">128</td><td>แม่นดี แต่ขยะสูงสุด</td></tr>
+    <tr><td>multilingual-e5-base</td><td class="n">60.6%</td><td class="n">0.860</td><td class="n">512</td><td>กลาง ๆ</td></tr>
+    <tr><td>multilingual-e5-large</td><td class="n">61.4%</td><td class="n">0.838</td><td class="n">512</td><td>ใหญ่ขึ้นเท่าตัว ได้ 0.8 จุด</td></tr>
+    <tr class="win"><td><strong>BAAI/bge-m3</strong></td><td class="n"><strong>63.7%</strong></td><td class="n"><strong>0.731</strong></td><td class="n"><strong>8192</strong></td><td>เลือกตัวนี้</td></tr>
+    <tr><td>เทรนเอง — ข้อมูลสังเคราะห์</td><td class="n">61.4%</td><td class="n">0.971</td><td class="n">128</td><td>แพ้</td></tr>
+    <tr><td>เทรนเอง — ข้อมูลจริง</td><td class="n">60.9%</td><td class="n">0.964</td><td class="n">128</td><td>แพ้</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="flag">
+  <span class="t">เทรนเองสองรอบ และแพ้ทั้งสองรอบ</span>
+  <p>
+    เทรนจากข้อมูลจริง 936 ข้อความ (2,661 คู่ · loss 5.15 → 2.84) ได้เพิ่มจากฐานแค่ <strong>1.5 จุด</strong>
+    และแพ้ของสำเร็จรูปสามตัว แย่กว่านั้นคือมันบีบ cosine ให้พุ่งทั้งกระดาน ขยะได้ 0.964
+    ทำให้ตัวกรองความเกี่ยวข้องใช้ไม่ได้เลย — เครื่องมือเตือนไว้ตรงตัวก่อนแล้วว่า
+    ถ้าไม่ชนะฐานคือ corpus เล็กเกินไป <strong>ผลนี้คือเครื่องมือทำงานถูก ไม่ใช่พัง</strong>
+  </p>
+</div>
+
+<h3>ตัวกรอง “ไม่มีอะไรตรง” — เปลี่ยนกลไก ไม่ใช่เปลี่ยนเลข</h3>
+
+<figure>
+  <svg viewBox="0 0 940 218" role="img"
+       aria-label="แผนภาพเปรียบเทียบกลไกตัวกรอง: การใช้เกณฑ์ cosine เดียวใช้ไม่ได้เพราะยิ่งมีเอกสารมาก ค่าสูงสุดยิ่งสูงสำหรับทุกคำค้น ทดสอบห้าโมเดลกรองขยะได้ศูนย์จากห้า ส่วนกลไกใหม่ที่ต้องมีทั้งคำตรงกันและความหมายใกล้ กรองได้สี่จากห้าโดยไม่เสียคำค้นจริง">
+    <g font-size="11.5" fill="currentColor">
+      <text x="1" y="16" font-size="12" opacity=".8">แบบเดิม — เกณฑ์ cosine เดียว</text>
+      <rect x="1" y="28" width="404" height="66" fill="none" class="no" stroke-width="1.4"/>
+      <text x="16" y="50">“ใกล้สุดใน corpus เกิน 0.45 ไหม”</text>
+      <text x="16" y="72" class="no">ยิ่งมีเอกสารมาก ค่าสูงสุดยิ่งสูง — ทุกคำค้น</text>
+      <text x="16" y="118" font-size="11">1,102 เอกสาร ยังไงก็มีอันที่ดูคล้าย</text>
+      <text x="16" y="138" font-size="11" class="no">ทดสอบ 5 โมเดล → กรองขยะได้ 0/5 ทุกตัว</text>
+
+      <text x="480" y="16" font-size="12" opacity=".8">แบบใหม่ — ต้องผ่านสองอย่าง</text>
+      <rect x="480" y="28" width="458" height="66" fill="none" class="go" stroke-width="1.5"/>
+      <text x="496" y="50">คำตรงกัน (BM25) &gt; 0 <tspan opacity=".7">— ขยะไม่มีคำตรงเลย ได้ 0.000 สนิท</tspan></text>
+      <text x="496" y="72">และ ความหมายใกล้ ≥ 0.45 <tspan opacity=".7">— จับคำถามที่ใช้คำต่างจากคลัง</tspan></text>
+      <text x="496" y="118" font-size="11" class="go">กรองขยะ 3/4 · ไม่เสียคำค้นจริงเลย 0/6</text>
+      <text x="496" y="138" font-size="11" class="hm">ที่หลุด: อักขระไทยซ้ำ ๆ (ๆ ฯ) ซึ่งมีอยู่จริงในข้อความ</text>
+
+      <line x1="1" y1="166" x2="938" y2="166" stroke="currentColor" stroke-width="1" opacity=".25"/>
+      <text x="1" y="190" font-size="11" opacity=".8">ลองแล้วไม่ผ่าน: z-score ว่า top hit โดดจากกลุ่มไหม · cross-encoder reranker</text>
+      <text x="1" y="208" font-size="11" opacity=".8">(cross-encoder ให้คำถามไทยจริง 0.008 ขณะขยะได้ 0.114 — ปฏิเสธด้วยการวัด)</text>
+    </g>
+  </svg>
+  <figcaption>
+    <strong>รูป 3</strong> — เกณฑ์ตัวเลขเดียวตอบคำถามนี้ไม่ได้เลย ไม่ใช่เพราะโมเดลไม่ดี
+    การบังคับให้มี “คำที่ตรงกันจริง” ด้วย เป็นตัวที่ทำให้ระบบกล้าตอบว่าไม่มี
+  </figcaption>
+</figure>
+
+<h2><span class="num">04</span>ใช้งานยังไง</h2>
+<p class="measure">แบ่งตามจังหวะที่คุณอยู่ ไม่ใช่ตามฟีเจอร์ · Python รันจาก <code>pipeline/</code> · npm รันจาก <code>slack-bot/</code></p>
+
+<div class="scroll">
+<table>
+  <caption>ห้าจังหวะที่ใช้จริง</caption>
+  <thead><tr><th>เมื่อไหร่</th><th>ทำอะไร</th><th>ได้อะไร</th></tr></thead>
+  <tbody>
+    <tr><td>ครั้งเดียวตอนเริ่ม</td><td><code>python3 -m tam.ingest.users --fetch</code></td><td>ชื่อคนอ่านออก ไม่ใช่ <code>U0…</code> — แปลตอนแสดงผล ไม่แก้ข้อมูล</td></tr>
+    <tr><td>เช้าก่อน standup</td><td>เปิด <code>/blockers</code> ก่อน แล้ว <code>/</code></td><td>อะไรติด เรียงติดนานสุดก่อน ทุกอันมีข้อความที่พิสูจน์</td></tr>
+    <tr><td>หลังประชุม</td><td>ลาก <code>.vtt</code> จาก Zoom/Meet ใส่ <code>/upload</code></td><td>บทประชุมเข้าไปอยู่ในงานเดียวกับที่แชทคุย</td></tr>
+    <tr><td>ระหว่างวันใน Slack</td><td><code>/meowtam recall &lt;ข้อความ&gt;</code></td><td>หาเรื่องที่จำไม่ได้ว่าใครพูดที่ไหน พร้อมบอกว่าตรงเพราะอะไร</td></tr>
+    <tr class="win"><td><strong>ตอนระบบเข้าใจผิด</strong></td><td>คลิกขวาข้อความ → <strong>ผูกกับ ticket</strong></td><td><strong>แก้แล้วมันจำ และรอบถัดไปเปลี่ยนตาม</strong> — ชนะทุกชั้นการจัดกลุ่ม</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="ev">
+  <span class="k">พิสูจน์วงจรนี้แล้ว</span>
+  เขียน override 3 แถว → <code>POST /api/reindex</code> → ชื่องานเปลี่ยนจาก
+  <code>c8d55d2</code> เป็น <code>PROJ-901</code> ทั้งใน dashboard และการ์ดใน Slack แล้วลบกลับได้
+</div>
+
+<h2><span class="num">05</span>ต่างจากต่อ AI เข้า Slack ตรง ๆ ยังไง</h2>
+<p class="measure">
+  เริ่มจากยอมรับก่อนว่าอะไร<em>ไม่</em>ใช่จุดต่าง — 936 ข้อความใส่ context ของโมเดลใหญ่ได้สบาย
+  “ข้อมูลเยอะเกิน” ไม่ใช่จุดขาย และเรื่องเข้าใจภาษาไทย โมเดลใหญ่เหนือกว่าตัวที่เราใช้ชัดเจน
+</p>
+<ol class="measure">
+  <li><strong>กล้าตอบว่า “ไม่มี”</strong> — รายงาน 0 blocked จาก 936 ข้อความ ทั้งที่เป็นฟีเจอร์เรือธง ถามโมเดลว่า “อะไรติด” จะได้คำตอบที่ฟังดูดีทุกครั้ง และไม่มีทางรู้ว่าอันไหนจริง</li>
+  <li><strong>ทุกคำกล่าวอ้างมี citation ที่ตรวจในโค้ด</strong> — ไม่ใช่ในคำสัญญา อ้างผิดจะถูกตัดและติดป้ายให้เห็น</li>
+  <li><strong>คนแก้แล้วมันจำ</strong> — และรอด rebuild เพราะชื่องานผูกกับเนื้อหา ไม่ใช่เลขคลัสเตอร์ที่เปลี่ยนทุกครั้ง</li>
+  <li><strong>ข้อมูลไม่ออกจากเครื่อง</strong> — โมเดลรันในเครื่อง ต้องตั้งค่าเองถึงจะมีอะไรถูกส่งออก</li>
+  <li><strong>ทำซ้ำได้</strong> — input เดิมให้ผลเดิม ตรวจย้อนได้ว่าทำไมถึงสรุปแบบนั้น</li>
+</ol>
+<p class="measure">
+  ข้อสรุปเชิงสถาปัตยกรรมคือ <strong>ใช้ทั้งคู่</strong> — กฎกับ retrieval ถือสถานะและหลักฐานเพราะต้อง audit ได้
+  ส่วนโมเดลภาษาเขียนประโยค เพราะภาษาดีกว่า และ citation ถูกตรวจอยู่แล้ว
+</p>
+
+<h2><span class="num">06</span>ข้อกังวลที่ต้องพูดตรง ๆ</h2>
+
+<div class="flag stop">
+  <span class="t">1 · จับ blocker ได้น้อยกว่าที่มีจริงมาก และคอขวดไม่ใช่คำศัพท์</span>
+  <p>
+    อ่านด้วยมือทั้ง 76 ข้อความที่เข้าข่าย พบ blocker จริง <strong>22 ข้อความ</strong>
+    แต่ถ้าใส่ตัวตรวจที่แม่น 100% ทั้ง precision และ recall ผลออกมาได้แค่ <strong>2 งาน</strong>
+    เพราะ topic เป็นคลัสเตอร์แนวเรื่อง กินเวลา median 43 วัน 25 ข้อความ
+    แล้วคำ ack สั้น ๆ คำเดียวตัดสินคลัสเตอร์ 44 ข้อความข้ามหลายสัปดาห์ได้
+    <strong>งานรอบถัดไปอยู่ที่การจัดกลุ่มและกฎตัดสินสถานะ ไม่ใช่ที่ลิสต์คำ</strong>
+  </p>
+</div>
+
+<div class="flag stop">
+  <span class="t">2 · ข้อมูลลูกค้าอยู่ในเนื้อข้อความ</span>
+  <p>
+    ในข้อมูลจริงมีอีเมลลูกค้าและเลขตัวถังรถถูกพิมพ์อยู่ในข้อความ
+    โหมดชื่อสมมุติซ่อนแค่<em>ชื่อคนส่ง</em> <strong>ไม่ได้ซ่อนสิ่งเหล่านี้</strong>
+    ก่อนแคปหน้าจอไปนำเสนอต้องไล่ดูด้วยตาทุกครั้ง
+  </p>
+</div>
+
+<div class="flag">
+  <span class="t">3 · ตัวกรองยังหลุดคำค้นภาษาจริงที่ไม่มีเรื่องนั้นในคลัง</span>
+  <p>
+    พบตอนสาธิต ไม่ใช่ตอนวัด — คำสามัญคำเดียวที่บังเอิญตรงก็ผ่านประตูได้
+    มีตัวเลือกที่วัดแล้วให้ margin เป็นบวกครั้งแรก แต่ยังไม่ลง
+    เพราะเป็นตัวอย่าง 11 อันที่ผู้พัฒนาเลือกเอง — จะเชื่อได้ต้องมีชุดที่คนอื่นเขียนหรือคำค้นจริงจาก log
+  </p>
+</div>
+
+<div class="flag">
+  <span class="t">4 · ตัวอย่างที่แจกมาสาธิตการรวมข้ามที่มาไม่ได้อีกแล้ว</span>
+  <p>
+    โมเดลใหม่เลิกรวมบทประชุมกับแชทเข้าด้วยกันบนไฟล์ตัวอย่าง — และตรวจแล้วว่า
+    <strong>สิ่งที่โมเดลเก่ารวมนั้นผิด</strong> มันเอาประโยคทักทายภาษาไทย 5 ประโยค
+    (รวมบรรทัดปิดประชุม) มากองกัน โดยระบบเองตั้งชื่อกลุ่มนั้นไม่ได้
+    ตัวอย่างจึงไม่เคยมีเคสจริงอยู่ในนั้น ต้องเติมเข้าไป — <em>รอการตัดสินใจ</em>
+  </p>
+</div>
+
+<div class="flag">
+  <span class="t">5 · git history ยังมีชื่อบริษัทและ Slack ID จริง</span>
+  <p>
+    tip สะอาดแล้ว แต่ commit ก่อนหน้ายังมีอยู่ การลบต้อง rewrite history + force push
+    บน public repo ซึ่งทำลายของถาวรและพัง clone ของคนอื่น — <em>รอการตัดสินใจ</em>
+  </p>
+</div>
+
+<div class="flag">
+  <span class="t">6 · ยังไม่ได้ต่อ ticket system จึงยังไม่มี drift detection</span>
+  <p>
+    การเทียบว่า “Slack บอกอย่าง ticket บอกอีกอย่าง” เป็นจุดต่างที่แรงที่สุดในแนวคิด
+    และยังไม่มีแหล่งข้อมูล ระบบจึงแสดงว่าว่าง ไม่ใช่แสดงตัวอย่างปลอม
+  </p>
+</div>
+
+<h2><span class="num">07</span>พัฒนาต่อ — เรียงตามผลกระทบที่วัดได้</h2>
+<div class="scroll">
+<table>
+  <caption>ลำดับนี้มาจากการวัด ไม่ใช่จากความรู้สึก</caption>
+  <thead><tr><th>ลำดับ</th><th>ทำอะไร</th><th>ทำไมอยู่ตำแหน่งนี้</th></tr></thead>
+  <tbody>
+    <tr class="win"><td class="n">1</td><td><strong>ล้าง markup ก่อนแมตช์ cue</strong></td>
+      <td>ตอนนี้ cue ไปแมตช์ในบล็อกโค้ดที่คนแปะรีวิวมา ในข้อความที่ขีดฆ่าแล้ว และในเอกสารเงื่อนไขที่กิน 5.5% ของคลัง · บอทกับ AI assistant 39 ข้อความ (27.9% ของตัวอักษร) ไม่ถูกแยกออก — ประเมินว่าได้ผลมากกว่าการแก้ cue ทั้งหมดรวมกัน</td></tr>
+    <tr><td class="n">2</td><td>ประตูกันไม่ให้ ack คำเดียวตัดสินคลัสเตอร์ทั้งก้อน</td>
+      <td>คือคอขวดที่วัดแล้วว่ากั้น 20 จาก 22 blocker ไว้ · ต้องมีเงื่อนไขน้ำหนัก/ที่มาว่าอะไรมีสิทธิเปลี่ยนสถานะ และคิดสถานะระดับงานย่อย</td></tr>
+    <tr><td class="n">3</td><td>จัดกลุ่มให้ละเอียดขึ้น</td>
+      <td>ขึ้น resolution เป็น 4.0 ทำให้เพดานที่ทำได้ขยับจาก 2 เป็น 4 งาน · ต้องวัดว่ามันไม่แตกงานจริงออกเป็นเสี่ยง</td></tr>
+    <tr><td class="n">4</td><td>ตัวกรองแบบวัดความครอบคลุมของคำถาม</td>
+      <td>ตัวเดียวที่วัดได้ margin เป็นบวก · ต้องมีชุดทดสอบที่คนอื่นเขียนก่อนจะเชื่อ</td></tr>
+    <tr><td class="n">5</td><td>ต่อ YouTrack / Notion</td>
+      <td>ปลดล็อก drift detection ซึ่งเป็นจุดต่างเชิงแนวคิดที่แรงสุด และเป็นสิ่งที่ต่อ AI เข้า Slack ทำแทนไม่ได้</td></tr>
+    <tr><td class="n">6</td><td>เปิดตารางเวลาอัตโนมัติ</td>
+      <td>“ไม่ต้องถามก็รู้” คือหัวใจ · โค้ดมีแล้วแต่ปิดอยู่ ควรเปิดหลังข้อ 1–2 เพราะไม่อยากส่งวาระที่เต็มไปด้วยของเก่า</td></tr>
+    <tr><td class="n">7</td><td>เทรนโมเดลอีกครั้ง <em>เมื่อ</em> ข้อมูลมากพอ</td>
+      <td>อยู่ท้ายสุดเพราะวัดแล้วว่าแพ้ · ถ้าจะกลับมาทำ ต้องได้ข้อมูลหลายเท่า และเปลี่ยนฐานเป็น bge-m3 ก่อน ไม่ใช่เทรนบนตัวเดิม</td></tr>
+  </tbody>
+</table>
+</div>
+
+<hr>
+<p class="foot">
+  ทุกตัวเลขในหน้านี้วัดจากเครื่องที่รันระบบอยู่จริง ณ 18 ส.ค. 2569 และมีคำสั่งกำกับให้ทำซ้ำได้ ·
+  บันทึกการทดลองทั้งหมดรวมทั้งตัวที่แพ้อยู่ใน <code>docs/EXPERIMENTS.md</code> ·
+  คู่มือใช้งานรายวันอยู่ใน <code>docs/DAILY_USE.md</code> ·
+  ข้อมูลจริงของบริษัทและชื่อพนักงานไม่ได้ขึ้น git — หน้านี้รายงานเฉพาะตัวเลขรวม
+</p>
+
+</div>

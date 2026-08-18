@@ -66,6 +66,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from tam.analysis.digest import DEFAULT_WINDOW_DAYS, Digest, Topic, build_digest, timeline, window_start
 from tam.analysis.linker import load_overrides
+from tam.analysis.digest import names
 from tam.retrieval.embeddings import model_name, quiet_third_party_logs
 from tam.ingest.meetings import merge_into, merge_utterances, parse_iso, parse_transcript, to_records
 from tam.retrieval.retrieve import DEFAULT_PRESET, Hit, build_retriever
@@ -105,6 +106,13 @@ class State:
     # previous build serving, and without these nobody can tell that happened.
     last_attempt_at: str = ""
     last_error: str = ""
+    # The ticket side, refreshed with the corpus. Best-effort: YouTrack being
+    # unreachable must not stop a build, but it must not look like agreement either —
+    # `tracker_error` is what /api/tracker reports instead of an empty list.
+    drifts: list[dict[str, Any]] = field(default_factory=list)
+    silent: list[dict[str, Any]] = field(default_factory=list)
+    tracker_coverage: dict[str, int] = field(default_factory=dict)
+    tracker_error: str = ""
 
     def summary_for(self, key: int) -> TopicSummary | None:
         return next((summary for summary in self.summaries if summary.key == key), None)
@@ -170,6 +178,38 @@ def building() -> Iterator[None]:
         _build_lock.release()
 
 
+def read_tracker(digest: Digest, records: list[dict[str, Any]]) -> dict[str, Any]:
+    """The ticket side of the picture, or a recorded reason it is missing.
+
+    Deliberately best-effort. YouTrack is a separate service that can be down, rate
+    limited, or simply not configured, and none of that should stop a build of the Slack
+    half — but an empty drift list must never be mistakable for "the two sources agree".
+    So a failure is captured and reported to the caller, which is the same discipline the
+    rest of this file uses for a failed refresh.
+    """
+    from tam.analysis.drift import coverage, detect, silent_tickets
+    from tam.ingest.youtrack import YouTrackError, config, fetch_by_keys, fetch_project
+
+    try:
+        _, _, projects = config()
+    except YouTrackError as error:
+        return {"drifts": [], "silent": [], "coverage": {}, "error": str(error)}
+    try:
+        keys = [topic.item_id for topic in digest.topics if not str(topic.item_id).startswith("c")]
+        issues = fetch_by_keys(keys) if keys else []
+        every = fetch_project(projects[0]) if projects else []
+        return {
+            "drifts": [drift.as_dict() for drift in detect(digest.topics, issues)],
+            "silent": [quiet.as_dict() for quiet in silent_tickets(every, records)],
+            "coverage": {**coverage(digest.topics, issues), "tracker_issues": len(every),
+                         "tracker_open": sum(1 for i in every if not i.resolved)},
+            "error": "",
+        }
+    except YouTrackError as error:
+        log.warning("Tracker unavailable; serving the Slack half only: %s", error)
+        return {"drifts": [], "silent": [], "coverage": {}, "error": str(error)}
+
+
 def rebuild() -> State:
     """Build a new State from the corpus and publish it only if every step worked.
 
@@ -192,6 +232,7 @@ def rebuild() -> State:
             # ignored by every path that person can actually see.
             digest = build_digest(records, since=window_start(previous.days), overrides=read_overrides())
             summaries = summarize_digest(digest, language=previous.language)
+            tracker = read_tracker(digest, records)
         except BaseException as error:  # summarize_digest and build_retriever still exit like CLIs
             state = replace(previous, last_attempt_at=stamp, last_error=f"{type(error).__name__}: {error}")
             log.error("Rebuild failed; still serving the build from %s: %s", previous.built_at or "(nothing)", error)
@@ -204,6 +245,10 @@ def rebuild() -> State:
             summaries=summaries,
             built_at=stamp,
             built_at_iso=attempt.isoformat(timespec="seconds"),
+            drifts=tracker["drifts"],
+            silent=tracker["silent"],
+            tracker_coverage=tracker["coverage"],
+            tracker_error=tracker["error"],
             last_attempt_at=stamp,
             last_error="",
         )
@@ -315,7 +360,7 @@ def topic_card(topic: Any, summary: TopicSummary | None, since: float, *, show_m
         f'<h3><a href="/item/{topic.key}">{esc(headline)}</a></h3>',
         f'<p class="meta"><span class="tag" style="color:{colour};border-color:{colour}">{esc(label)}</span> '
         f'&nbsp;{esc(age)} &nbsp;·&nbsp; {len(topic.records)} ข้อความ ({esc(sources)}) &nbsp;·&nbsp; '
-        f'{esc(", ".join(topic.participants[:5]))}</p>',
+        f'{esc(", ".join(topic.participant_names[:5]))}</p>',
     ]
     if summary and summary.detail:
         parts.append(f'<p class="detail">{esc(summary.detail)}</p>')
@@ -327,8 +372,8 @@ def topic_card(topic: Any, summary: TopicSummary | None, since: float, *, show_m
         source = "meeting" if record.get("source") == "meeting" else "slack"
         parts.append(
             f'<p class="msg"><span class="tag">{esc(source)}</span> '
-            f'<span class="who">{esc(record.get("user") or "-")}</span> '
-            f'{esc(" ".join(str(record["text"]).split())[:200])}</p>'
+            f'<span class="who">{esc(names().of(record.get("user")) or "-")}</span> '
+            f'{esc(names().in_text(" ".join(str(record["text"]).split()))[:200])}</p>'
         )
     if summary and summary.unverified:
         parts.append('<p class="warn">ไม่มี citation ที่ตรวจสอบผ่าน — อ่านข้อความต้นทางก่อนเชื่อ</p>')
@@ -434,14 +479,14 @@ def item_page(key: str) -> HTMLResponse:
         rows.append(
             f'<div class="event"><div class="when">{esc(event["when"])}</div><div>'
             f'<div class="rel">{esc(event["relation"])}</div>'
-            f'<p class="msg"><span class="who">{esc(event["from_user"])}</span> {esc(event["from_text"])}</p>'
-            f'<p class="msg">↳ <span class="who">{esc(event["to_user"])}</span> {esc(event["to_text"])}</p>'
+            f'<p class="msg"><span class="who">{esc(event["from_user"])}</span> {esc(names().in_text(event["from_text"]))}</p>'
+            f'<p class="msg">↳ <span class="who">{esc(event["to_user"])}</span> {esc(names().in_text(event["to_text"]))}</p>'
             f'<p class="meta">{esc(event["evidence"])}{esc(also)}</p></div></div>'
         )
     every = "".join(
         f'<p class="msg"><span class="tag">{esc(record.get("source") or "slack")}</span> '
         f'<span class="who">{esc(format_timestamp(str(record.get("ts", ""))))} '
-        f'{esc(record.get("user") or "-")}</span> {esc(" ".join(str(record["text"]).split())[:300])}</p>'
+        f'{esc(names().of(record.get("user")) or "-")}</span> {esc(names().in_text(" ".join(str(record["text"]).split()))[:300])}</p>'
         for record in topic.records
     )
 
@@ -449,7 +494,7 @@ def item_page(key: str) -> HTMLResponse:
     tiles = [
         stat_tile("สถานะ", STATE_STYLE.get(topic.state, ("", topic.state))[1], topic.evidence[:38] or "ไม่มี relation"),
         stat_tile("ข้อความ", str(len(topic.records)), " + ".join(f"{c} {n}" for n, c in sorted(topic.sources.items()))),
-        stat_tile("คนเกี่ยวข้อง", str(len(topic.participants)), ", ".join(topic.participants[:3])),
+        stat_tile("คนเกี่ยวข้อง", str(len(topic.participants)), ", ".join(topic.participant_names[:3])),
     ]
     sections = [
         (
@@ -482,9 +527,9 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
             body += (
                 f'<div class="topic active"><h3>{hit.rank}. '
                 f'<span class="tag">{esc(hit.record.get("source") or "slack")}</span> '
-                f'<span class="who">{esc(hit.record.get("user") or "-")} · '
+                f'<span class="who">{esc(names().of(hit.record.get("user")) or "-")} · '
                 f'{esc(format_timestamp(str(hit.record.get("ts", ""))))}</span></h3>'
-                f'<p class="detail">{esc(" ".join(str(hit.record["text"]).split())[:400])}</p>'
+                f'<p class="detail">{esc(names().in_text(" ".join(str(hit.record["text"]).split()))[:400])}</p>'
                 f'<p class="meta">score {hit.score:.3f}'
                 + (f" · ตรงคำ: {esc(terms)}" if terms else "")
                 + f' · {esc(hit.record.get("id", ""))}</p></div>'
@@ -644,6 +689,7 @@ def api_item(key: str) -> JSONResponse:
                     "when": format_timestamp(str(record.get("ts", ""))),
                     "ts": float(record["ts"]) if record.get("ts") else None,  # zone-free 'when' is for reading, not arithmetic
                     "user": record.get("user"),
+                    "user_name": names().of(record.get("user")),
                     "source": record.get("source"),
                     "text": record["text"],
                 }
@@ -673,6 +719,10 @@ def api_search(q: str = Query(...), k: int = Query(default=10, ge=1, le=50), pre
         {
             "query": q,
             "preset": preset or build.preset,
+            # Absolute, unlike every `why` below, which is min-max normalised across
+            # the result set. A caller deciding whether to report *nothing* has to
+            # read these: see Retriever.relevance for why it takes both.
+            "relevance": retriever.relevance(q),
             "hits": [
                 {
                     "rank": hit.rank,
@@ -680,6 +730,7 @@ def api_search(q: str = Query(...), k: int = Query(default=10, ge=1, le=50), pre
                     "id": hit.record_id,
                     "source": hit.record.get("source"),
                     "user": hit.record.get("user"),
+                    "user_name": names().of(hit.record.get("user")),
                     "when": format_timestamp(str(hit.record.get("ts", ""))),
                     "text": hit.record["text"],
                     "why": hit.parts,
@@ -689,6 +740,23 @@ def api_search(q: str = Query(...), k: int = Query(default=10, ge=1, le=50), pre
             ],
         }
     )
+
+
+@app.get("/api/tracker")
+def api_tracker() -> JSONResponse:
+    """Where Slack and the ticket tracker disagree, and which tickets went quiet.
+
+    `error` non-empty means the tracker could not be read — the empty lists beside it are
+    "unknown", not "nothing found", and a caller showing this to people has to say so.
+    """
+    build = live()
+    return JSONResponse({
+        "coverage": build.tracker_coverage,
+        "drift": build.drifts,
+        "silent": build.silent,
+        "error": build.tracker_error,
+        "built_at": build.built_at,
+    })
 
 
 @app.post("/api/reindex", dependencies=[Depends(require_admin)])

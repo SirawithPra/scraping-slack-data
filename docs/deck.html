@@ -163,7 +163,7 @@
   <header class="masthead">
     <span class="mark">ตาม <span style="color:var(--ink-3);font-weight:600">(Tam)</span></span>
     <span class="eyebrow">Draft deck · 10 สไลด์</span>
-    <span class="meta">17 ส.ค. 2569 · ส่ง 19 ส.ค. 2569</span>
+    <span class="meta">18 ส.ค. 2569 · ส่ง 19 ส.ค. 2569</span>
   </header>
 
   <!-- 1 -->
@@ -178,7 +178,8 @@
         <div class="stat"><div class="v">0</div><div class="l">ข้อมูลที่ออกนอกเครื่อง (ค่า default)</div></div>
       </div>
       <p>ต้นแบบใช้งานได้จริงแล้วทั้งสามผิว โค้ดทั้งหมดเปิดอยู่ที่ <a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a></p>
-      <div class="rail"><span><b>ผู้จัดทำ</b> Sirawith P.</span><span><b>สถานะ</b> Working prototype</span><span><b>เอกสาร</b> README · USER_MANUAL · architecture</span></div>
+      <p><strong>รอบนี้เลิกวัดบนข้อมูลตัวอย่าง</strong> — export จริง 4 ช่องภายใน 1,057 ข้อความ ถูกใช้เป็นชุดวัดผล ทำให้ทั้งโมเดลและเกณฑ์ตัดความเกี่ยวข้อง<strong>เปลี่ยนเพราะตัวเลข ไม่ใช่เพราะความรู้สึก</strong> · เผยแพร่เฉพาะตัวเลขรวม เนื้อหาข้อความไม่ออกจากเครื่อง</p>
+      <div class="rail"><span><b>ผู้จัดทำ</b> Sirawith P.</span><span><b>สถานะ</b> Working prototype</span><span><b>เอกสาร</b> README · USER_MANUAL · architecture · <a href="EXPERIMENTS.md">EXPERIMENTS</a></span></div>
     </div>
   </section>
 
@@ -212,7 +213,7 @@
         <div>→ อ่านได้ 3 ทาง: CLI · Dashboard · ในหน้าต่าง Slack เอง</div>
       </div>
       <p><strong>จุดที่ต่างจริง</strong> คือการประชุมไม่ได้เป็น pipeline ที่สอง — บันทึกการประชุมถูกแปลงเป็น record ชนิดเดียวกับ Slack ทำให้งานหนึ่งชิ้นข้ามสองแหล่งได้โดยไม่ต้องเขียนโค้ดใหม่</p>
-      <div class="rail"><span><b>ตัวอย่างจริง</b> บั๊ก Profile บน Android = 8 ข้อความ Slack + 2 ประโยคในที่ประชุม</span></div>
+      <div class="rail"><span><b>ตัวอย่างที่ commit ไว้</b> <code>standup.vtt</code> → 9 record ชนิดเดียวกับ Slack ในไฟล์เดียวกัน (27 record รวม)</span><span><b>ไม่มี pipeline ที่สอง</b> <code>tam.ingest.meetings --merge-into</code> เขียนลง corpus เดิม</span></div>
     </div>
   </section>
 
@@ -234,7 +235,7 @@
         </div>
         <div class="card">
           <span class="k">03 · เฝ้าโดยไม่มีใครสั่ง</span>
-          <p>ไม่มีใครเปิดมาถามว่า “สัปดาห์นี้ ticket ไหนใน 40 ใบ ไม่ตรงกับที่คุยใน Slack” การเฝ้าต้องยืนอยู่ตลอด</p>
+          <p>ไม่มีใครเปิดมาถามว่า “สัปดาห์นี้ ticket ไหนในหลายสิบใบ ไม่ตรงกับที่คุยใน Slack” การเฝ้าต้องยืนอยู่ตลอด</p>
         </div>
       </div>
       <h3>กลไกที่ทำให้ข้อ 02 เป็นจริง</h3>
@@ -271,7 +272,7 @@
         </table>
       </div>
       <p>แยกกันเป็นคนละ process โดยตั้งใจ — บอทล่มไม่ทำให้ dashboard ล่ม และกลับกัน</p>
-      <pre>tam/            แพ็กเกจ Python — 22 โมดูล, เรียกด้วย python3 -m tam.&lt;area&gt;.&lt;module&gt;
+      <pre>tam/            แพ็กเกจ Python — 28 โมดูล (24 เป็น CLI), python3 -m tam.&lt;area&gt;.&lt;module&gt;
 ├── ingest/     ดึง Slack · ทำความสะอาด · บันทึกการประชุม
 ├── retrieval/  embeddings · BM25 · signals · fusion · rerank
 ├── analysis/   graph · relations · linker · digest · summarize
@@ -286,21 +287,29 @@ slack-bot/   Slack bot — npm project แยก</pre>
 
   <!-- 6 -->
   <section class="slide">
-    <div class="slide-head"><span class="num">06</span><span class="eyebrow">ต้นแบบ · Dashboard</span></div>
+    <div class="slide-head"><span class="num">06</span><span class="eyebrow">ต้นแบบ · Dashboard บนข้อมูลจริง</span></div>
     <div class="slide-body">
-      <h2>Dashboard เปิดกับข้อมูลจริงแล้ว</h2>
-      <p>HTML สร้างจาก Python ตรงๆ — ไม่มี build step ไม่มี <code>node_modules</code> ไม่มี frontend แยกให้ต้องตามให้ทัน</p>
-      <pre>$ python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
+      <h2>รันบนข้อมูลจริงอยู่ตอนนี้ — และโมเดลถูกเปลี่ยนเพราะการวัด</h2>
+      <pre>$ curl -s http://127.0.0.1:8899/api/health        # ตัดฟิลด์เวลาออกให้อ่านง่าย
+{"ok":true,"records_path":"data/processed/real_all.json","records":974,"topics":20,
+ "model":"BAAI/bge-m3","summariser":"template","preset":"hybrid","window_days":7.0}
 
-INFO Building index from data/processed/sample_combined.json
-INFO Reused 27 cached embedding(s) from data/processed/embeddings_….npz
-INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template</pre>
+$ curl -s http://127.0.0.1:8899/api/blockers        # ชื่อถูกแทนด้วยนามสมมุติ
+{"blocked":[{"key":19,"label":"uat","state":"blocked","participants":5,
+             "last_ts":"2026-08-18 14:33"}]}</pre>
+      <div class="grid g3">
+        <div class="stat"><div class="v">63.7%</div><div class="l">triplet accuracy ของ <code>bge-m3</code> บน corpus จริง · โมเดลเดิม (MiniLM) ได้ 59.4%</div></div>
+        <div class="stat"><div class="v">0.731</div><div class="l">cosine สูงสุดที่ query ขยะทำได้ · เดิม 0.918 — ยิ่งต่ำยิ่งดี</div></div>
+        <div class="stat"><div class="v">8192</div><div class="l">context token · เดิม 128 จึงตัดข้อความจริงทิ้งเงียบ ๆ 13.4% ของ record</div></div>
+      </div>
+      <p><strong>โมเดลที่เราเทรนเองสองตัวแพ้ของสำเร็จรูป</strong> — ได้ 61.4% และ 60.9% เทียบ 63.7% และทั้งคู่ดันให้ query ขยะได้ cosine <em>สูงขึ้น</em> (0.971 · 0.964) จึงไม่ได้ใช้ทั้งสองตัว นี่คือผลการวัด ไม่ใช่ความล้มเหลว: corpus ระดับนี้เล็กเกินกว่าจะชนะของสำเร็จรูป ตารางเต็มเจ็ดโมเดลอยู่ใน <a href="EXPERIMENTS.md">docs/EXPERIMENTS.md</a> ที่เดียว เพื่อไม่ให้ตัวเลขสองที่เพี้ยนกัน</p>
       <div class="grid g2">
         <div class="card"><span class="k">5 หน้าจอ</span><p><code>/</code> digest · <code>/blockers</code> · <code>/item/{key}</code> timeline · <code>/search</code> หาต้นทางของประโยค · <code>/upload</code> โยนไฟล์ประชุมเข้า corpus</p></div>
-        <div class="card"><span class="k">5 API + health</span><p>ข้อมูลชุดเดียวกันออกเป็น JSON — <code>/api/digest</code> · <code>/api/blockers</code> · <code>/api/item/{key}</code> · <code>/api/search</code> · <code>/api/health</code> และ <code>POST /api/reindex</code> ที่ต้องมี token</p></div>
+        <div class="card"><span class="k">6 API + health</span><p>ข้อมูลชุดเดียวกันออกเป็น JSON — <code>/api/digest</code> · <code>/api/blockers</code> · <code>/api/item/{key}</code> · <code>/api/search</code> · <code>/api/tracker</code> · <code>/api/health</code> และ <code>POST /api/reindex</code> ที่ต้องมี token</p></div>
       </div>
-      <p><span class="pill ok">✓ ทดสอบแล้ว</span> ยิงทั้ง 10 endpoint ที่อ่านข้อมูล (5 หน้า + 5 API) คืน <code>200</code> พร้อมเนื้อหาจริงทุกตัว · อีก 2 route ที่<em>เขียน</em>ข้อมูล (<code>POST /upload</code>, <code>POST /api/reindex</code>) ต้องแนบ token ที่ server พิมพ์ตอน start</p>
-      <div class="rail"><span><b>ชี้ไปข้อมูลจริง</b> --records รับไฟล์อะไรก็ได้ที่ ingest สร้าง</span><span><b>ไม่มี Slack ก็รันได้</b> data/sample/ commit ไว้แล้ว · ตัวเลขข้างบนคือข้อมูลตัวอย่างล้วน</span></div>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> ยิงทั้ง 11 endpoint ที่อ่านข้อมูล (5 หน้า + 6 API) คืน <code>200</code> พร้อมเนื้อหาจริงทุกตัว · อีก 2 route ที่<em>เขียน</em>ข้อมูล (<code>POST /upload</code>, <code>POST /api/reindex</code>) ต้องแนบ token ที่ server พิมพ์ตอน start</p>
+      <p><span class="pill hold">⚠ อ่านตัวเลขนี้ให้ตรง</span> <code>blocked</code> ได้ <strong>1</strong> จาก 22 ข้อความที่เป็นการติดจริง — ตัวเลขนี้<em>ต่ำกว่าความจริง</em> เพราะข้อความติดหลายอันถูกยุบเข้า topic เดียวกัน ระบบรายงานเท่าที่ยืนยันหลักฐานได้ แทนที่จะเดาให้ดูดี (ดูสไลด์ 10)</p>
+      <div class="rail"><span><b>ไม่มี build step</b> HTML สร้างจาก Python ตรง ๆ ไม่มี <code>node_modules</code></span><span><b>ไม่มี Slack ก็รันได้</b> <code>data/sample/</code> commit ไว้แล้ว</span><span><b>log สะอาด</b> warning เท็จจาก BLAS ปิดเฉพาะจุด — ตรวจกับ float64 แล้วว่าตรงกันถึง 5e-08</span></div>
     </div>
   </section>
 
@@ -316,7 +325,7 @@ INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template</pre>
           <tbody>
             <tr><td><code>/meowtam</code> · <code>/mt</code></td><td>บอร์ดงานทั้งหมด เรียงงานที่ติดขึ้นก่อน</td></tr>
             <tr><td><code>/meowtam blocked</code></td><td>เฉพาะที่ติด พร้อมข้อความที่เป็นหลักฐาน</td></tr>
-            <tr><td><code>/meowtam recall &lt;ข้อความ&gt;</code></td><td>ค้นหาไทยได้ พร้อมสายการตัดสินใจของเรื่องนั้น</td></tr>
+            <tr><td><code>/meowtam recall &lt;ข้อความ&gt;</code></td><td>ค้นหาไทยได้ พร้อมสายการตัดสินใจของเรื่องนั้น — ผ่าน gate สองสัญญาณก่อนตอบ</td></tr>
             <tr><td><code>/meowtam MOB-142</code></td><td>งานชิ้นเดียวตาม key — key นี้มีอยู่ใน ledger ตัวอย่างที่ commit ไว้</td></tr>
             <tr><td>คลิกขวาที่ข้อความ</td><td>ผูกกับ ticket · บันทึกเป็นการตัดสินใจ</td></tr>
             <tr><td>ใส่ emoji</td><td><code>reaction_added</code> เป็น input — emoji สั่งงานได้</td></tr>
@@ -328,7 +337,7 @@ INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template</pre>
         <div class="stat"><div class="v">128</div><div class="l">ข้อความใน corpus ตัวอย่างที่ ledger นั้นสร้างมาจาก</div></div>
         <div class="stat"><div class="v">8</div><div class="l">หน้าจอเรนเดอร์ออฟไลน์ — ทุก payload ผ่าน Slack limits</div></div>
       </div>
-      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>npm run typecheck</code> ไม่มี error · <code>npm test</code> ผ่านหมด · <code>npm run preview</code> เรนเดอร์ทุกหน้าจอ<em>บวกเคสที่ยาวสุดของสี่หน้าที่มีลิสต์</em> ออฟไลน์ ผ่านทั้งหมด</p>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>npm run typecheck</code> ไม่มี error · <code>npm test</code> ผ่าน <strong>61/61</strong> (ในนั้นมี <code>tests/gate.test.ts</code> 6 ข้อ ที่คุมเกณฑ์ตัดความเกี่ยวข้อง และ <code>tests/postguard.test.ts</code> 8 ข้อ ที่คุมว่าโพสต์ออก Slack ได้เฉพาะปลายทางที่อนุญาต ไว้ไม่ให้เพี้ยนเงียบ ๆ) · <code>npm run preview</code> เรนเดอร์ทั้ง 8 หน้าจอ<em>บวกเคสที่ยาวสุดของสี่หน้าที่มีลิสต์</em> ออฟไลน์ ผ่านทั้งหมด</p>
       <div class="rail"><span><b>DM 08:45 · digest 09:25</b> ปิดไว้เป็น default เปิดด้วย ENABLE_SCHEDULE=1</span></div>
     </div>
   </section>
@@ -347,7 +356,8 @@ INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template</pre>
             <tr><td>token ทั้งหมด</td><td><code>.env</code>, <code>slack-bot/.env</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>export จริงจาก Slack</td><td><code>data/raw/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>records + embedding cache</td><td><code>data/processed/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
-            <tr><td>โมเดล fine-tune (465 MB)</td><td><code>models/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>โมเดลที่เทรนเอง 2 ตัว (465 MB ต่อตัว) — วัดแล้ว<strong>ไม่ผ่าน ไม่ได้ใช้</strong></td><td><code>models/</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
+            <tr><td>โมเดล embedding ที่เสิร์ฟจริง (<code>BAAI/bge-m3</code>)</td><td>cache ของ Hugging Face นอกรีโป · โหลดครั้งแรกครั้งเดียว</td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>ledger ที่ <code>npm run ledger</code> เขียนจาก export จริง</td><td><code>slack-bot/data/ledger.json</code></td><td><span class="pill hold">✕ ไม่</span></td></tr>
             <tr><td>ข้อมูลตัวอย่างสังเคราะห์ + ledger ตัวอย่าง</td><td><code>data/sample/</code> · <code>ledger.fixture.json</code></td><td><span class="pill ok">✓ ตั้งใจ</span></td></tr>
           </tbody>
@@ -371,9 +381,9 @@ INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template</pre>
         <table>
           <thead><tr><th>รายการ</th><th>สถานะ</th><th>หลักฐาน</th></tr></thead>
           <tbody>
-            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 10 endpoint ที่อ่านข้อมูลคืน 200 · bot typecheck สะอาด, <code>npm test</code> ผ่าน, ทุก payload ผ่าน Slack limits · 22 โมดูล Python ตอบ <code>--help</code> ครบทุกตัว และ <code>pytest</code> ผ่าน</td></tr>
-            <tr><td><strong>User Manual</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><code>docs/USER_MANUAL.md</code> — 11 หัวข้อ ติดตั้ง ใช้งาน ต่อ Slack แก้ปัญหา ทุกคำสั่งรันผ่านจริง</td></tr>
-            <tr><td><strong>Draft Presentation</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>สไลด์นี้ 10 แผ่น</td></tr>
+            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 11 endpoint ที่อ่านข้อมูลคืน 200 · bot typecheck สะอาด, <code>npm test</code> ผ่าน 61/61, ทุก payload ผ่าน Slack limits · 24 CLI Python ตอบ <code>--help</code> ครบทุกตัว และ <code>pytest</code> ผ่าน 52/52</td></tr>
+            <tr><td><strong>User Manual</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><code>docs/USER_MANUAL.md</code> — ติดตั้ง ใช้งาน ต่อ Slack แก้ปัญหา ทุกคำสั่งรันผ่านจริง</td></tr>
+            <tr><td><strong>Draft Presentation</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>สไลด์นี้ 10 แผ่น · ตัวเลขทุกตัวมีบันทึกการวัดอยู่ใน <a href="EXPERIMENTS.md">docs/EXPERIMENTS.md</a></td></tr>
             <tr><td><strong>Source Code</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a> — public</td></tr>
           </tbody>
         </table>
@@ -389,40 +399,63 @@ python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt \
         --title "Daily standup" --started 2026-08-14T09:30 \
         --merge-into data/processed/sample_combined.json
 python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899</pre>
-      <p>ทุกคำสั่งรันจาก <code>pipeline/</code> เพราะแพ็กเกจ <code>tam</code> อยู่ที่นั่น · ไฟล์ <code>data/processed/</code> ไม่ขึ้น git จึงต้องสร้างจากข้อมูลตัวอย่างสองคำสั่งแรก · <code>--days 3650</code> เพราะ export ตัวอย่างลงวันที่ 2025-08-01 หน้าต่าง default 7 วันจะว่าง</p>
-      <div class="rail"><span><b>เวลาติดตั้ง</b> ~2 นาที</span><span><b>ได้อะไร</b> Ready: 27 record · 5 topic · 1 blocked</span><span><b>ทดสอบบน</b> macOS · Python 3.10.17 · Node v24.3.0</span></div>
+      <p>ทุกคำสั่งรันจาก <code>pipeline/</code> เพราะแพ็กเกจ <code>tam</code> อยู่ที่นั่น · ไฟล์ <code>data/processed/</code> ไม่ขึ้น git จึงต้องสร้างจากข้อมูลตัวอย่างสองคำสั่งแรก · <code>--days 3650</code> เพราะ export ตัวอย่างลงวันที่ 2025-08-01 หน้าต่าง default 7 วันจะว่าง · <code>EMBEDDING_MODEL</code> ใน <code>.env.example</code> ปล่อยว่างไว้ ให้ค่า default ในโค้ด (<code>BAAI/bge-m3</code>) เป็นตัวตัดสิน จะได้ไม่มีสองแหล่งความจริง</p>
+      <pre>INFO Building index from data/processed/sample_combined.json
+INFO Embedding 27 unique text(s); 0 already cached
+INFO Loading embedding model BAAI/bge-m3 (the first run downloads it)
+INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template</pre>
+      <div class="rail"><span><b>เวลาติดตั้ง</b> ~2 นาที + ดาวน์โหลดโมเดลรอบแรก</span><span><b>ได้อะไร</b> Ready: 27 record · 4 topic · 1 blocked</span><span><b>ทดสอบบน</b> macOS · Python 3.10.17 · Node v24.3.0</span></div>
     </div>
   </section>
 
   <!-- 10 -->
   <section class="slide">
-    <div class="slide-head"><span class="num">10</span><span class="eyebrow">ข้อจำกัด และก้าวถัดไป</span></div>
+    <div class="slide-head"><span class="num">10</span><span class="eyebrow">สิ่งที่การวัดแก้ · ข้อจำกัด · ก้าวถัดไป</span></div>
     <div class="slide-body">
-      <h2>สิ่งที่ยังไม่เสร็จ — พูดตรงๆ</h2>
+      <h2>เกณฑ์ตัดความเกี่ยวข้องกรองผิดสัญญาณมาตลอด — การวัดคือสิ่งที่จับได้</h2>
+      <div class="card" style="border-color:var(--warn); background:var(--warn-soft)">
+        <span class="k" style="color:var(--warn)">แก้ที่กลไก ไม่ใช่ที่ตัวเลขเกณฑ์</span>
+        <h3>cosine สูงสุดไม่ได้บอกว่า “มีของให้ตอบ” — มันบอกว่า corpus ใหญ่</h3>
+        <p style="color:var(--ink)">gate เดิมถามข้อเดียว: cosine ของ record ที่ใกล้สุดถึงเกณฑ์ไหม แต่ <code>max cosine</code> เหนือ N เอกสาร<strong>สูงขึ้นตาม N สำหรับ query อะไรก็ตาม</strong> — มี ~1,000 record ยังไงก็มีอันที่ดูคล้าย สไลด์นี้เวอร์ชันก่อนเขียนว่า MiniLM แยกขยะออกได้และตัวที่ fine-tune เองเป็นตัวที่พัง <strong>ข้อนั้นผิด</strong>: วัดบน corpus จริงแล้ว <strong>ไม่มีโมเดลไหนในห้าตัวที่มี floor ซึ่งแยกได้</strong> MiniLM รวมอยู่ในนั้นด้วย</p>
+        <div class="tw">
+          <table>
+            <thead><tr><th>กลไกที่ลอง</th><th>ขยะที่กรองได้</th><th>query จริงที่เสียไป</th></tr></thead>
+            <tbody>
+              <tr><td><code>cosine ≥ floor</code> เดี่ยว (ของเดิม)</td><td><strong>0/5</strong> — ทั้งห้าโมเดล</td><td>0/12</td></tr>
+              <tr><td>cross-encoder reranker เป็น gate</td><td>ปฏิเสธ — คำถามไทยจริงได้ 0.008 ขณะที่ขยะได้ 0.114</td><td>—</td></tr>
+              <tr><td><strong><code>BM25 &gt; 0</code> และ <code>cosine ≥ floor</code></strong> (ใช้ตัวนี้)</td><td><strong>4/5</strong></td><td><strong>0/12</strong></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p style="color:var(--ink)"><strong>ทำไมสัญญาณคำถึงชนะ:</strong> ขยะไม่มีคำตรงกับ corpus เลย BM25 จึงได้ <code>0.000</code> สนิท ขณะที่ cosine หาอะไรคล้ายได้เสมอ — บน corpus ตัวอย่าง 27 record ที่ commit ไว้ query ขยะได้ <code>bm25 0.00 · cos 0.486</code> คือ<em>ผ่าน</em>เกณฑ์ cosine 0.45 แต่ตกที่สัญญาณคำ ส่วน dense ยังต้องมีอยู่ เพื่อจับคำถามจริงที่ใช้คำต่างจาก corpus · <code>/api/search</code> จึงคืน <code>relevance: {lexical, dense}</code> เป็นค่าดิบทั้งคู่ และ pipeline ที่เก่าเกินจะส่งฟิลด์นี้ <strong>throw ทิ้ง ไม่ปล่อยผ่านเงียบ ๆ</strong></p>
+        <p style="color:var(--ink)"><span class="pill hold">⚠ ขอบเขตที่ยังอยู่</span> ตัวที่ยังหลุดคืออักขระไทยซ้ำ ๆ (<code>ๆ</code> <code>ฯ</code>) ซึ่งมีอยู่ในข้อความปกติจริง จึงมีคำตรงกันจริง — <code>check-api</code> เก็บ probe ตัวนี้ไว้ในลิสต์<strong>ตั้งใจ</strong> และรายงาน 3/4 แทนที่จะซ่อนให้ดูสวย · บน corpus จริงที่รันอยู่: กรองขยะ <strong>3/4</strong> เสีย query จริง <strong>0/6</strong> · บน corpus ตัวอย่าง 27 record มันกรองขยะได้ 4/4 แต่ตัด probe จริงทิ้ง 1 อัน ซึ่งเป็น label ที่ไม่มีคำร่วมกับ corpus เลย (<code>(no shared anchor)</code>) ไม่ใช่คำถามที่คนพิมพ์ — corpus เล็กก็เห็นทั้งสองด้านของกลไกชัดกว่า</p>
+      </div>
       <div class="card" style="border-color:var(--good); background:var(--good-soft)">
         <span class="k" style="color:var(--good)">ปิดไปแล้ว</span>
         <h3>บอทกับ pipeline นับ “งานหนึ่งชิ้น” เหมือนกันแล้ว</h3>
-        <p style="color:var(--ink)">เดิมสองฝั่งอ่าน Slack เองและจับกลุ่มด้วยกฎต่างกัน ช่องเดียวกันจึงได้ work item ไม่เท่ากัน ตอนนี้ตั้ง <code>TAM_API_URL</code> แล้วบอทเลิกตัดสินเอง — work item, สถานะ, หลักฐาน, timeline และ recall มาจาก pipeline ทั้งหมด เหลือเจ้าของนิยามเดียว</p>
-        <p style="color:var(--ink)"><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm run check-api</code> บน corpus 42 record (export ส่วนตัว ไม่ได้ commit): 5 work item · หลักฐาน, citation และ timeline ทุกอันชี้ข้อความที่มีจริงใน item นั้น · permalink สร้างคืน 33/42 (9 ที่เหลือเป็นบทประชุม ไม่มี Slack message ให้ลิงก์ ตามคาด) · และมันยืนยันว่า “ทุกผลลัพธ์มาจาก pipeline (embeddings) ไม่ใช่ trigram ในเครื่อง”</p>
+        <p style="color:var(--ink)">เดิมสองฝั่งอ่าน Slack เองและจับกลุ่มด้วยกฎต่างกัน ช่องเดียวกันจึงได้ work item ไม่เท่ากัน ตอนนี้ตั้ง <code>TAM_API_URL</code> แล้วบอทเลิกตัดสินเอง — work item, สถานะ, หลักฐาน, timeline และ recall มาจาก pipeline ทั้งหมด</p>
+        <p style="color:var(--ink)"><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm run check-api</code> บนข้อมูลจริง: <strong>20 work item</strong> · หลักฐาน, citation และ timeline ทุกอันชี้ข้อความที่มีจริงใน item นั้น · permalink สร้างได้ <strong>694/694</strong> ข้อความที่มาจาก Slack (ที่เหลือมาจากไฟล์ประชุม จึงไม่มี permalink ตามคาด) · standup draft 17 อันคำนวณจาก item ที่ได้มา ส่วน decision 0 เพราะยังไม่มีคนกดบันทึก — <strong>ไม่เติมให้ดูเต็ม</strong> · exit code ตอบแค่ว่า “รอยต่อนี้ถูกไหม” (ได้ 0) การ calibrate เกณฑ์รายงานให้เห็นแต่ไม่ทำให้ fail เว้นใส่ <code>--strict-gate</code> (แล้วได้ 1) เพราะ floor เป็นคุณสมบัติของ corpus คู่กับโมเดล ไม่ใช่ของรอยต่อ</p>
       </div>
-      <div class="card" style="border-color:var(--warn); background:var(--warn-soft)">
-        <span class="k" style="color:var(--warn)">ข้อจำกัดหลักที่เหลือ</span>
-        <h3>เกณฑ์ตัดความเกี่ยวข้องดีได้เท่าโมเดลที่เสิร์ฟ</h3>
-        <p style="color:var(--ink)">คะแนน hybrid คิดจาก<em>อันดับ</em> จึงบอกไม่ได้ว่า “ไม่เจออะไรเลย” เลยแม้แต่นิดเดียว — อันดับ 1 ได้ <code>1/61 + 1/61 = 0.0328</code> เท่ากันทั้ง query จริงและ query ขยะ เพราะอันดับ 1 ก็คืออันดับ 1 เราจึงตัดด้วย cosine ดิบจาก preset <code>dense</code> แทน แต่มันได้ผลเฉพาะเมื่อโมเดลวางข้อความขยะไว้ไกล</p>
-        <p style="color:var(--ink)">วัดบน corpus 42 record (export ส่วนตัว) เกณฑ์ <code>TAM_MIN_COSINE=0.45</code> ด้วย query ขยะตัวเดียวกับที่ <code>check-api</code> ใช้ — MiniLM: ขยะ <strong>0.388</strong> · ของจริง 0.847 → <strong>ตัดได้</strong> &nbsp;|&nbsp; โมเดลที่เรา fine-tune เอง: ขยะ <strong>0.738</strong> · ของจริง 0.838 → ห่างกัน 0.10 และเกณฑ์อยู่ใต้ทั้งคู่ <strong>ตัดไม่ได้เลย</strong> · corpus เล็กก็แย่ลงอีก บนข้อมูลตัวอย่าง 27 record แม้ MiniLM ก็ได้ 0.481 <code>npm run check-api</code> รายงานให้เห็นก่อนขึ้นเวที ทางแก้คือเปลี่ยนโมเดล ไม่ใช่ดันเกณฑ์ขึ้น</p>
+      <div class="card" style="border-color:var(--good); background:var(--good-soft)">
+        <span class="k" style="color:var(--good)">ปิดไปแล้ว</span>
+        <h3>ต่อ ticket system จริงแล้ว — และแหล่งที่สองเจอสิ่งที่ Slack เงียบสนิท</h3>
+        <p style="color:var(--ink)">เดิม drift ไม่มีแหล่งเทียบ ตอนนี้อ่าน ticket จริง <strong>195 ใบ (เปิดค้าง 61)</strong> มาเทียบกับที่คุยใน Slack ผลที่ได้ไม่ใช่ลิสต์ ticket เก่า แต่เป็น<strong>รูปแบบ</strong>: <strong>24 ใบเงียบเกิน 21 วัน · 22 ใบอยู่สถานะ Ready for test</strong> และวันที่ถูกแตะครั้งสุดท้าย<em>กระจุกอยู่แค่ 2 วัน</em> — 11 ใบวันเดียวกัน (เงียบ 56 วัน) และ 10 ใบอีกวัน (เงียบ 22 วัน) แปลว่างานถูกดันเข้า QA เป็นก้อน ๆ แล้วไม่มีใครหยิบต่อ ก้อนเก่าค้างมา 8 สัปดาห์ <strong>โดยไม่มีข้อความใน Slack พูดถึงเลยแม้แต่คำเดียว</strong></p>
+        <p style="color:var(--ink)"><strong>เกณฑ์ 21 วันมาจากจังหวะของทีมเอง</strong> ไม่ใช่ความรู้สึก — วันที่ ticket เปิดอยู่ไม่ถูกแตะมี p25 = 5 · median = 8 · p75 = 22 และ 21 ตกใน<em>ช่องว่างธรรมชาติ</em> (ไม่มี ticket ใบไหนอยู่ระหว่าง 14–21 วัน) เกณฑ์จึงไม่ผ่ากลางกลุ่มหนาแน่นที่เลื่อนวันเดียวคำตอบเปลี่ยน</p>
+        <p style="color:var(--ink)"><span class="pill hold">⚠ รายงานให้ตรง</span> เงื่อนไข “ไม่มีใครพูดถึงใน Slack” <strong>ไม่ได้ใช้เป็นตัวกรอง</strong> เพราะวัดแล้วมันไม่เปลี่ยนอะไร (24 จาก 24 ที่เกณฑ์นี้) — ใส่เป็นตัวกรองจะทำให้ดูเหมือนต้องใช้สองแหล่งทั้งที่ไม่ใช่ · และ “ไม่มีใครพูดถึง” จำกัดอยู่ใน<strong>หน้าต่าง 74 วัน</strong>ที่ export มา ไม่ใช่ทั้งประวัติ · ถ้าอ่าน ticket ไม่ได้ <code>/api/tracker</code> ส่ง <code>error</code> มาคู่กับลิสต์ว่าง และหน้าจอเขียนว่า <strong>“เรายังไม่รู้” ไม่ใช่ “ไม่มีงานค้าง”</strong></p>
+        <p style="color:var(--ink)"><span class="pill ok">✓ ความครอบคลุม</span> ตัวนี้ครอบคลุม <strong>100% ของ ticket ที่เปิดค้าง</strong> เพราะไม่ต้องรอให้ Slack เอ่ยถึง ต่างจากการเทียบสถานะที่ทำได้แค่ <strong>7 จาก 20 work item</strong> ที่มีเลข ticket ติดมา</p>
       </div>
       <div class="grid g2">
-        <div class="card"><span class="k">ยังไม่มี</span><p>แปลง user id เป็นชื่อคน (ต้องเพิ่ม scope <code>users:read</code>) · export reaction/attachment · เขียนกลับ ticket จริง · <strong>drift ยังไม่มีแหล่งจริง</strong> ต้องต่อ ticket system ก่อน (decision อ่านจากไฟล์ที่คนกดบันทึกเอง ว่างจนกว่าจะมีคนกด · standup คำนวณจาก item ที่ได้มา — สองอันนี้ไม่ได้มาจาก fixture)</p></div>
-        <div class="card"><span class="k">ขยายไม่ได้ถ้าโตมาก</span><p>ค้นหาแบบ brute-force ไหวระดับหลายพันข้อความ ไม่ไหวระดับล้าน — ต้องมี vector database</p></div>
+        <div class="card"><span class="k">ข้อจำกัดที่เหลือ</span><p><strong><code>/blockers</code> ยังรายงานต่ำกว่าความจริง</strong> — 22 ข้อความที่เป็นการติดจริงยุบลงเหลือ <strong>1</strong> work item เพราะการจับกลุ่มรวมงานต่างเรื่องเข้าด้วยกัน วัดแล้วว่า <code>resolution 4.0</code> ดันเพดานจาก 2 เป็น 4 แต่<em>ยังไม่ได้ยืนยัน</em>ว่าไม่ผ่างานจริงออกเป็นเสี่ยง จึงไม่เปลี่ยนค่า default · <strong>reply ในเธรดยังไม่ถูกนับ</strong> corpus มี 1,144 record แต่ตัวโหลดตัด <code>slack_thread</code> ออก 170 อันตาม default (<code>include_threads=False</code>) เหลือ 974 — ในนั้น <strong>110 อันเป็นเนื้อหาใหม่จริง</strong> และมีข้อความขอความช่วยเหลือตรง ๆ อยู่ด้วย เปิดใช้เป็นการแก้ flag เดียว แต่<em>ยังไม่ได้วัด</em>ว่ากระทบการจับกลุ่มยังไง จึงไม่เปลี่ยนก่อนวัด · ภาษาไทยไม่เว้นวรรค คำว่า <code>รอ</code> ไปเจอใน “ร<strong>อบ</strong>” “ก<strong>รอก</strong>” จึงต้องตัดคำแล้วแมตช์ระดับ token</p></div>
+        <div class="card"><span class="k">ขยายไม่ได้ถ้าโตมาก</span><p>ค้นหาแบบ brute-force ไหวระดับหลายพันข้อความ ไม่ไหวระดับล้าน — ต้องมี vector database · <code>bge-m3</code> ใหญ่และช้ากว่าตัวเดิม รับได้เพราะ embedding ถูก cache ไว้แล้ว</p></div>
       </div>
       <ul class="tight">
-        <li><strong>ก้าวถัดไปที่ 1</strong> ต่อ YouTrack แบบอ่านจริง — ทำให้ drift ซึ่งเป็นจุดต่างข้อ 03 ทำงานกับข้อมูลจริง ไม่ใช่ fixture</li>
-        <li><strong>ก้าวถัดไปที่ 2</strong> ย้าย decision กับ drift ขึ้น pipeline ให้ครบ เหลือแหล่งเดียวจริงๆ</li>
-        <li><strong>ก้าวถัดไปที่ 3</strong> วัดผลบน corpus จริงที่ใหญ่กว่านี้ — ชุดปัจจุบันเล็กเกินกว่าจะสรุปเรื่องคุณภาพการค้นหา</li>
+        <li><strong>ก้าวถัดไปที่ 1</strong> หา cue ของ “ติด” จากข้อมูลจริง แล้ว<strong>วัด precision ก่อนเชื่อ</strong> — ไม่เติมคำแล้วเคลม (คำอย่าง <code>blocker</code> 14 จาก 22 ครั้งมาจาก template standup ที่ขึ้นหัวว่า “Any blockers?” เติมเข้าไปจะ fire ทุกโพสต์)</li>
+        <li><strong>ก้าวถัดไปที่ 2</strong> ต่อ ticket system แบบอ่านจริง ให้ drift ซึ่งเป็นจุดต่างข้อ 03 ทำงานกับข้อมูลจริง ไม่ใช่ fixture</li>
+        <li><strong>ก้าวถัดไปที่ 3</strong> ถ้าจะกลับมาเทรนโมเดลอีก ต้องเปลี่ยน<strong>ฐาน</strong>เป็น <code>bge-m3</code> และหาข้อมูลมากกว่านี้หลายเท่า — เทรนบน MiniLM ต่อด้วย corpus ระดับนี้ วัดแล้วว่าไม่คุ้ม</li>
       </ul>
-      <div class="rail"><span><b>เขียนไว้แล้วใน</b> README § Known limitations · § Reading from the pipeline</span></div>
+      <div class="rail"><span><b>ตัวเลขทุกตัวบนสไลด์นี้มาจาก</b> <a href="EXPERIMENTS.md">docs/EXPERIMENTS.md</a> — ตารางเต็มอยู่ที่นั่นที่เดียว สไลด์ยกมาแค่บรรทัดสรุป จะได้ไม่มีสองแหล่งให้เพี้ยนกัน</span><span><b>วัดซ้ำได้</b> <code>npm run check-api</code></span></div>
     </div>
   </section>
 
-  <p class="foot">ตาม (Tam) · draft deck 10 สไลด์ · ปรับปรุง 17 ส.ค. 2569</p>
+  <p class="foot">ตาม (Tam) · draft deck 10 สไลด์ · ปรับปรุง 18 ส.ค. 2569</p>
 </div>

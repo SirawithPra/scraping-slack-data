@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The morning refresh: export every channel incrementally, merge, rebuild.
+
+  StartCalendarInterval, not an interval timer: this should happen once before standup,
+  and launchd runs a calendar job that was missed while the machine slept as soon as it
+  wakes — which is the normal case for a laptop at 08:30.
+
+  No KeepAlive: it is a job that finishes. Its exit code lands in `launchctl list`, so a
+  failed morning is visible without reading the log.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tam.daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__VENV__/bin/python</string>
+    <string>-m</string><string>tam.ingest.daily</string>
+    <string>--records</string><string>__RECORDS__</string>
+  </array>
+  <key>WorkingDirectory</key><string>__PIPELINE__</string>
+  <key>StartCalendarInterval</key>
+  <dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>
+  <key>StandardOutPath</key><string>__LOGS__/daily.log</string>
+  <key>StandardErrorPath</key><string>__LOGS__/daily.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+    <key>HF_HUB_OFFLINE</key><string>1</string>
+  </dict>
+</dict>
+</plist>

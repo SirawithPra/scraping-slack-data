@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The dashboard, kept alive.
+
+  KeepAlive rather than RunAtLoad alone: the process loads a 2.1 GB embedding model and
+  can be killed by memory pressure, and a digest nobody can open is the same as no
+  digest. ThrottleInterval stops a crash loop from re-embedding the corpus every second.
+
+  WorkingDirectory is pipeline/ because every documented command runs from there and
+  load_dotenv() reads ./.env — the tokens are not in this file on purpose, since a plist
+  in ~/Library/LaunchAgents is readable by other accounts on the machine.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tam.dashboard</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__VENV__/bin/python</string>
+    <string>-m</string><string>tam.web.server</string>
+    <string>--records</string><string>__RECORDS__</string>
+    <string>--days</string><string>7</string>
+    <string>--port</string><string>8899</string>
+  </array>
+  <key>WorkingDirectory</key><string>__PIPELINE__</string>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>60</integer>
+  <key>StandardOutPath</key><string>__LOGS__/dashboard.log</string>
+  <key>StandardErrorPath</key><string>__LOGS__/dashboard.log</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin</string>
+    <!-- Offline once the models are cached: a login-time job should not wait on a
+         network check to Hugging Face before it can serve anything. -->
+    <key>HF_HUB_OFFLINE</key><string>1</string>
+  </dict>
+</dict>
+</plist>

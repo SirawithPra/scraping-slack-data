@@ -43,6 +43,9 @@ from tam.analysis.graph import EdgeWeights, build_graph, cluster_label, detect_c
 from tam.analysis.linker import Link, link_records, load_overrides
 from tam.analysis.relations import Relation, extract_relations
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
+from tam.ingest.quoted import for_analysis
+from tam.ingest.standup import declared_blockers
+from tam.ingest.users import Names
 from tam.retrieval.signals import SignalIndex, timestamp
 
 # A "day" of standup usually means "since the last one", which is rarely 24h.
@@ -54,8 +57,27 @@ STATE_RELATIONS = ("resolves", "blocked_by")
 # it is still stuck. Chasing an item, answering a question about it, or filing it
 # twice is activity, not progress.
 MOVEMENT_RELATIONS = ("duplicates", "follows_up", "answers")
+# A reply this short, in a topic this large, is not enough to change the item's state
+# on its own. Both numbers come from reading the state-deciding message of every
+# resolved item on a real export: the three that were wrong sat at 7, 8 and 9
+# characters against 27-39 message topics, and the smallest legitimate one was 35
+# characters. See infer_state.may_set_state.
+ACK_CHARS = 25
+ACK_MAX_TOPIC = 10
 
 log = logging.getLogger("digest")
+
+# One resolver per process, built on first use. Reading the name cache per topic would
+# re-read the file for every render; the mode cannot change inside a run anyway.
+_names: Names | None = None
+
+
+def names() -> Names:
+    """The display-name resolver for this process. See tam.ingest.users."""
+    global _names
+    if _names is None:
+        _names = Names()
+    return _names
 
 
 @dataclass
@@ -81,7 +103,18 @@ class Topic:
 
     @property
     def participants(self) -> list[str]:
+        """Raw ids and transcript speaker names, as stored. For machines.
+
+        Kept unresolved on purpose: this is what a caller needs to DM someone or to
+        join a person to a message. `participant_names` is the same list rendered for
+        a reader, and both go on the wire so neither use has to guess.
+        """
         return sorted({str(record.get("user") or "") for record in self.records} - {""})
+
+    @property
+    def participant_names(self) -> list[str]:
+        """The same people, readable. See tam.ingest.users for the modes."""
+        return names().all(self.participants)
 
     @property
     def sources(self) -> dict[str, int]:
@@ -127,6 +160,9 @@ class Topic:
             "evidence": self.evidence,
             "evidence_id": self.evidence_id,
             "participants": self.participants,
+            # Both, deliberately: ids address a person, names describe one, and a
+            # consumer that has to derive one from the other gets it wrong.
+            "participant_names": self.participant_names,
             "sources": self.sources,
             "messages": len(self.records),
             "first": format_timestamp(str(self.first_ts)),
@@ -162,6 +198,43 @@ class Digest:
         return [topic for topic in self.topics if topic.state == "resolved"]
 
 
+def apply_declarations(
+    topic_records: Sequence[dict[str, Any]],
+    declarations: dict[str, list[str]],
+    state: str,
+    evidence: str,
+    evidence_id: str,
+    state_since: float,
+) -> tuple[str, str, str, float]:
+    """Let a self-declared blocker override an inferred state.
+
+    `declarations` maps a record id to what its author wrote under the blockers
+    heading. If one of this topic's messages carries such a declaration and nothing
+    state-bearing happened after it, the item is blocked and the evidence is the
+    person's own words — no cue, no inference, and nothing to argue about.
+
+    A later `resolves` still wins, because somebody declaring a blocker on Monday and
+    reporting it fixed on Thursday is not blocked now. That is the same rule
+    `infer_state` uses, applied across the two kinds of evidence.
+    """
+    declared = [
+        (record, declarations[str(record["id"])])
+        for record in topic_records
+        if str(record["id"]) in declarations
+    ]
+    if not declared:
+        return state, evidence, evidence_id, state_since
+
+    record, answers = max(declared, key=lambda pair: timestamp(pair[0]))
+    when = timestamp(record)
+    if state == "resolved" and np.isfinite(state_since) and state_since > when:
+        return state, evidence, evidence_id, state_since
+
+    marker = format_timestamp(str(record.get("ts", "")))
+    answer = " / ".join(answers)[:120]
+    return "blocked", f'blocked since {marker} — คนกรอกเองว่า "{answer}"', str(record["id"]), when
+
+
 def infer_state(topic_records: Sequence[dict[str, Any]], relations: Sequence[Relation], records: Sequence[dict[str, Any]]) -> tuple[str, str, str, float]:
     """Decide whether a work item is blocked, resolved, or simply active.
 
@@ -179,6 +252,29 @@ def infer_state(topic_records: Sequence[dict[str, Any]], relations: Sequence[Rel
     they say two messages are related, not what happened.
     """
     member_ids = {str(record["id"]) for record in topic_records}
+
+    def may_set_state(relation: Relation) -> bool:
+        """Whether this relation's later message is allowed to decide the item's state.
+
+        Two refusals, both measured on a real 936-message export rather than guessed.
+
+        A bot may not. `resolves` fires on a deploy notification reading "success",
+        which is a machine reporting that a command finished, not a teammate reporting
+        that the work is done. One of fifteen resolved items was decided this way.
+
+        A bare acknowledgement may not decide a large item. Three of fifteen were
+        resolved by a message of seven, eight and nine characters — the Thai
+        equivalents of "done" and "all set" — standing for clusters of 27, 35 and 39
+        messages spanning weeks. In a three-message item such a reply is unambiguous
+        about what it refers to. In a forty-message one it is not, and the cost of
+        being wrong is a standup told that unfinished work is finished. The rule is
+        proportionate rather than absolute for exactly that reason.
+        """
+        later = records[relation.target]
+        if later.get("is_bot"):
+            return False
+        return not (len(for_analysis(later)) <= ACK_CHARS and len(topic_records) > ACK_MAX_TOPIC)
+
     relevant = [
         relation
         for relation in relations
@@ -197,7 +293,7 @@ def infer_state(topic_records: Sequence[dict[str, Any]], relations: Sequence[Rel
         return format_timestamp(str(records[relation.target].get("ts", "")))
 
     newest = max(relevant, key=when)
-    stateful = [relation for relation in relevant if relation.name in STATE_RELATIONS]
+    stateful = [relation for relation in relevant if relation.name in STATE_RELATIONS and may_set_state(relation)]
     if not stateful:
         return "active", f"last movement {marker_for(newest)} ({newest.name})", str(records[newest.target]["id"]), when(newest)
 
@@ -290,6 +386,9 @@ def build_digest(
     graph = build_graph(records, matrix, signals, weights=EdgeWeights(), knn=knn)
     labels = detect_communities(graph, resolution=resolution)
     relations = extract_relations(records, [(int(a), int(b)) for a, b in graph.edges], method=method)
+    # Self-declared blockers, keyed by the message that carries them. Computed once per
+    # build: reading the form is a property of the corpus, not of a topic.
+    declarations = {str(record["id"]): answers for record, answers in declared_blockers(records)}
     # Same clustering the linker would compute, handed to it, so the work items
     # here and the links there cannot disagree about who is in which cluster.
     links = {
@@ -313,6 +412,15 @@ def build_digest(
             if str(records[relation.source]["id"]) in member_ids and str(records[relation.target]["id"]) in member_ids
         ]
         state, evidence, evidence_id, state_since = infer_state(member_records, relations, records)
+        # A person who typed an obstacle under "Are there any blockers?" has labelled it
+        # themselves, which outranks anything inferred from a cue. Applied after
+        # infer_state rather than inside it because it is evidence of a different kind:
+        # not a relation between two messages, but one message's own declaration. On the
+        # real export only one of the three such declarations contains any word from the
+        # blocked_by cue list, so this finds what no keyword list can.
+        state, evidence, evidence_id, state_since = apply_declarations(
+            member_records, declarations, state, evidence, evidence_id, state_since
+        )
         topics.append(
             Topic(
                 key=community,
@@ -365,10 +473,10 @@ def timeline(topic: Topic, records: Sequence[dict[str, Any]]) -> list[dict[str, 
             "from_ts": timestamp(source),
             "from_id": str(source["id"]),
             "from_text": " ".join(str(source["text"]).split())[:160],
-            "from_user": str(source.get("user") or "-"),
+            "from_user": names().of(source.get("user")) or "-",
             "to_id": str(target["id"]),
             "to_text": " ".join(str(target["text"]).split())[:160],
-            "to_user": str(target.get("user") or "-"),
+            "to_user": names().of(target.get("user")) or "-",
             "evidence": relation.evidence,
             "also_answers": existing["also_answers"] + 1 if existing else 0,
         }
@@ -432,8 +540,8 @@ def main() -> None:
             print("  (no typed relation in this topic — only same_topic edges)")
         for event in events:
             print(f"  {event['when']}  {event['relation']}")
-            print(f"     from [{event['from_user']}] {event['from_text'][:88]}")
-            print(f"       to [{event['to_user']}] {event['to_text'][:88]}")
+            print(f"     from [{event['from_user']}] {names().in_text(event['from_text'])[:88]}")
+            print(f"       to [{event['to_user']}] {names().in_text(event['to_text'])[:88]}")
         return
 
     topics = digest.blocked if args.blockers else digest.topics
@@ -452,12 +560,13 @@ def main() -> None:
         sources = ", ".join(f"{count} {name}" for name, count in sorted(topic.sources.items()))
         age = f"{topic.age_days:.1f}d" if np.isfinite(topic.age_days) else "-"
         print(f"\n{marker} {topic.item_id} · #{topic.key} {topic.label}")
-        print(f"   {topic.state:8} {age:>7}   {len(topic.records)} msg ({sources})   {', '.join(topic.participants[:5])}")
+        print(f"   {topic.state:8} {age:>7}   {len(topic.records)} msg ({sources})   {', '.join(topic.participant_names[:5])}")
         if topic.evidence:
             print(f"   {topic.evidence}")
         for record in topic.recent(digest.since)[-3:]:
             tag = "meeting" if record.get("source") == "meeting" else "slack"
-            print(f"     [{tag}] {record.get('user') or '-'}: {' '.join(str(record['text']).split())[:92]}")
+            body = names().in_text(" ".join(str(record["text"]).split()))
+            print(f"     [{tag}] {names().of(record.get('user')) or '-'}: {body[:92]}")
 
     print(f"\n{len(digest.blocked)} blocked · {len(digest.resolved)} resolved · {len(digest.topics)} active topics")
     print("state comes from typed relations (tam.analysis.relations); nothing here is generated")

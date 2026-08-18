@@ -6,7 +6,8 @@ import {
   ledger, hydrate, reload, ledgerOrigin, demoFixtures, sortedItems, itemsByState, findItem,
   findMessage, itemKeyForMessage, itemsFor, standupFor, driftFor,
 } from './data.js';
-import { apiConfig } from './tam-api.js';
+import { apiConfig, fetchTracker } from './tam-api.js';
+import { describePolicy, guardPosting, readPolicy } from './postguard.js';
 import {
   decisionsPath, overridesPath, readDecisions, saveDecision, saveOverride, storeSummary,
 } from './store.js';
@@ -15,6 +16,8 @@ import { standupDmBlocks } from './blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from './blocks/drift.js';
 import { recallBlocks } from './blocks/recall.js';
+import { formatBlocks } from './blocks/format.js';
+import { driftBlocks, silentBlocks } from './blocks/tracker.js';
 import { COMMANDS, CMD, context, section, esc, clamp } from './blocks/common.js';
 
 const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
@@ -81,6 +84,11 @@ const app = new App({
 // Before start() resolves, "still running" is a lie — the boot path exits on
 // failure, and this is the one line an operator reads when a boot fails.
 let running = false;
+// Install the posting allowlist before any listener can run. Bolt gives every handler
+// this same WebClient, so one wrap covers all of them — including the scheduled jobs.
+const postPolicy = readPolicy();
+guardPosting(app.client, postPolicy);
+
 process.on('unhandledRejection', (reason) => {
   const state = running ? 'บอทยังทำงานต่อ' : 'ยังไม่ได้เริ่ม — ดู error ด้านล่าง';
   console.error(`⚠  unhandled rejection (${state}):`, reason);
@@ -135,6 +143,25 @@ app.command(new RegExp(`^/(${COMMANDS.join('|')})$`), async ({ command, ack, res
     // /meowtam digest
     if (lower === 'digest' || lower === 'standup') {
       await respond({ blocks: digestBlocks(), text: 'digest' });
+      return;
+    }
+
+    // /meowtam silent | drift  → the ticket side, which Slack cannot contain
+    if (lower === 'silent' || lower === 'quiet' || lower === 'drift') {
+      const cfg = apiConfig();
+      if (!cfg) {
+        await respond({ text: 'ต้องตั้ง TAM_API_URL ให้บอทอ่านจาก pipeline ก่อน — ข้อมูล ticket มาจากฝั่งนั้น' });
+        return;
+      }
+      const report = await fetchTracker(cfg);
+      const blocks = lower === 'drift' ? driftBlocks(report) : silentBlocks(report);
+      await respond({ blocks: blocks as any, text: lower === 'drift' ? 'drift' : 'ticket ที่เงียบ' });
+      return;
+    }
+
+    // /meowtam format    → the form the analysis can actually read
+    if (lower === 'format' || lower === 'help' || lower === 'template') {
+      await respond({ blocks: formatBlocks(), text: 'รูปแบบที่ระบบอ่านได้' });
       return;
     }
 
@@ -902,6 +929,7 @@ const cfg = apiConfig();
 const src = ledgerOrigin() === 'pipeline' ? `pipeline ${cfg?.baseUrl}` : 'fixture data/ledger.json';
 console.log(`🐾 Meowtam พร้อมแล้ว — ${l.items.length} work items, ${l.corpus_size} ข้อความ`);
 console.log(`   แหล่งข้อมูล: ${src}`);
+console.log(`   ${describePolicy(postPolicy)}`);
 console.log(`   เขียนเอง: ${storeSummary()}`);
 console.log(
   `   standup draft ${l.standups.length} คน · drift ${l.drifts.length}` +

@@ -43,7 +43,7 @@ from typing import Any, Sequence
 import numpy as np
 from dotenv import load_dotenv
 
-from tam.analysis.digest import DEFAULT_WINDOW_DAYS, Digest, Topic, build_digest, window_start
+from tam.analysis.digest import DEFAULT_WINDOW_DAYS, Digest, Topic, build_digest, names, window_start
 from tam.retrieval.embeddings import quiet_third_party_logs, set_model
 from tam.core import DEFAULT_RECORDS, format_timestamp, load_records
 
@@ -136,7 +136,11 @@ def topic_brief(topic: Topic, *, since: float, limit: int = MAX_MESSAGES_PER_TOP
         "label": topic.label,
         "state": topic.state,
         "state_evidence": topic.evidence,
-        "participants": topic.participants,
+        # Names, not ids: this brief becomes prose a person reads, and it is also
+        # what a model is shown. "U0EXAMPLE12 said" is unreadable in the first case
+        # and unusable in the second — a model cannot say anything sensible about a
+        # participant it only knows as a key.
+        "participants": topic.participant_names,
         "sources": topic.sources,
         "total_messages": len(topic.records),
         "messages_shown": len(recent[-limit:]),
@@ -145,9 +149,9 @@ def topic_brief(topic: Topic, *, since: float, limit: int = MAX_MESSAGES_PER_TOP
             {
                 "id": str(record["id"]),
                 "when": format_timestamp(str(record.get("ts", ""))),
-                "who": str(record.get("user") or "-"),
+                "who": names().of(record.get("user")) or "-",
                 "source": str(record.get("source") or "slack"),
-                "text": " ".join(str(record["text"]).split())[:MAX_MESSAGE_CHARS],
+                "text": names().in_text(" ".join(str(record["text"]).split()))[:MAX_MESSAGE_CHARS],
             }
             for record in recent[-limit:]
         ],

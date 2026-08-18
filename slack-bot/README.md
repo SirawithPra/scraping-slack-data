@@ -139,9 +139,12 @@ and when a model's citations fail verification the UI says so (see MOB-142 in th
 renders the unverified warning deliberately).
 
 **"What about Thai?"**
-The matching is character-trigram based specifically because Thai has no spaces between
+The offline matching is character-trigram based specifically because Thai has no spaces between
 words. Word tokenisation without a Thai tokeniser silently produces garbage. Try
-`/meowtam recall` with a Thai paragraph.
+`/meowtam recall` with a Thai paragraph. With `TAM_API_URL` set it is the pipeline's multilingual
+embeddings answering instead — `BAAI/bge-m3`, whose 8192-token context does not silently truncate
+a long thread record the way a 128-token model does
+([`../docs/EXPERIMENTS.md`](../docs/EXPERIMENTS.md)).
 
 **"Is this surveilling my team?"**
 It reports on tickets, never on people. No per-person message counts, no activity
@@ -174,10 +177,12 @@ a code problem.
 src/
   types.ts          the ledger shape — read this first
   data.ts           loading, sorting, the decision-chain walk
-  tam-api.ts        client for the Python pipeline's HTTP API, and the shape translation
+  tam-api.ts        client for the Python pipeline's HTTP API, the shape translation,
+                    and the two-signal relevance gate (passesGate)
   store.ts          the bot's own writes: ticket-link overrides and the decision log
   standups.ts       standup drafts derived from work items, not read from a fixture
-  search.ts         recall: trigram + literal-term hybrid, no API key
+  search.ts         recall: the pipeline when TAM_API_URL is set, else the local
+                    trigram + literal-term hybrid, no API key
   app.ts            commands, actions, modals, the demo driver
   blocks/
     common.ts       shared renderers — state labels, evidence buttons, Thai-safe truncation
@@ -190,20 +195,27 @@ scripts/
   export-slack.ts   real channel history via bot token
   build-ledger.ts   messages → work items, states, drifts, decisions
   preview.ts        render every payload offline, validate against Slack's limits
-  check-api.ts      prove the bot can read the pipeline, with no Slack in the loop
-tests/              `npm test` — Slack's limits, the shape translation, the store
+  check-api.ts      prove the bot can read the pipeline and re-measure the gate,
+                    with no Slack in the loop
+tests/              `npm test` — 53 tests: Slack's limits (blocks), the shape
+                    translation (tam-api), where the ledger came from (provenance),
+                    the store, the recall gate (gate), and what git tracks
+                    (tracked-data). fixtures/pipeline-api.json is a recorded response
 data/
   ledger.fixture.json  the committed fixture — anonymised, safe for a public repo
   ledger.json          what the bot reads: seeded from the fixture, overwritten by
                        `npm run ledger`, and gitignored so real channel history
                        never lands in a commit
+  decisions.json       the decision log, written on demand and gitignored; absent
+                       until someone files one (`TAM_DECISIONS_PATH` moves it)
 ```
 
 ```bash
-npm test                   # Slack's limits, the shape translation, and the store
+npm test                   # 53 tests: Slack's limits, the shape translation, the
+                           # store, the recall gate, and what git tracks
 npm run preview            # validate every Block Kit payload, no Slack needed
 npm run preview -- digest  # dump one payload for app.slack.com/block-kit-builder
-npm run typecheck
+npm run typecheck          # tsc --noEmit; prints nothing when it is clean
 ```
 
 ### Reading from the pipeline
@@ -215,12 +227,73 @@ decisions, drifts and standup drafts stay local because the pipeline has no coun
 them yet. There is **no fallback**: if the pipeline is asked for and cannot answer, the bot
 refuses to start rather than serve fixture data that looks identical to live.
 
+#### Recall: one call, then a gate on two signals
+
+One `GET /api/search?q=…&k=…` per query, not two. The response carries a top-level
+`relevance: {lexical, dense}` — the raw BM25 and the raw cosine of the best-matching record,
+both absolute — and `passesGate()` in `src/tam-api.ts` requires **both** of:
+
+| condition | what it catches |
+| --- | --- |
+| `lexical > 0` | nonsense. It shares no vocabulary with the corpus, so BM25 scores it exactly `0.000` |
+| `dense >= TAM_MIN_COSINE` | a stray shared token that means nothing close to the query. Dense is also the signal that lets a genuinely re-worded question rank at all, which BM25 alone cannot do |
+
+A refused query returns no hits at all, which is how recall says *nothing matched* instead of
+five confident-looking rows. Nothing else in the response can say it: the fused `score` is
+rank-derived — measured against the live corpus, rank 1 of `qqqzzzxxx wvwvwv jjjkkk zzzqqq`
+scored **0.0328** while rank 1 of a real question scored **0.0297**, so the nonsense scored
+*higher* — and every per-hit `why` is min-max normalised inside its own result set, so `dense`
+on the top hit reads `1.00` either way.
+
+The cosine floor alone was the old mechanism and it could not work: max cosine over N documents
+rises with N for any query, so on ~1,000 records something always looks similar, and across five
+embedding models a floor rejected **0 of 5** nonsense probes. Both signals together reject 4 of 5
+and lose 0 of 12 real queries. The one that still passes is a run of Thai punctuation (ๆ ฯ) that
+really does occur in messages, so its lexical match is genuine. Tables and reasoning:
+[`../docs/EXPERIMENTS.md`](../docs/EXPERIMENTS.md) — this README does not restate them, so the two
+cannot drift. A pipeline too old to send `relevance` makes the bot throw rather than pass
+everything.
+
 ```bash
-TAM_API_URL=http://127.0.0.1:8899 npm run check-api   # fetch, translate, index, search
+TAM_API_URL=http://127.0.0.1:8899 npm run check-api      # fetch, translate, index, search
+TAM_API_URL=… npm run check-api -- "คำถามของคุณ"          # …with your own recall query
+TAM_API_URL=… npm run check-api -- "คำถามของคุณ" --strict-gate   # calibration counts in the exit code
 ```
 
-`.env.example` documents `TAM_API_URL`, `TAM_STALE_DAYS`, `TAM_MIN_COSINE`, `DEMO_FIXTURES` and
-the rest line by line; `../pipeline/README.md` covers the server side.
+`check-api` prints `bm25` and `cos` for every probe, real and nonsense, and keeps the two verdicts
+apart: the exit code answers *is the integration sound* — pipeline reachable, every claim's
+evidence resolving, recall coming from embeddings and not local trigrams — while gate calibration
+is reported and does not fail the run unless `--strict-gate` is passed, because the right floor is
+a property of a corpus and a model rather than of this code. The query is `process.argv[2]`, so put
+it **before** the flag: `npm run check-api -- --strict-gate` on its own searches for the literal
+string `--strict-gate` and dies with no results.
+
+#### Environment
+
+Every variable, with the value `.env.example` ships. Empty means the code default applies; the
+reasoning for each one is in `.env.example` line by line, and `../pipeline/README.md` covers the
+server side.
+
+| variable | shipped | what it does |
+| --- | --- | --- |
+| `SLACK_BOT_TOKEN` | — | `xoxb-…`, from OAuth & Permissions |
+| `SLACK_APP_TOKEN` | — | `xapp-…` with `connections:write`; Socket Mode needs it |
+| `SLACK_SIGNING_SECRET` | — | Basic Information → App Credentials |
+| `DIGEST_CHANNEL` | — | channel **ID** the digest posts to; the bot must be a member |
+| `EXPORT_CHANNELS` | — | comma-separated channel IDs for `npm run export` |
+| `EXPORT_DAYS` | `14` | how far back the export walks (unset → 120) |
+| `STANDUP_USERS` | — | comma-separated user IDs that get the 08:45 DM |
+| `ENABLE_SCHEDULE` | — | `1` arms the 08:45 / 09:25 schedules; empty leaves them off |
+| `TAM_SCHEDULE_TZ` | — | IANA zone for those schedules; empty means the host clock |
+| `TAM_API_URL` | — | pipeline base URL. Empty = offline against `data/ledger.json` |
+| `SLACK_WORKSPACE_URL` | — | permalink host (unset → `https://slack.com`, which interstitials) |
+| `TAM_STALE_DAYS` | `3` | an active item quiet longer than this renders as stalled |
+| `TAM_MIN_COSINE` | `0.45` | the `dense` half of the recall gate — see above |
+| `TAM_API_TIMEOUT_MS` | `20000` | per-request budget; a timeout at boot refuses to start |
+| `TAM_OVERRIDES_PATH` | — | where ticket-link corrections are written (unset → `../pipeline/data/link_overrides.json`) |
+| `TAM_DECISIONS_PATH` | — | the decision log (unset → `data/decisions.json`) |
+| `TAM_RECENT_DAYS` | `1.5` | activity inside this window counts as "what you did" |
+| `DEMO_FIXTURES` | — | `1` loads the fixture's drift for beat 3, labelled in the UI |
 
 ## Design rules that are not negotiable
 

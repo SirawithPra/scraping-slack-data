@@ -52,7 +52,7 @@ each other:
 
 **The seam is closed.** Set `TAM_API_URL` and the bot stops deciding what a work
 item is: items, states, evidence, timelines and recall all come from
-`tam.web.server`, so the trained embedding model — not character trigrams — is
+`tam.web.server`, so the pipeline's embedding model — not character trigrams — is
 what groups and ranks. Leave it unset and the bot runs offline against its own
 fixture exactly as before.
 
@@ -68,9 +68,14 @@ without Slack credentials](#try-it-without-slack-credentials), or point
 `--records` at your own export and drop `--days`.)
 
 `check-api` exercises the whole boot path without Slack in the loop and prints
-what came back. Decisions, standup drafts and drift stay on the bot's side,
-because the pipeline has no counterpart for them yet — see [Reading from the
-pipeline](#reading-from-the-pipeline).
+what came back. It reports two things and keeps them apart: whether the
+**integration** is sound — the pipeline answered, items resolve, recall came from
+embeddings — which is what the exit code means, and whether the relevance gate is
+**calibrated** on this corpus, which is printed but does not fail the run unless
+you pass `--strict-gate`. The two were conflated before, and a documented
+quickstart exited 1 while everything it checked worked. Decisions, standup drafts
+and drift stay on the bot's side, because the pipeline has no counterpart for them
+yet — see [Reading from the pipeline](#reading-from-the-pipeline).
 
 ## Layout
 
@@ -101,12 +106,17 @@ slack-app-manifest.json   read-only Slack app for the exporter — history scope
 ```
 
 Nothing sits at the repo root any more. Every module is reachable as
-`python3 -m tam.<area>.<module>`, `--help` works on all 22 of them, and
+`python3 -m tam.<area>.<module>`. Of the 24 module files, **21 are CLIs and answer
+`--help`**; the other three (`retrieval/embeddings.py`, `retrieval/fusion.py`,
+`ingest/quoted.py`) are libraries the rest import, and
 `python3 -m pytest` from `pipeline/` runs the Python tests.
 
 **Which model, and why not the fine-tune?** [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md)
 is the decision log: both training runs, the seven models compared on a real 1,102-record
-corpus, why each loser lost, and what was chosen.
+corpus, why each loser lost, and what was chosen. Short version — the default encoder is
+`BAAI/bge-m3`, **both locally fine-tuned models lost**, and the relevance gate now takes
+two signals instead of one. Every measurement table behind those three sentences lives in
+that file and only there, so this README links rather than repeats.
 
 **New here?** [../docs/USER_MANUAL.md](../docs/USER_MANUAL.md) is the install-and-use
 guide in Thai: prerequisites, both Slack apps, every command, and a
@@ -164,18 +174,24 @@ Search:
 
 Top Matches:
 
-1. 0.80
+1. 0.84
    FE done, waiting for API
    user=U05QA  time=2025-08-01 06:06  thread=1754003200.001600  id=msg_C0SAMPLE01_1754003200.001600
 ```
 
 Read the top hit twice: a Thai/English query, and the message it found is
 English. The query's closest *Thai* paraphrase — `sorting หน้า candidate mock
-ไว้ก่อน api หลังบ้านยังไม่มา` — scores **0.31** and sits at the bottom of the
-ranking, on the edge of the ten hits `--top-k` prints by default. 0.80 against
-0.31 for the same meaning in two languages is the cross-lingual limitation
-measured at the bottom of this file, not a rounding error, and it is why the
-pipeline below stops being dense-only.
+ไว้ก่อน api หลังบ้านยังไม่มา` — scores **0.66** and lands at rank 7 of the ten hits
+`--top-k` prints by default. 0.84 against 0.66 for the same meaning in two
+languages is the cross-lingual limitation measured at the bottom of this file, not
+a rounding error, and it is why the pipeline below stops being dense-only.
+
+Both numbers moved when the default encoder changed. Re-run the same query on the
+same corpus with `EMBEDDING_MODEL=…MiniLM-L12-v2` and the pair reads 0.80 against
+**0.31**, with the Thai record down at rank **11** — off the default page entirely.
+`bge-m3` narrows a 0.49 gap to 0.18 and pulls that record back onto the page. The
+ordering did not change, though: the English near-match still wins, so the
+limitation is smaller rather than gone.
 
 Useful flags:
 
@@ -266,17 +282,53 @@ Get `SLACK_CHANNEL_ID` from Slack: channel name → About → Channel ID (`C...`
 
 ## Embedding model
 
-Default: **`sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`**
-(384 dimensions, 458 MB, runs on CPU).
+Default: **`BAAI/bge-m3`** (1024 dimensions, 8192-token context, runs on CPU).
 
-Why this one for the first experiment:
+One place sets it — `DEFAULT_MODEL` in [embeddings.py](tam/retrieval/embeddings.py) —
+and `.env.example` ships `EMBEDDING_MODEL=` **empty on purpose** so a fresh clone
+inherits the code's default instead of a copy that has to be kept in sync with it.
+
+It replaced `paraphrase-multilingual-MiniLM-L12-v2`, which is what earlier
+versions of this README called the default, and the replacement was decided by
+measurement rather than preference: on a private 1,102-record Thai/English Slack
+corpus held out by thread it was the most accurate of the seven models compared,
+it keeps nonsense queries the furthest away, and its context ends a silent
+failure — MiniLM's 128 word pieces truncated 13.4% of real records without saying
+so. **[../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) has the table**: every
+model, both fine-tunes, and why each loser lost. Those numbers live there and
+nowhere else, so the two documents cannot drift.
+
+Why this family fits the task:
 
 - Multilingual, including Thai, in one shared vector space, so a Thai message and
   its English paraphrase land near each other without translating anything.
-- Trained on a **paraphrase** objective, which matches the task here — comparing
-  message to message ("same topic, different wording"), not a question to a document.
-- Small and fast enough to embed a few hundred messages on a laptop in seconds,
-  and free (no API cost) for the hackathon.
+- **8192 tokens**, which is the difference that mattered here. The longest records
+  are concatenated threads and standup templates — exactly the records clustering
+  depends on — and a 128-token encoder drops the end of them silently.
+- No prompt to get wrong: bge-m3 wants the text untouched on both sides
+  (`MODEL_SPECS` in [embeddings.py](tam/retrieval/embeddings.py) says so per family),
+  unlike E5's `query:` / `passage:` or Qwen3's instruction.
+- Local and free. Nothing leaves the machine, same as before.
+
+What it costs: the weights are **2.1 GB** on disk against MiniLM's 458 MB, and it
+is slower per batch. The embedding cache absorbs the speed — a rerun embeds only
+new or edited text — but the disk is real, so see the download sizes below before
+pulling it onto a small laptop. MiniLM stays in the catalog and is still the
+fastest thing here, which makes it the useful baseline rather than the default:
+
+```bash
+EMBEDDING_MODEL=sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 \
+    python3 -m tam.retrieval.retrieve --records data/processed/sample_messages.json \
+            -q "FE sorting เสร็จแล้วแต่ยังรอ BE API" --preset dense
+# INFO 18 record(s) · model sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2 · preset dense = rrf[dense=1]
+```
+
+Every run prints the model it used on that line, which is the only reliable way to
+know what produced a number. An env var or `--model` wins over the code default for
+that one run; nothing else changes, because each model keeps its own embedding cache
+file, and the run above writes
+`data/processed/embeddings_sentence-transformers_paraphrase-multilingual-MiniLM-L12-v2.npz`
+next to the default's rather than over it.
 
 ### The model catalog
 
@@ -284,13 +336,13 @@ Why this one for the first experiment:
 python3 -m tam.evaluation.compare_models --catalog
 ```
 
-| Model | Size · dim · ctx | Notes |
+| Model | Params · dim · ctx | Notes |
 | --- | --- | --- |
-| `paraphrase-multilingual-MiniLM-L12-v2` | 118M · 384 · 128 | the fast baseline, and the default |
+| `paraphrase-multilingual-MiniLM-L12-v2` | 118M · 384 · 128 | the fast baseline; the default until it was measured against the rest |
 | `paraphrase-multilingual-mpnet-base-v2` | 278M · 768 · 128 | older, stronger baseline |
 | `intfloat/multilingual-e5-base` | 278M · 768 · 512 | needs `query:` / `passage:` prefixes |
 | `intfloat/multilingual-e5-large` | 560M · 1024 · 512 | straight upgrade on e5-base |
-| `BAAI/bge-m3` | 568M · 1024 · 8192 | also yields sparse + ColBERT vectors |
+| **`BAAI/bge-m3`** | 568M · 1024 · 8192 | **the default** — also yields sparse + ColBERT vectors, unused here |
 | `Qwen/Qwen3-Embedding-0.6B` | 595M · 1024 · 32k | instruction-aware, top of MTEB multilingual |
 | `google/embeddinggemma-300m` | 308M · 768 · 2048 | smallest of the modern multilingual set |
 | `Alibaba-NLP/gte-multilingual-base` | 305M · 768 · 8192 | **broken on transformers 5.x** (see below) |
@@ -338,31 +390,58 @@ python3 -m tam.core --model intfloat/multilingual-e5-base -q "…"
 python3 -m tam.evaluation.evaluate --model sentence-transformers/paraphrase-multilingual-mpnet-base-v2
 ```
 
-Models are cached by Hugging Face under `~/.cache/huggingface/hub` — about 2.6 GB
-for the two the defaults need, `paraphrase-multilingual-MiniLM-L12-v2` (458 MB)
-plus the `bge-reranker-v2-m3` cross-encoder (2.1 GB, and only downloaded the first
-time a run actually reranks). Every further entry in the catalog above adds
-0.5–4.3 GB; the whole catalog measures 13 GB on this machine, so pull them one at
-a time. Each model keeps its own embedding cache under
-`data/processed/`, so switching re-downloads and re-embeds nothing. Set
-`HF_HUB_OFFLINE=1` in `.env` once they are downloaded to skip Hugging Face
-network checks entirely — measured 12.7s → 4.2s per run.
+Models are cached by Hugging Face under `~/.cache/huggingface/hub`, and the
+defaults now need **about 4.3 GB** of it: `BAAI/bge-m3` (2.1 GB of fp32 weights —
+the param counts above are roughly 4 bytes each on disk) plus the
+`bge-reranker-v2-m3` cross-encoder (2.1 GB, and only downloaded the first time a
+run actually reranks). That is 1.7 GB more than the old MiniLM default cost, and
+it is the price of the accuracy and the 8192-token context. Every further entry in
+the catalog above adds 0.5–4.3 GB; the whole cache measures 13 GB on this machine,
+so pull them one at a time.
+
+`du -sh` on a model directory can read higher than the download — bge-m3's is
+4.3 GB here because two revisions were fetched (`pytorch_model.bin` and
+`model.safetensors`, 2.1 GB each) plus an `onnx/` copy nothing in this repo loads.
+One revision is enough; the extra is cache, not a requirement.
+
+Each model keeps its own embedding cache under `data/processed/`
+(`embeddings_BAAI_bge-m3.npz` for the default), so switching re-downloads and
+re-embeds nothing. `.env.example` ships `HF_HUB_OFFLINE=1` set, which skips Hugging
+Face network checks entirely once the models are local — measured 12.7s → 4.2s per
+run. Comment it out for the one run that pulls a model you do not have yet.
+
+**One warning is filtered on purpose.** numpy 2.x on Apple's Accelerate BLAS raises
+`divide by zero` / `overflow` / `invalid value encountered in matmul` from a plain
+float32 matmul whose inputs are finite and whose result is correct — checked rather
+than assumed: the same product in float64 agrees to 5e-08, the embeddings hold no
+NaN or inf, and every norm is exactly 1.0. Left on screen it reads as numerical
+damage inside the similarity search, so `quiet_third_party_logs()` in
+[embeddings.py](tam/retrieval/embeddings.py) suppresses those three messages and
+**only** those three, scoped to `matmul`, so a real overflow anywhere else still
+shows up.
 
 ### Which corpus every number below came from
 
-Read this once and the rest of the measurements stop being ambiguous.
+Read this once and the rest of the measurements stop being ambiguous. Four corpora
+appear below, and which one a table used decides how much it is worth:
 
-Every measured table from here down was produced on **a private 33-message Slack
-export with 4 hand-labelled queries** — `data/processed/messages.json` and
-`data/eval_queries.json`. Both are gitignored, because both are real workspace
-text, so **a clone cannot reproduce these tables**. They are quoted as what this
-machine actually produced and nothing more.
+| Corpus | Size | Committed | What it can settle |
+| --- | --- | --- | --- |
+| the committed sample | 18 of 23 messages, 22 records (27 with the transcript) | ✅ | that a command runs and reproduces from a clone |
+| a private export + 4 hand-labelled queries | 33 messages | ❌ | nothing about models — see the last limitation |
+| the synthetic work chat | 927 of 1000 messages, 77 threads | ✅ | fine-tuning's mechanics, at a size that clears the 200-pair floor |
+| a private multi-channel export | 936 searchable records of 1,102 | ❌ | the model choice and the relevance gate |
 
-The committed sample is a different, smaller corpus: 18 of 23 messages kept, 22
-searchable records, 27 with the standup transcript merged in. Where the gap
-changes a conclusion — fine-tuning pair counts, the relevance gate — both numbers
-are given inline. Where it only changes digits, the number quoted is the private
-export's.
+Most tables from here down are the **33-message** one — `data/processed/messages.json`
+with `data/eval_queries.json`, both gitignored because both are real workspace text,
+so **a clone cannot reproduce them**. They are quoted as what this machine produced
+and nothing more.
+
+The two decisions that actually needed a real corpus — which encoder ships, and how
+the relevance gate works — were measured on the 1,102-record export and written up in
+[../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md). Those tables are not repeated here.
+Where the corpus gap changes a conclusion rather than a digit — fine-tuning pair
+counts, the gate — both numbers are given inline.
 
 Measuring anything yourself needs a label file, and only the example is committed
 (`data/eval_queries*.json` is gitignored for the same reason):
@@ -376,8 +455,17 @@ The example's ids point at the committed sample, so it works against
 
 ### Measured model comparison
 
-Five models on the private 33-message export and its 4 labelled queries
-(`python3 -m tam.evaluation.compare_models --transforms none abtt whiten --no-csls`):
+**This table did not choose the default, and cannot.** It is five models on the
+private **33-message** export and its 4 labelled queries — kept because the
+anisotropy and spread columns are still true measurements and still explain the
+design, not because they settle anything. The default was chosen on a 1,102-record
+corpus with a held-out-by-thread metric, in
+[../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md). Read the two together and the
+first row below is the model that lost there.
+
+```bash
+python3 -m tam.evaluation.compare_models --transforms none abtt whiten --no-csls
+```
 
 | Model | dim | nDCG@10 | thread separation | score spread |
 | --- | --- | --- | --- | --- |
@@ -405,12 +493,22 @@ about the models, it is a finding about the label set — see
 **The spread column is the trap.** Both e5 models sit at 0.035 — they compress
 every pair into a band roughly 0.80–1.00 wide, so the ranking is decided in the
 third decimal and no threshold can answer "is this related at all". MiniLM has
-4× the range. A model can win on separation and still be the harder one to build
-a product on.
+4× the range and `bge-m3` sits between them at 0.090. A model can win on
+separation and still be the harder one to build a product on.
+
+That reading was half right and worth correcting where it stands. Wide spread does
+make a threshold *look* workable, and it is why the relevance gate was originally a
+cosine floor — but the floor never worked on a real corpus for **any** of these
+models, MiniLM included, and the gate now takes a lexical signal alongside the
+cosine instead. See [Known limitations](#known-limitations) for the mechanism and
+[../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) for the measurement. Spread is a
+fact about a model; it was never a substitute for measuring the gate.
 
 ### Do the space transforms help?
 
-On this corpus, **no** — and the reason is worth stating:
+On this corpus, **no** — and the reason is worth stating. Measured with MiniLM and
+e5-large on the same 33-message export, before the default changed; the conclusion
+is about corpus size rather than about either model, which is why it still stands:
 
 | Variant | nDCG@10 | spread |
 | --- | --- | --- |
@@ -432,9 +530,11 @@ gain in resolution — but costs accuracy here because one dropped component is 
 large fraction of the signal in a 33-message corpus. **Both transforms need a
 real export before they can be judged.** They are kept, off by default.
 
-Swap models with `EMBEDDING_MODEL` in `.env` or `--model` on any script. All
-model access is behind `embed_texts()` in [embeddings.py](tam/retrieval/embeddings.py), so
-moving to a hosted embedding API later means replacing that one function.
+Swap models with `EMBEDDING_MODEL` in `.env` or `--model` on any script; leave
+`EMBEDDING_MODEL` empty — as `.env.example` ships it — and you get `DEFAULT_MODEL`
+from the code. All model access is behind `embed_texts()` in
+[embeddings.py](tam/retrieval/embeddings.py), so moving to a hosted embedding API
+later means replacing that one function.
 
 ## How the embedding cache works
 
@@ -538,21 +638,30 @@ query's answer slipping from rank 1 to rank 3 costs more than any gain. Rerankin
 earns its keep when there are thousands of candidates to cut down to fifty.
 
 Both statements are one message changing place. Neither is evidence — and the
-committed sample, which anyone can run, reverses the second one outright:
+committed sample, which anyone can run, reverses the second one outright. Re-run on
+the current default (`bge-m3`, 18 records, 4 labelled queries):
 
 ```text
 python3 -m tam.evaluation.evaluate --records data/processed/sample_messages.json \
         --eval-file data/eval_queries.example.json --presets dense hybrid hybrid-rerank full
 
-dense           nDCG@3 0.79   nDCG@10 0.84   MAP 0.80
+dense           nDCG@3 0.73   nDCG@10 0.91   MAP 0.81
 hybrid          nDCG@3 0.76   nDCG@10 0.85   MAP 0.79
 hybrid-rerank   nDCG@3 0.84   nDCG@10 0.89   MAP 0.86
 full            nDCG@3 0.84   nDCG@10 0.89   MAP 0.86
 ```
 
-Two corpora of about the same size, and they disagree about which preset wins.
-That is what "too small to conclude anything" looks like from the inside, and it
-is the point of the section below.
+Reranking still wins at k=3 here, the opposite of the 33-message table above, so two
+corpora of about the same size disagree about which preset wins. That is what "too
+small to conclude anything" looks like from the inside, and it is the point of the
+section below.
+
+Changing the encoder moved exactly one row, which is itself informative: under
+MiniLM `dense` read nDCG@3 0.79 / nDCG@10 0.84 / MAP 0.80, and the three fused
+presets printed the same figures then as now. Once BM25 is in the fusion, the ranks
+it contributes pin the top of the list and a better encoder changes nothing
+measurable at this size — the encoder shows up in `dense`, where nDCG@10 went 0.84 →
+0.91, and disappears everywhere else.
 
 ## Topics, not top-k
 
@@ -608,14 +717,35 @@ that answers or resolves.
 
 ## Fine-tuning on your own threads
 
-The only change here with no ceiling. Swapping encoders buys a few points; a
-model that has *seen* how this channel says "the sorting API" learns something no
-public checkpoint contains.
+**Tried twice on this data, and it lost twice.** The idea is sound and the
+mechanism works — a model that has *seen* how a channel says "the sorting API"
+knows something no public checkpoint does — but on the corpus available here it did
+not beat a model that needed no training at all. Both attempts are written up with
+their numbers in [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md); the summary is
+that one fine-tune trained on synthetic chat and one on the team's real messages,
+and on held-out threads neither beat `bge-m3` and neither beat `mpnet` either —
+while both made the relevance gate *worse*, pulling every cosine, nonsense queries
+included, up towards 1.0. Neither is what ships, and `models/` stays gitignored.
+
+Keeping the section because the tool is still here, still correct, and the
+threshold for it being worth running is now a measured number rather than a guess.
 
 ```bash
 python3 -m tam.evaluation.finetune --dry-run          # how many pairs the corpus yields
 python3 -m tam.evaluation.finetune --epochs 2
 python3 -m tam.evaluation.evaluate --model models/finetuned --presets dense hybrid
+```
+
+`--dry-run` reports what a corpus would give before anything is trained, and it
+names the base model it would start from — which is now `bge-m3`, not MiniLM,
+because the default changed underneath it. On the private 33-message export:
+
+```text
+45 training pair(s) from 5 thread(s) over 33 message(s)
+  train 42 pair(s) · held out 3 pair(s), split by thread
+  base model BAAI/bge-m3
+
+Dry run, nothing trained.
 ```
 
 The training signal is already in the export: two messages in one thread are a
@@ -630,7 +760,7 @@ committed sample yields 8 pairs from 4 threads, and the private 33-message expor
 instead of learning, and that refusal is the point — the measured run below used a
 927-message chat, which is what it takes.
 
-### Measured: it generalises, but check on held-out threads
+### Measured: training on its own corpus, and why that was not enough
 
 On a 927-message Thai work chat (2984 pairs, 2 epochs, batch 32, ~1 min on a
 laptop CPU), against thread separation — the metric computed over *every* pair
@@ -653,10 +783,31 @@ python3 -m tam.evaluation.finetune --records data/processed/syn.json --epochs 2
 Read the second column, not the first. The all-pairs figure includes the threads
 the model trained on, and roughly half the headline gain is memorisation of
 those. On the 11 threads it never saw, separation still rose 0.06 → 0.33 — the
-model learned what "same work item" looks like in this team's vocabulary, not
-just which sentences it had been shown. That gap is the whole reason
-`split_by_thread` exists; a fine-tune reported on all pairs will always look
-better than it is.
+model did learn something about how this corpus phrases a work item. That gap is
+the whole reason `split_by_thread` exists; a fine-tune reported on all pairs will
+always look better than it is.
+
+**And it still lost.** Separation on its own training corpus is not the question a
+production default has to answer. Evaluated on the team's real 1,102-record
+export — a corpus it had never seen for the synthetic fine-tune, held out by thread
+for the real one — both fine-tuned models came in *below* `bge-m3` and `mpnet`, and
+neither beat `e5-large`. Both also scored nonsense queries above 0.96, higher than
+the weakest genuine query managed, which leaves the relevance gate nothing to work
+with. That is the whole finding, and its table is in
+[../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) §2 and §3.
+
+Two things to take from it rather than one:
+
+- **A corpus of ~900 messages and 24 held-out threads is too small to beat a public
+  checkpoint.** `finetune.py` prints this at the end of every run it finishes —
+  *"If it does not beat the base model, the corpus was too small — that is the usual
+  outcome on one channel, and it is information, not a failure."* — and that is
+  exactly what happened, twice. Both fine-tunes also started from MiniLM and so
+  inherited its 128-token context; a serious retry needs several times the data and
+  should start from `bge-m3` instead.
+- **Check the gate, not only the ranking.** A fine-tune that tightens the whole
+  space can improve separation and destroy the ability to say "nothing matched",
+  because both move together. Measure both before believing either.
 
 ## The standup prototype
 
@@ -751,7 +902,7 @@ tell whether your corpus is actually loaded. On the committed sample:
 ```text
 INFO Building index from data/processed/sample_combined.json
 INFO Reused 27 cached embedding(s) from data/processed/embeddings_….npz
-INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template
+INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template
 ```
 
 It also prints the token every write route needs (see `POST /api/reindex` below);
@@ -780,8 +931,8 @@ curl localhost:8899/api/blockers
 curl localhost:8899/api/item/c30a929    # {key} is the stable item_id from /api/digest
 curl localhost:8899/api/item/1          # the cluster rank still works, but names a
                                         # different item after the next rebuild
-curl "localhost:8899/api/search?q=Android&k=10"
-curl "localhost:8899/api/search?q=Android&k=1&preset=dense"   # raw cosine, the only calibrated number
+curl "localhost:8899/api/search?q=Android&k=10"   # hits, plus a top-level `relevance`
+curl "localhost:8899/api/search?q=Android&k=1&preset=dense"   # same relevance, any preset
 curl localhost:8899/api/health
 
 # the one write route: re-read records + rebuild, no restart. It needs the token
@@ -792,6 +943,36 @@ curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" localhost:8899/api/reindex
 Startup cost is embedding the corpus. It reuses `data/processed/embeddings_*.npz`
 when the model and texts match, so a second start is seconds rather than minutes
 — see [How the embedding cache works](#how-the-embedding-cache-works).
+
+### `relevance`: the two numbers that are absolute
+
+Every `/api/search` response carries a top-level `relevance`, whatever `preset` was
+asked for, because nothing else in the response can answer *"did anything match at
+all"*. This is what a nonsense query returns on a 936-record export — note that the
+cosine is not low:
+
+```json
+"relevance": {"lexical": 0.0, "dense": 0.597}
+```
+
+- **`lexical`** — raw BM25 of the best-matching record. A query sharing no
+  vocabulary with the corpus scores **exactly 0.0**.
+- **`dense`** — raw cosine of the nearest record.
+
+Both are absolute, and that is the whole point. The two numbers already in each hit
+are not:
+
+- the fused **`score`** is rank-derived (RRF), so rank 1 is rank 1 whatever the
+  query was. On the 936-record export, `Android` and the nonsense string
+  `qqqzzzxxx wvwvwv jjjkkk zzzqqq` both came back with a top hit of
+  **`0.032786883413791656`** — the same float, to the last digit.
+- each hit's **`why`** components are min-max normalised across the result set, so
+  they describe one hit relative to its neighbours and never relative to nothing.
+
+`Retriever.relevance()` in [retrieve.py](tam/retrieval/retrieve.py) computes the
+pair, deliberately not derived from the ranking. The Slack bot's gate is the one
+caller that needs it, and it requires **both** signals — see [Known
+limitations](#known-limitations) for why one is not enough.
 
 ### Pointing it at real data
 
@@ -881,6 +1062,8 @@ Python side the only owner of that definition:
 python3 -m tam.web.server --records data/processed/sample_combined.json --days 3650 --port 8899
 cd ../slack-bot
 TAM_API_URL=http://127.0.0.1:8899 npm run check-api    # prove it, no Slack needed
+TAM_API_URL=http://127.0.0.1:8899 npm run check-api -- --strict-gate   # …and fail on a
+                                                       # mis-calibrated gate too
 TAM_API_URL=http://127.0.0.1:8899 npm start
 ```
 
@@ -892,6 +1075,7 @@ guess which half answered.
 | work items, states, evidence, ages | decisions and their supersession chains |
 | timelines, messages, summaries | standup drafts |
 | recall (embeddings + BM25 + signals) | drift detections and proposed diffs |
+| `relevance`, which decides whether recall reports nothing | the `TAM_MIN_COSINE` half of the gate |
 
 The right-hand column has no counterpart in the pipeline yet, and each of the
 three is filled from a different place — none of them from the fixture:
@@ -906,10 +1090,17 @@ three is filled from a different place — none of them from the fixture:
   against, and nothing is connected, so it is empty. The fixture's example loads
   only under `DEMO_FIXTURES=1`, and the renderer says on screen that it is one.
 
-Two translations happen in [tam-api.ts](../slack-bot/src/tam-api.ts), and both
+Three things happen in [tam-api.ts](../slack-bot/src/tam-api.ts), and all of them
 are worth knowing about because they are the bot adding something the pipeline
 did not say:
 
+- **The relevance gate is the bot's decision, on the pipeline's numbers.**
+  `passesGate(relevance, TAM_MIN_COSINE)` requires `lexical > 0` **and**
+  `dense >= TAM_MIN_COSINE`; `searchWithRelevance()` applies it and returns
+  `{hits, relevance, passed}`, so a caller can say *why* nothing came back rather
+  than showing an empty list. `searchViaApi()` still exists and delegates to it.
+  A pipeline too old to send `relevance` makes that call **throw**, on purpose: a
+  gate that silently stops gating is the exact failure it exists to prevent.
 - **The state names differ.** The pipeline has `active`, `blocked`, `resolved`;
   the board has `blocked`, `stalled`, `moving`, `done`, in that order. The mapping
   is `blocked → blocked`, `resolved → done`, `active → moving`, and `active` whose
@@ -1022,12 +1213,12 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 | [export_slack.py](tam/ingest/export_slack.py) | Paginated `conversations.history` + `conversations.replies`, 429-aware |
 | [prepare_messages.py](tam/ingest/prepare_messages.py) | Slack markup cleanup, noise filtering, message + thread records |
 | **Retrieval** | |
-| [embeddings.py](tam/retrieval/embeddings.py) | `embed_texts()`, per-family prefixes, SHA-256 cache, space transforms, CSLS |
+| [embeddings.py](tam/retrieval/embeddings.py) | `embed_texts()`, `DEFAULT_MODEL`, per-family prefixes, SHA-256 cache, space transforms, CSLS |
 | [lexical.py](tam/retrieval/lexical.py) | BM25 with a Thai-aware tokenizer, and `matched_terms` for explanations |
 | [signals.py](tam/retrieval/signals.py) | Anchors (ticket ids, identifiers, names) + thread / time / author signals |
 | [fusion.py](tam/retrieval/fusion.py) | RRF, z-score fusion, neighbourhood (k-reciprocal) rerank |
 | [rerank.py](tam/retrieval/rerank.py) | Cross-encoder reranking over the top candidates |
-| [retrieve.py](tam/retrieval/retrieve.py) | **The pipeline.** Composes every stage; `--preset`, `--explain`, `--related` |
+| [retrieve.py](tam/retrieval/retrieve.py) | **The pipeline.** Composes every stage; `--preset`, `--explain`, `--related`, and `relevance()` — the two absolute signals the gate reads |
 | [core.py](tam/core.py) | The original dense-only search; still the simplest entry point |
 | **Relations** | |
 | [graph.py](tam/analysis/graph.py) | Message graph + Louvain communities, scored against threads with ARI/NMI |
@@ -1041,7 +1232,7 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 | [meetings.py](tam/ingest/meetings.py) | Transcript (VTT / SRT / `Name:` lines / JSON) → the same records Slack produces |
 | [digest.py](tam/analysis/digest.py) | Work items, blocked/resolved state, blockers, timelines — all derived, no LLM |
 | [summarize.py](tam/analysis/summarize.py) | Prose for a work item; `SUMMARIZER=template` (offline) or `claude` |
-| [server.py](tam/web/server.py) | FastAPI prototype: digest, blockers, item timeline, grounding search, upload |
+| [server.py](tam/web/server.py) | FastAPI prototype: digest, blockers, item timeline, grounding search with `relevance`, upload |
 | **Reports** | |
 | [visualize.py](tam/report/visualize.py) | Plotly HTML report of a search run, into `output/` |
 | [report_th.py](tam/report/report_th.py) | Plain-Thai version of the results, for non-ML readers |
@@ -1051,6 +1242,7 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 | [app.ts](../slack-bot/src/app.ts) | Bolt app: slash commands, shortcuts, modals, scheduled digest |
 | [src/blocks/](../slack-bot/src/blocks/) | Block Kit builders per surface (digest, item card, drift, recall) |
 | [src/search.ts](../slack-bot/src/search.ts) | Recall: trigram + literal-term hybrid, Thai-safe, no API key |
+| [src/tam-api.ts](../slack-bot/src/tam-api.ts) | The seam: reads the pipeline's API, and holds the two-signal gate (`passesGate`, `searchWithRelevance`) |
 | [scripts/](../slack-bot/scripts/) | `export-slack.ts` → `raw-slack.json` → `build-ledger.ts` → `data/ledger.json` |
 | [slack-app-manifest.yaml](../slack-bot/slack-app-manifest.yaml) | Every scope, command and shortcut in one paste |
 | **Config** | |
@@ -1060,50 +1252,85 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 
 ## Known limitations
 
-- **Recall's relevance gate depends on the served model.** The hybrid score is
-  rank-derived (RRF), so it cannot express "nothing matched" *at all*: the top hit
-  scores `1/61 + 1/61 = 0.0328` for a real question and for
-  `qqqzzzxxx wvwvwv jjjkkk zzzqqq` alike, because rank 1 in both stages is rank 1
-  in both stages whatever the query was. Recall therefore gates on a raw cosine
-  from the `dense` preset (`/api/search?preset=dense&k=1`), and that only works if
-  the model puts gibberish far from the corpus. Measured against the same
-  gibberish string `check-api` uses, on the 42-record Slack+meeting corpus, gate at
-  its default `TAM_MIN_COSINE=0.45`:
+- **Recall's relevance gate needs two signals, and still has one known hole.**
+  Nothing in a ranking can express "nothing matched": the fused score is
+  rank-derived, so on the 936-record export a real query and the nonsense string
+  `qqqzzzxxx wvwvwv jjjkkk zzzqqq` both returned a top hit of
+  `0.032786883413791656` — identical to the last digit, because rank 1 is rank 1
+  whatever was asked. The gate therefore reads the absolute
+  [`relevance`](#relevance-the-two-numbers-that-are-absolute) pair and requires
+  **both** `lexical > 0` and `dense >= TAM_MIN_COSINE` (default `0.45`).
 
-  | model | gibberish | `Android Profile bug fixed?` | separable at 0.45 |
-  | --- | --- | --- | --- |
-  | `paraphrase-multilingual-MiniLM-L12-v2` | 0.388 | 0.847 | yes |
-  | `models/syn_finetuned` | **0.738** | 0.838 | no |
+  It used to require only the cosine, and **that mechanism was wrong, not merely
+  mistuned.** Max cosine over N documents rises with N for *any* query, so with a
+  thousand records something always looks similar; across all five models compared,
+  a cosine floor rejected **0 of 5** nonsense probes every single time. The
+  measurement is in [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) §5, including
+  the z-score variant that also failed and the cross-encoder reranker that was tried
+  as a gate and rejected. Requiring the lexical signal as well rejects 4 of 5 and
+  loses 0 of 12 real queries.
 
-  The fine-tuned model pulled everything together, gibberish included: 0.10 apart
-  with the floor below both, so no threshold survives.
+  Live on the 936-record export with `bge-m3`, which is where the mechanism is
+  visible in four lines:
 
-  The single-probe number above is also too kind to the general model. `check-api`
-  scores three gibberish strings and several real queries, and the Thai one is the
-  one that hurts. On this same 42-record corpus `ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ` reaches 0.581
-  while the weakest genuine query — an item's own label — reaches only 0.473. They
-  overlap, so **no floor separates them on this corpus either**, and 0.45 lets that
-  probe through. A floor has to clear the weakest real question, not the strongest,
-  which is why the check measures both and names no number when they cross.
+  | nonsense probe | `lexical` | `dense` | cosine floor at 0.45 | both signals |
+  | --- | --- | --- | --- | --- |
+  | `qqqzzzxxx wvwvwv jjjkkk zzzqqq` | **0.000** | 0.597 | passes ✕ | rejected ✓ |
+  | `zxqv frobnicate wibble plumbus grommet` | **0.000** | 0.457 | passes ✕ | rejected ✓ |
+  | `ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ` | **0.000** | 0.578 | passes ✕ | rejected ✓ |
+  | `ๆๆๆ ฯฯฯ ฤฤฤ ฅฅฅ` | 11.07 | 0.731 | passes ✕ | **passes ✕** |
 
-  Corpus size is not the lever, though it looks like one. Measured on a 936-message
-  export from four channels, subsampled with the same model and the same probes:
+  Read the `dense` column first: every probe clears 0.45, so a cosine floor set
+  anywhere useful rejects none of them, while BM25 is *exactly* zero for three —
+  nonsense shares no vocabulary, which is the one thing about it that is reliable.
 
-  | records | 25 | 50 | 100 | 200 | 400 | 936 |
-  | --- | --- | --- | --- | --- | --- | --- |
-  | worst gibberish | 0.870 | 0.911 | 0.913 | 0.911 | 0.892 | 0.918 |
+  **The fourth row is the hole, and it is left in on purpose.** `ๆ` and `ฯ` are real
+  Thai characters that occur in ordinary messages, so the lexical match is genuine
+  and the gate is behaving correctly on a string that only a human recognises as
+  junk. `check-api` keeps that probe in its list and reports **3/4** rather than
+  dropping it to show a clean pass; a check that hides its known limitation is worth
+  less than the limitation.
 
-  Flat, and not monotonic. Across *different* corpora at similar sizes the same
-  probes move much further — 0.581 on one 42-record corpus against 0.767 on a
-  27-record one — so what a corpus contains dominates how many records it has. The
-  floor is a property of one corpus and one model together, and has to be measured
-  where it runs rather than inherited from this table.
+  What that looks like on a run (`check-api` prints both signals per probe; the real
+  queries it also scores are workspace text and are elided here):
+
+  ```text
+    bm25   0.00 · cos 0.597  · ถูกกรอง  “qqqzzzxxx wvwvwv jjjkkk zzzqqq”
+    bm25  11.06 · cos 0.731  ✕ ผ่าน gate  “ๆๆๆ ฯฯฯ ฤฤฤ ฅฅฅ”
+    …
+    กฎ: bm25 > 0 และ cos >= 0.45 · ขยะที่หลุด 1/4 · query จริงที่เสีย 0/6
+  ⚠ gate กรองขยะได้ 3/4 — ยังมี 1 ตัวหลุด แต่ไม่เสีย query จริงเลย
+  ```
+
+  Calibration is reported, not enforced: on a 27-record sample no floor can separate
+  anything, and failing the documented quickstart for that would be noise. Pass
+  `--strict-gate` to put it back in the exit code for a real corpus in CI. Verified
+  on the corpus above — `npm run check-api` exits 0 and
+  `npm run check-api -- --strict-gate` exits 1, on the same run and the same 3/4.
+
+  **`TAM_MIN_COSINE` cannot be inherited from this document.** A floor is a property
+  of one corpus and one model together — corpus *content* moves it far more than
+  corpus size does, which [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) §6
+  measures by subsampling — so measure it where it runs with `check-api`, and raise
+  it only against the weakest genuine query rather than the strongest. Losing real
+  queries is damage a user sees; letting a nonsense query through is not. The table
+  above uses the shipped default of 0.45 and EXPERIMENTS' §5 run used 0.50, which is
+  exactly why the two do not print the same counts: at 0.50 the second probe's 0.457
+  is rejected by the cosine as well. The floor is the part you measure; the
+  *mechanism* — both signals, not one — is the part you keep.
 - **Brute-force search.** Every query scores every record with a NumPy dot
   product. Fine for thousands of messages, not for millions — that is what a
   vector database would be for later.
-- **Token truncation.** The default model truncates at 128 word pieces, so long
-  concatenated thread records are only partly represented. Thread records also
-  cap at 20 replies (`MAX_THREAD_REPLIES`).
+- **Token truncation, if you leave the default.** The default `bge-m3` takes 8192
+  tokens, which is well past the longest record any corpus here has produced, so
+  nothing is truncated as shipped. It matters when you switch: `MiniLM` and `mpnet` cut at
+  **128 word pieces silently**, which dropped 13.4% of the records in a real
+  1,102-record export (measured in
+  [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) §4), and the records that
+  overflow are the concatenated threads and standup templates that clustering leans
+  on hardest. Thread records also cap at 20 replies
+  (`MAX_THREAD_REPLIES` in `prepare_messages.py`), which is a separate limit and
+  applies whatever the model.
 - **Thread records duplicate their messages.** They are excluded from search by
   default; `--include-threads` turns them on and results then contain both the
   individual message and the thread that contains it.
@@ -1121,13 +1348,18 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 - **No reactions, files, attachments, or edit history** are exported.
 - **Cosine scores are not calibrated.** 0.6 in one channel is not comparable to
   0.6 in another; treat the ranking as the signal, not the absolute number.
+  `relevance.dense` is a raw cosine and inherits this exactly — which is the reason
+  the gate above needs a second, absolute signal rather than a better threshold.
 - **The corpus and the label set are both too small to conclude anything about
   models.** 33 messages and 4 labelled queries in the private export; 18 messages
   and the same 4 in the committed sample. Every pipeline lands within noise of
   every other on nDCG, the space transforms are actively degenerate at this size,
   and the two corpora do not even agree on which preset wins. Nothing in the
   measured tables above should be quoted as a general result; they are quoted here
-  as what this machine actually produced, on the corpus each table names.
+  as what this machine actually produced, on the corpus each table names. This is
+  also why the default encoder and the gate were settled on the 1,102-record export
+  instead, in [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) — a decision this size
+  of corpus is not entitled to make.
 - **On short Thai chat messages the model matches register, not topic.** This is
   the biggest finding from running on a real Thai dev channel (53 messages).
   Same-thread pairs scored mean 0.275 / median 0.248; different-thread pairs
@@ -1138,9 +1370,13 @@ with 8 labels pulls the micro figure around and the macro one not at all.
   Short Thai messages full of particles look alike to this model regardless of
   meaning. Retrieval still works when the query is descriptive and the target
   message carries content — first-hit-rank was 1 for all 5 labelled queries, and
-  one query pulled related messages from three threads a month apart. What to try
-  next: a stronger multilingual model, embedding thread context instead of lone
-  short replies, or dropping very short non-technical messages from the corpus.
+  one query pulled related messages from three threads a month apart. Measured with
+  the old MiniLM default; "try a stronger multilingual model" has since been done
+  and is what `bge-m3` is, which bought +4.3 points of triplet accuracy on a much
+  larger corpus ([../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md) §3) but does not
+  make a two-word reply informative. What is still untried: embedding thread context
+  instead of lone short replies, or dropping very short non-technical messages from
+  the corpus.
 - **Deictic messages are unreachable by design.** `ตรงนี้ใครต้องเปนคนแก้นะคะ`,
   `เส้นนี้ๆ`, `ของพี่ไม่เป็นนะ` carry their meaning in a screenshot or in the reader's
   head, not in text. No embedding can retrieve them from a topical query; they were
@@ -1148,11 +1384,16 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 - **Cross-lingual pairs score lower than same-language pairs.** Measured on the
   committed sample, and the paste under [Run](#run) is this: the query
   `FE sorting เสร็จแล้วแต่ยังรอ BE API` scored the English `FE done, waiting for
-  API` at 0.80 and put it first, while its closest Thai paraphrase scored 0.31 and
-  landed last — barely inside the default top 10.
-  Retrieval across languages works, yet an English near-match can outrank a Thai
-  exact-match. If the real data is Thai-heavy, compare
-  `paraphrase-multilingual-mpnet-base-v2` with `evaluate.py` before trusting the order.
+  API` at 0.84 and put it first, while its closest Thai paraphrase scored 0.66 and
+  landed at rank 7 of ten. Retrieval across languages works, yet an English
+  near-match still outranks a Thai near-paraphrase. The default change shrank this
+  rather than fixing it: MiniLM read the same pair as 0.80 against 0.31 and put the
+  Thai record at rank 11, off the default page, so the gap went from 0.49 to 0.18
+  and the order stayed the same. If the real data is
+  Thai-heavy, compare candidates with `evaluate.py` on your own export before
+  trusting the order — and reach for `--preset hybrid` rather than a different
+  encoder: the same query with BM25 fused in lifts that Thai record from rank 7 to
+  **rank 4**, which is more than the whole change of default bought.
 - **Single channel per export.** Re-running overwrites
   `data/raw/slack_messages.json` — the *export* has no incremental mode. The
   *prepare* step does: `prepare_messages --merge-into` unions by record id, and

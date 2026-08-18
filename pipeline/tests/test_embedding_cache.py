@@ -38,17 +38,32 @@ def checkpoint(root: Path, *, weights: bytes, config: str) -> Path:
     return root
 
 
-def test_hub_id_keeps_its_existing_cache_file() -> None:
+def test_hub_id_keeps_its_existing_cache_file(monkeypatch: pytest.MonkeyPatch) -> None:
     """A hub id names an immutable revision, so its filename must not change.
 
     data/processed/ already holds files under the pre-fix names; renaming them
     would silently re-embed the whole corpus on the next run.
+
+    The model is pinned here rather than read from the default: this asserts a
+    property of hub ids, and hardcoding whichever model happens to be default makes
+    the test fail on the next model change for no reason of its own.
     """
-    assert embeddings.model_fingerprint("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2") == ""
-    assert embeddings.cache_identity() == embeddings.model_name()
-    assert embeddings.cache_path().name == (
-        "embeddings_sentence-transformers_paraphrase-multilingual-MiniLM-L12-v2.npz"
-    )
+    hub_id = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+    monkeypatch.setenv("EMBEDDING_MODEL", hub_id)
+    assert embeddings.model_fingerprint(hub_id) == ""
+    assert embeddings.cache_identity() == hub_id
+    assert embeddings.cache_path().name == f"embeddings_{hub_id.replace('/', '_')}.npz"
+
+
+def test_the_default_model_is_a_hub_id_with_a_stable_cache_name() -> None:
+    """Whatever the default is, it must not fingerprint or move its cache per run.
+
+    A local checkpoint path as the shipped default would give every clone a
+    different cache filename and a fingerprint that changes when the file is
+    touched — which is right for a model you retrain, and wrong for a default.
+    """
+    assert embeddings.model_fingerprint(embeddings.DEFAULT_MODEL) == ""
+    assert "/" in embeddings.DEFAULT_MODEL, "the default should be a hub id, not a path"
 
 
 def test_retraining_in_place_changes_the_identity(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

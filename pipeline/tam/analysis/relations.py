@@ -45,6 +45,7 @@ import plotly.graph_objects as go
 from dotenv import load_dotenv
 
 from tam.retrieval.embeddings import apply_transform, fit_transform, model_name, quiet_third_party_logs, set_model
+from tam.ingest.quoted import for_analysis
 from tam.analysis.graph import EdgeWeights, build_graph
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
 from tam.retrieval.signals import SignalIndex
@@ -225,7 +226,9 @@ def classify_by_rules(records: Sequence[dict[str, Any]], source: int, target: in
     Cheap, explainable, and no model. The cost is coverage: a cue list cannot see
     a paraphrase it does not contain, which is what `--method nli` is for.
     """
-    later = str(records[target]["text"])
+    # The asserted part only. A cue inside a fenced block of quoted app-store reviews
+    # marked a real work item `resolved`; the customer wrote the word, not the team.
+    later = for_analysis(records[target])
     earlier = str(records[source]["text"])
     asked = bool(QUESTION_RE.search(earlier))
 
