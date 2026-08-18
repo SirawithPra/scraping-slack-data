@@ -31,6 +31,7 @@ import argparse
 import html
 import json
 import logging
+import re
 from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,19 +202,49 @@ def detect_communities(graph: nx.Graph, *, resolution: float = 1.0) -> list[int]
     return labels
 
 
+#: Anchors that score well on count x idf and are still useless as a name. A
+#: deploy hostname is maximally distinctive — it appears in one cluster and nowhere
+#: else — which is exactly why idf promotes it to the top. Measured on a real
+#: corpus, one item was named
+#: "cms, <internal-host>.asia-southeast1.run.app, thank": unreadable, and an
+#: internal hostname is not something to put on a card that gets shared.
+_UNREADABLE_ANCHOR = re.compile(
+    r"""
+      \.               # any dotted token: hostnames, domains, file names, versions
+    | ^https?:         # a URL that survived cleaning
+    | ^[0-9_-]+$       # pure digits or punctuation
+    | ^.{24,}$         # too long to read in a list of three
+    """,
+    re.VERBOSE,
+)
+
+
+def readable_anchor(anchor: str) -> bool:
+    """Whether an anchor can go in a name a person reads.
+
+    Kept separate from the scoring so the anchor itself still counts as evidence for
+    *grouping* — a shared hostname is a real signal that two messages are about the
+    same deploy. It just must not become the item's name.
+    """
+    return not _UNREADABLE_ANCHOR.search(anchor)
+
+
 def cluster_label(members: Sequence[int], signals: SignalIndex, limit: int = 3) -> str:
     """Name a cluster by the anchors its members share most distinctively."""
     counts: Counter[str] = Counter()
     for index in members:
         counts.update(signals.anchor_sets[index])
     if not counts:
-        return "(no shared anchor)"
+        return "(ยังไม่มีคำร่วมที่ชัดพอจะตั้งชื่อ)"
     # count x idf: frequent inside the cluster and rare outside it.
     scored = sorted(
         ((frequency * signals.anchor_idf.get(anchor, 0.0), anchor) for anchor, frequency in counts.items()),
         reverse=True,
     )
-    return ", ".join(anchor for _, anchor in scored[:limit])
+    readable = [anchor for _, anchor in scored if readable_anchor(anchor)]
+    # Fall back to the unfiltered list rather than to nothing: a hostname is a poor
+    # name and no name at all is worse.
+    return ", ".join(readable[:limit] or [anchor for _, anchor in scored[:limit]])
 
 
 def thread_agreement(labels: Sequence[int], threads: Sequence[str]) -> dict[str, float]:

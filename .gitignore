@@ -27,6 +27,11 @@ node_modules/
 # both used to matter and neither should: the docs tell you to drop .vtt/.srt
 # transcripts into raw/ (tam.ingest.meetings:25), and a Slack admin export unzips
 # into per-channel *subdirectories* of dated .json — `raw/*.json` reached neither.
+# Display names read from Slack (python3 -m tam.ingest.users --fetch). Real people's
+# names are personal data and this repo is public; the ids in the corpus are enough to
+# rebuild this file, and TAM_NAMES=pseudonym renders without it at all.
+pipeline/data/user_names.json*
+
 pipeline/data/raw/**
 pipeline/data/processed/**
 pipeline/data/eval_queries*.json

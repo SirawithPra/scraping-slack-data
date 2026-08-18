@@ -38,8 +38,19 @@ Repository: <https://github.com/SirawithPra/scraping-slack-data>
 | macOS หรือ Linux | — | คำสั่งในคู่มือใช้ `python3` ไม่ใช่ `python` |
 | Python | 3.10+ | ทดสอบบน 3.10.17 |
 | Node.js | 20+ | ทดสอบบน v24.3.0 — ต้องมีเฉพาะเมื่อจะใช้ Slack bot |
-| พื้นที่ดิสก์ | ~1 GB | โมเดล embedding 458 MB โหลดครั้งแรกครั้งเดียว · **+2.1 GB** เมื่อใช้ preset ที่มี rerank (`hybrid-rerank`, `full`) เพราะต้องโหลด cross-encoder เพิ่ม |
+| พื้นที่ดิสก์ | ~3.5 GB | venv ~1.3 GB + โมเดล embedding default `BAAI/bge-m3` **2.2 GB** โหลดครั้งแรกครั้งเดียวลง `~/.cache/huggingface` · **+2.1 GB** เมื่อใช้ preset ที่มี rerank (`hybrid-rerank`, `full`) เพราะต้องโหลด cross-encoder `BAAI/bge-reranker-v2-m3` เพิ่ม → รวม ~5.6 GB |
 | Slack token | ไม่จำเป็น | **ลองได้โดยไม่ต้องมี** — ดูข้อ 4 |
+
+ตัวเลขข้างบนวัดจาก cache จริงด้วย `du -shL ~/.cache/huggingface/hub/models--*/snapshots/*/`
+ไม่ได้ประมาณเอา — วัดที่ระดับ **snapshot** เพราะ `du -sh` ที่ระดับโฟลเดอร์โมเดลจะรวมทุก
+revision ที่เคยดึงมา (บนเครื่องที่พัฒนาอันนี้ `models--BAAI--bge-m3` ขึ้น 4.3 GB เพราะมีสอง
+revision) ตัวที่ต้องใช้จริงคือ snapshot ที่ `refs/main` ชี้ = 2.2 GB
+
+> **โมเดล default เปลี่ยนแล้ว** เวอร์ชันก่อนใช้ `paraphrase-multilingual-MiniLM-L12-v2`
+> (458 MB) ตัวใหม่ใหญ่กว่าราว 5 เท่า แลกกับ context 8192 token แทน 128 และ
+> triplet accuracy ที่สูงกว่า — เหตุผลและตัวเลขทั้งหมดอยู่ใน [EXPERIMENTS.md](EXPERIMENTS.md)
+> ถ้าเคยรันเวอร์ชันเก่า ตัว MiniLM ยังค้างใน cache อยู่ ลบทิ้งได้ถ้าไม่ได้ตั้ง
+> `EMBEDDING_MODEL` ชี้กลับไปหามัน
 
 > ระบบไม่ส่งข้อมูลออกนอกเครื่อง โมเดลทุกตัวรันในเครื่อง ยกเว้นกรณีเดียวคือคุณตั้ง
 > `SUMMARIZER=claude` เอง ซึ่งจะส่งข้อความไป Anthropic API
@@ -71,7 +82,7 @@ python3 -m tam.retrieval.retrieve --help
 python3 -m pytest                    # ชุดทดสอบฝั่ง Python รันจาก pipeline/
 ```
 
-ถ้าขึ้น help และ pytest ผ่านหมด ถือว่าฝั่ง Python พร้อม
+ถ้าขึ้น help และ pytest ผ่านหมด (**19 passed**) ถือว่าฝั่ง Python พร้อม
 
 ### 3.2 ตั้งค่า
 
@@ -85,7 +96,7 @@ cp .env.example .env          # อยู่ใน pipeline/
 |---|---|---|
 | `SLACK_TOKEN` | เฉพาะเมื่อจะดึงข้อมูลจริง | Bot token `xoxb-...` หรือ user token `xoxp-...` |
 | `SLACK_CHANNEL_ID` | เฉพาะเมื่อจะดึงข้อมูลจริง | รหัสช่อง `C...` ไม่ใช่ชื่อช่อง |
-| `EMBEDDING_MODEL` | ไม่ | มีค่า default อยู่แล้ว |
+| `EMBEDDING_MODEL` | ไม่ | `.env.example` ปล่อยว่างไว้ตั้งใจ ให้ใช้ default ในโค้ดคือ `BAAI/bge-m3` · ตัวเลือกอื่นและผลวัดเทียบกันอยู่ใน [EXPERIMENTS.md](EXPERIMENTS.md) · แต่ละโมเดลมี cache แยกไฟล์ สลับได้ไม่พัง |
 | `SUMMARIZER` | ไม่ | `template` (default, ออฟไลน์) หรือ `claude` |
 
 > **`pipeline/.env` ถูก gitignore ไว้แล้ว** อย่า commit และอย่าส่ง token ทางแชทหรืออีเมล
@@ -123,8 +134,8 @@ python3 -m tam.web.server --records data/processed/sample_combined.json \
         --days 3650 --port 8899
 ```
 
-ก่อนเสิร์ฟ มันจะพิมพ์ `Ready: 27 record(s), 5 topic(s), 1 blocked` แล้วเปิด
-<http://localhost:8899> ได้เลย — หน้า digest มีงาน 5 ชิ้น ติดอยู่ 1 ชิ้น และมีชิ้นหนึ่ง
+ก่อนเสิร์ฟ มันจะพิมพ์ `Ready: 29 record(s), 4 topic(s), 2 blocked` แล้วเปิด
+<http://localhost:8899> ได้เลย — หน้า digest มีงาน 4 ชิ้น ติดอยู่ 2 ชิ้น และมีชิ้นหนึ่ง
 ที่มีข้อความทั้งจาก Slack และจากที่ประชุมอยู่ในงานเดียวกัน (ดูคอลัมน์ที่มา) กดเข้าไปดู
 timeline ได้
 
@@ -203,7 +214,7 @@ python3 -m tam.web.server --records data/processed/sample_combined.json --days 3
 ```text
 INFO Building index from data/processed/sample_combined.json
 INFO Reused 27 cached embedding(s) from data/processed/embeddings_….npz
-INFO Ready: 27 record(s), 5 topic(s), 1 blocked, summariser template
+INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template
 ```
 
 บรรทัดถัดจากนั้นมันพิมพ์ URL ทุกหน้า และ **token สำหรับ route ที่เขียนข้อมูล**
@@ -310,7 +321,7 @@ npm run ledger     # จัดเป็น work item + สถานะ + หล�
 
 ```bash
 npm run typecheck              # ตรวจ type ทั้งโปรเจกต์
-npm test                       # ชุดทดสอบฝั่งบอท
+npm test                       # ชุดทดสอบฝั่งบอท — 53 ผ่าน (รวม tests/gate.test.ts)
 npm run preview                # เรนเดอร์ทุกหน้าจอออฟไลน์ + ตรวจ Slack limits
 npm run preview -- digest      # ดัมพ์ payload เดียวไปวางใน Block Kit Builder
 ```
@@ -341,25 +352,68 @@ TAM_API_URL=http://127.0.0.1:8899 npm start
 `check-api` ไล่ทั้งเส้นทางที่บอทใช้ตอน boot แล้วพิมพ์ผลออกมา ใช้ตรวจก่อนเดโมได้ —
 work item ทุกชิ้น, หลักฐานและ citation ชี้ข้อความที่มีจริง, permalink สร้างคืนได้กี่ข้อความ
 
-> **ขั้นสุดท้ายของ `check-api` คือ calibration และกับข้อมูลตัวอย่าง 27 record มัน "ไม่ผ่าน"**
-> มันยิง query ขยะสามแบบแล้วพิมพ์ cosine ของแต่ละอันให้เห็น บน corpus ตัวอย่างจะได้
-> ประมาณนี้:
->
-> ```text
->   0.481  ✕ ผ่าน gate  "qqqzzzxxx wvwvwv jjjkkk zzzqqq"
->   0.210  · ถูกกรอง   "zxqv frobnicate wibble plumbus grommet"
->   0.767  ✕ ผ่าน gate  "ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ"
->   0.726  · query จริง "Profile module bug บน Android"
-> ```
->
-> ขยะภาษาไทยได้ 0.767 **สูงกว่า query จริงที่ได้ 0.726** — ไม่มีเกณฑ์ไหนแยกสองอันนี้ได้
-> **นี่ไม่ใช่การติดตั้งพัง** เป็นข้อจำกัดของโมเดลกับ corpus เล็ก (corpus ยิ่งเล็ก เพื่อนบ้าน
-> ที่ใกล้สุดของข้อความขยะยิ่งใกล้ บน corpus 42 record ขยะชุดเดียวกันถูกกรองหมด)
-> ทางแก้คือเปลี่ยนโมเดล **ไม่ใช่ดัน `TAM_MIN_COSINE` ขึ้น** เพื่อกลบอาการ
->
-> ข้อนี้ **ไม่ทำให้ `check-api` exit 1** เพราะมันวัดคุณสมบัติของโมเดล ไม่ใช่ว่าการต่อสองฝั่ง
-> สำเร็จหรือไม่ — exit code ตอบเฉพาะเรื่องการต่อ ถ้าอยากให้ calibration ทำให้ fail ด้วย
-> (เช่นใน CI บน corpus จริง) ใส่ `--strict-gate`
+### ขั้นสุดท้ายของ `check-api`: calibration ของ relevance gate
+
+gate คือตัวตัดสินว่า recall จะตอบอะไรออกมาไหม **กลไกเปลี่ยนแล้ว ไม่ใช่แค่เปลี่ยนเลข**
+เดิมดู cosine ตัวเดียว ตอนนี้ `/api/search` ส่งค่า **absolute** สองตัวมาในฟิลด์ `relevance`
+และต้องผ่าน **ทั้งสองตัว**:
+
+| สัญญาณ | เกณฑ์ | จับอะไร |
+|---|---|---|
+| `lexical` — BM25 ดิบของ record ที่ตรงที่สุด | `> 0` | ข้อความขยะไม่มีคำร่วมกับ corpus เลย BM25 จึงได้ **0.00 สนิท** |
+| `dense` — cosine ดิบของ record ที่ใกล้ที่สุด | `>= TAM_MIN_COSINE` | query จริงที่ใช้คำต่างจาก corpus ซึ่ง BM25 เดี่ยวจะทิ้ง |
+
+**ทำไม cosine เดี่ยวใช้ไม่ได้** เพราะ `max cosine` เหนือ N เอกสารสูงขึ้นตาม N สำหรับ query
+อะไรก็ตาม — พอมี record หลายร้อยขึ้นไป ยังไงก็มีอันที่ "ดูคล้าย" ปัญหาอยู่ที่กลไก ไม่ใช่โมเดลไม่ดี
+
+บล็อกข้างล่างคือ output จริงจากการรัน `TAM_API_URL=http://127.0.0.1:8899 npm run check-api`
+กับ export จริง 936 record ที่เสิร์ฟด้วย `BAAI/bge-m3`:
+
+```text
+→ calibration — วัดว่า gate แยก query ขยะออกจาก query จริงได้จริงไหม
+  bm25   0.00 · cos 0.597  · ถูกกรอง  “qqqzzzxxx wvwvwv jjjkkk zzzqqq”
+  bm25   0.00 · cos 0.457  · ถูกกรอง  “zxqv frobnicate wibble plumbus grommet”
+  bm25   0.00 · cos 0.578  · ถูกกรอง  “ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ”
+  bm25  11.06 · cos 0.731  ✕ ผ่าน gate  “ๆๆๆ ฯฯฯ ฤฤฤ ฅฅฅ”
+  bm25   9.29 · cos 0.681  · ผ่าน  (จริง) “Profile module bug บน Android”
+  …อีก 5 บรรทัดเป็นหัวข้องานจริงที่ดึงจาก corpus จึงไม่ลงในเอกสารนี้ — ทั้งหมด “ผ่าน”
+  กฎ: bm25 > 0 และ cos >= 0.45 · ขยะที่หลุด 1/4 · query จริงที่เสีย 0/6
+⚠ gate กรองขยะได้ 3/4 — ยังมี 1 ตัวหลุด แต่ไม่เสีย query จริงเลย
+  ตัวที่หลุดมักเป็นอักขระไทยซ้ำ ๆ (ๆ ฯ) ซึ่งมีอยู่ใน corpus จริง จึงมีคำตรงกันจริง
+  นั่นคือขอบเขตของกลไก ไม่ใช่การตั้งค่าผิด — ดู docs/EXPERIMENTS.md
+  (ข้อนี้ไม่ทำให้ exit code เป็น 1 — ใส่ --strict-gate ถ้าต้องการให้ fail)
+```
+
+อ่านบล็อกนี้อย่างนี้:
+
+- **cosine เดี่ยวจะปล่อยผ่านทั้ง 4 ตัว** — probe ขยะได้ cosine 0.457 ถึง 0.731 เกินเกณฑ์
+  0.45 ทุกตัว แต่ 3 ตัวได้ BM25 `0.00` เงื่อนไขคู่จึงกรองออกได้
+- **มันบอกว่า 3/4 ไม่ใช่ 4/4 และนั่นคือความจริง** `ๆ` กับ `ฯ` เป็นอักขระไทยที่มีอยู่ใน
+  ข้อความปกติ probe นั้นจึงมีคำตรงกัน**จริง** — เป็น**ขอบเขตของกลไก ไม่ใช่ค่าที่ตั้งผิด**
+  probe ตัวนี้ถูกเก็บไว้ในลิสต์**โดยตั้งใจ** ถ้าตัดออกรายงานจะขึ้นว่าผ่านสวยงามทั้งที่รูยังอยู่
+- **query จริงไม่เสียเลย (0/6)** ถ้ามีตัวเลขนี้ขึ้นแทน แปลว่าอาการหนักกว่าปล่อยขยะผ่าน
+  เพราะเป็นความเสียหายที่คนใช้เห็นเอง
+- **ห้ามดัน `TAM_MIN_COSINE` ขึ้นเพื่อไล่ขยะ** ตัวที่หลุดหลุดเพราะ BM25 ไม่ใช่เพราะ cosine
+  ดัน cosine ขึ้นจะเริ่มตัด query จริงทิ้งก่อนที่จะกันตัวนั้นได้
+
+**exit code ตอบเฉพาะ "การต่อสองฝั่งสมบูรณ์ไหม"** — pipeline ตอบไหม, item ชี้หลักฐานได้ไหม,
+recall มาจาก embedding ไหม ส่วน calibration พิมพ์ให้เห็นทุกครั้งแต่**ไม่ทำให้ fail**
+(รันข้างบนได้ exit `0` พร้อมคำเตือน `⚠ 3/4`) ถ้าอยากให้ calibration ทำให้ fail ด้วย เช่นใน CI
+บน corpus จริง ใส่ `--strict-gate` แล้วรันเดิมจะได้ exit `1`
+
+```bash
+# ต้องใส่ query ก่อน flag — argument ตัวแรกถูกอ่านเป็น query ของ recall
+TAM_API_URL=http://127.0.0.1:8899 npm run check-api -- "Profile module bug บน Android" --strict-gate
+```
+
+> **ค่าเกณฑ์เป็นคุณสมบัติของ corpus คู่กับโมเดล ไม่ใช่ค่าคงที่** ตัวเลขในบล็อกข้างบนมาจาก
+> corpus หนึ่งชุดกับโมเดลหนึ่งตัว เปลี่ยนอย่างใดอย่างหนึ่งแล้วต้องวัดใหม่ — `check-api`
+> วัดซ้ำที่หน้างานทุกครั้งด้วยเหตุนี้ ไม่ต้องเชื่อเลขในคู่มือ · การเทียบ 5 โมเดล, cross-encoder
+> reranker ที่ลองเอามาเป็น gate แล้ว**ไม่ผ่านการวัด**, และโมเดลที่ fine-tune เอง 2 ตัวที่
+> **แพ้ของสำเร็จรูป** อยู่ใน [EXPERIMENTS.md](EXPERIMENTS.md) ครบ
+
+> **pipeline เก่ากว่าบอทจะพังเสียงดัง** ถ้า `/api/search` ไม่ส่ง `relevance` มา บอท throw
+> ทันทีแทนที่จะปล่อยทุก query ผ่าน — gate ที่แอบเลิกทำงานคือความล้มเหลวที่กลไกนี้มีไว้กัน
 
 **ตั้งแล้วจะไม่มี fallback** ถ้า pipeline ตอบไม่ได้ บอทจะไม่สตาร์ตและบอกวิธีแก้ —
 เพราะการแอบเสิร์ฟข้อมูลเก่าที่หน้าตาเหมือนของจริงอันตรายกว่าการไม่สตาร์ต
@@ -427,7 +481,9 @@ python3 -m tam.report.report_th  --records data/processed/sample_messages.json \
 | ไม่มีอะไรใน digest | corpus ว่างหรือ `--days` แคบไป — ข้อมูลตัวอย่างฝั่ง Slack ลงวันที่ 2025-08-01 ต้องใช้ `--days 3650` (`--days 30` ก็ยังไม่เจอ) ข้อมูลจริงใช้ `--days 7` |
 | `/blockers` ว่าง แต่ digest มีงาน | ไม่ใช่บั๊ก — ไม่มีงานไหนติดจริงใน corpus นั้น สถานะมาจาก typed relation ระบบไม่แต่งให้ ข้อมูลตัวอย่างฝั่ง Slack ล้วนไม่มี blocker เลย ต้องรวมบทประชุมเข้าไปตามข้อ 4 |
 | `403` ตอนเรียก `POST /api/reindex` หรือ `/upload` | route ที่เขียนข้อมูลต้องแนบ token ที่ server พิมพ์ตอน start (`X-TAM-Token`) และ `Origin` ต้องเป็น host เดียวกัน |
-| `check-api` ขึ้น `✕ gate ไม่ทำงาน` | คาดไว้แล้วบน corpus ตัวอย่าง — โมเดล/corpus ชุดนั้นไม่แยก query ขยะออกจาก query จริง ดูข้อ 7.6 · ไม่ทำให้ exit 1 · เปลี่ยนโมเดล ไม่ใช่ดัน `TAM_MIN_COSINE` |
+| `check-api` ขึ้น `⚠ gate กรองขยะได้ 3/4` | **ไม่ใช่บั๊กและไม่ทำให้ exit 1** ตัวที่หลุดคือ `ๆๆๆ ฯฯฯ …` — `ๆ` `ฯ` เป็นอักขระไทยที่มีใน corpus จริง BM25 จึงเจอคำตรงกันจริง เป็นขอบเขตของกลไก ดูข้อ 7.6 · ถ้าอยากให้นับเป็น fail ใส่ `--strict-gate` (ต้องใส่ query ก่อน flag) |
+| `check-api` ขึ้น `✕ gate ตัด query จริงทิ้ง N อัน` | อาการนี้**หนักกว่า**ปล่อยขยะผ่าน เพราะคนใช้เห็นเอง — ลด `TAM_MIN_COSINE` (default 0.45) หรือเช็คว่า corpus มีเรื่องนั้นอยู่จริงไหม · **อย่าดันขึ้น**เพื่อไล่ขยะ |
+| `/api/search ไม่ได้ส่ง relevance มา — pipeline เวอร์ชันเก่า` | pipeline เก่ากว่าฝั่งบอท gate ทำงานไม่ได้ บอทจึงหยุดแทนที่จะปล่อยผ่าน — รัน `python3 -m tam.web.server` จาก repo ชุดเดียวกันกับบอท |
 | `--host 0.0.0.0` แล้วไม่ยอมเริ่ม | ตั้งใจ — server bind แค่ loopback ถ้าจะให้เครื่องอื่นเข้าถึงต้องใส่ `--expose` ด้วย เพราะ `/upload` เขียน corpus ได้ และ `--expose` เองก็บังคับให้ตั้ง `TAM_ADMIN_TOKEN` ก่อน เพื่อให้ token ที่แจกเป็นตัวที่คุณเลือกเอง |
 
 ---
@@ -444,7 +500,7 @@ python3 -m tam.report.report_th  --records data/processed/sample_messages.json \
 | `slack-bot/data/raw-slack.json` | export จริงของบอท | **ไม่** |
 | `slack-bot/data/decisions.json` | decision ที่คนกดบันทึกไว้ | **ไม่** |
 | `pipeline/.env`, `slack-bot/.env` | token ทั้งหมด | **ไม่** |
-| `pipeline/models/` | โมเดลที่ fine-tune แล้ว (465 MB) | **ไม่** — เกิน limit GitHub |
+| `pipeline/models/` | โมเดลที่ fine-tune เอง 2 ตัว (465 MB ต่อตัว) — **วัดแล้วแพ้ของสำเร็จรูป ระบบไม่ได้ใช้** ดู [EXPERIMENTS.md](EXPERIMENTS.md) | **ไม่** — เกิน limit GitHub |
 | `pipeline/output/` | รายงาน HTML | **ไม่** |
 
 ข้อมูลจริงและ token ทุกชิ้นอยู่แค่ในเครื่อง สิ่งที่อยู่ในรีโปคือโค้ดกับข้อมูลตัวอย่าง
@@ -464,9 +520,14 @@ python3 -m tam.report.report_th  --records data/processed/sample_messages.json \
   ไฟล์ที่คนกดบันทึกเอง standup draft คำนวณจาก item ที่ได้มา และ **drift ไม่มีแหล่งข้อมูล
   จริงเลย** ต้องต่อ ticket system ก่อน (ตัวอย่างใน fixture โหลดเฉพาะเมื่อตั้ง
   `DEMO_FIXTURES=1` และหน้าจอจะติดป้ายบอกว่าเป็นตัวอย่าง)
-- **เกณฑ์ตัดความเกี่ยวข้องดีได้เท่าโมเดลกับ corpus ที่เสิร์ฟ** corpus เล็กทำให้ query ขยะ
-  อยู่ใกล้ข้อความจริงเกินไป บนข้อมูลตัวอย่าง 27 record query ขยะได้ cosine 0.481 เทียบเกณฑ์
-  0.45 คือแยกไม่ออก `npm run check-api` รายงานให้เห็นก่อนขึ้นเวที
+- **relevance gate มีรูที่รู้อยู่ และมันบอกเอง** ต้องผ่านสองเงื่อนไข (`bm25 > 0` **และ**
+  `cos >= TAM_MIN_COSINE`) วัดบน export จริง 936 record ด้วย `bge-m3` ได้ **3/4** คือกรอง
+  query ขยะได้ 3 จาก 4 และไม่เสีย query จริงเลย (0/6) ตัวที่หลุดคือ `ๆๆๆ ฯฯฯ …` เพราะ
+  `ๆ` `ฯ` เป็นอักขระไทยที่มีใน corpus จริง คำที่ตรงกันจึงเป็นของจริง — **นี่คือขอบเขต
+  ไม่ใช่ค่าที่ตั้งผิด และ `check-api` รายงาน 3/4 ตรง ๆ ไม่ได้ปิด probe ตัวนั้นทิ้ง**
+  ส่วน **cosine เดี่ยวใช้แทนไม่ได้** — probe ขยะทั้งสี่ตัวได้ cosine 0.457–0.731 ผ่านเกณฑ์
+  0.45 หมด `npm run check-api` วัดซ้ำที่หน้างานทุกครั้ง เพราะเกณฑ์เป็นคุณสมบัติของ corpus
+  คู่กับโมเดล ไม่ใช่ค่าคงที่ (ดูข้อ 7.6)
 - **ยังไม่แปลง user id เป็นชื่อ** ผลลัพธ์แสดง `U01FE` ไม่ใช่ชื่อจริง ต้องเพิ่ม scope `users:read`
 - **ค้นหาแบบ brute-force** ทุก query คิดคะแนนกับทุก record ไหวระดับหลายพันข้อความ
   ไม่ไหวระดับล้าน

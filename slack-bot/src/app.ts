@@ -7,6 +7,7 @@ import {
   findMessage, itemKeyForMessage, itemsFor, standupFor, driftFor,
 } from './data.js';
 import { apiConfig } from './tam-api.js';
+import { describePolicy, guardPosting, readPolicy } from './postguard.js';
 import {
   decisionsPath, overridesPath, readDecisions, saveDecision, saveOverride, storeSummary,
 } from './store.js';
@@ -81,6 +82,11 @@ const app = new App({
 // Before start() resolves, "still running" is a lie — the boot path exits on
 // failure, and this is the one line an operator reads when a boot fails.
 let running = false;
+// Install the posting allowlist before any listener can run. Bolt gives every handler
+// this same WebClient, so one wrap covers all of them — including the scheduled jobs.
+const postPolicy = readPolicy();
+guardPosting(app.client, postPolicy);
+
 process.on('unhandledRejection', (reason) => {
   const state = running ? 'บอทยังทำงานต่อ' : 'ยังไม่ได้เริ่ม — ดู error ด้านล่าง';
   console.error(`⚠  unhandled rejection (${state}):`, reason);
@@ -902,6 +908,7 @@ const cfg = apiConfig();
 const src = ledgerOrigin() === 'pipeline' ? `pipeline ${cfg?.baseUrl}` : 'fixture data/ledger.json';
 console.log(`🐾 Meowtam พร้อมแล้ว — ${l.items.length} work items, ${l.corpus_size} ข้อความ`);
 console.log(`   แหล่งข้อมูล: ${src}`);
+console.log(`   ${describePolicy(postPolicy)}`);
 console.log(`   เขียนเอง: ${storeSummary()}`);
 console.log(
   `   standup draft ${l.standups.length} คน · drift ${l.drifts.length}` +

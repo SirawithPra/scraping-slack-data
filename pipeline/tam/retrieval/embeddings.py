@@ -22,15 +22,22 @@ import hashlib
 import logging
 import os
 import re
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Sequence
 
 import numpy as np
 
-# Small, fast, and trained for cross-lingual paraphrase similarity, which is
-# exactly "same topic, different wording/language". Override with EMBEDDING_MODEL.
-DEFAULT_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# Chosen by measurement, not by size. On a 1,102-record Thai/English Slack corpus,
+# held out by thread: 63.7% triplet accuracy against 59.4% for the
+# paraphrase-multilingual-MiniLM it replaces, the lowest nonsense-query cosine of
+# the seven models compared (0.731 against 0.918), and an 8192-token context where
+# MiniLM's 128 silently truncated 13.4% of real records. The full table, including
+# why both locally fine-tuned models lost, is in docs/EXPERIMENTS.md.
+# It costs ~568MB and is slower per batch; the embedding cache absorbs that.
+# Override with EMBEDDING_MODEL.
+DEFAULT_MODEL = "BAAI/bge-m3"
 # Anchored to the package, not to the process: the documented invocation is from
 # pipeline/, but a service started anywhere else would silently get a second,
 # empty cache under its own cwd and pay the full embedding cost forever with
@@ -118,6 +125,16 @@ def quiet_third_party_logs() -> None:
     """Keep our INFO logs readable; the model stack is very chatty at INFO."""
     for name in ("httpx", "httpcore", "huggingface_hub", "transformers", "sentence_transformers", "filelock", "urllib3"):
         logging.getLogger(name).setLevel(logging.WARNING)
+
+    # numpy 2.x on Apple's Accelerate BLAS raises 'divide by zero' / 'overflow' /
+    # 'invalid value' RuntimeWarnings from a plain float32 matmul whose inputs are
+    # all finite and whose result is correct. Verified rather than assumed: the same
+    # product computed in float64 agrees to 5e-08, embeddings contain no NaN or inf,
+    # and every norm is exactly 1.0. Left visible for a while, it reads as numerical
+    # damage in the similarity search and sends the next reader hunting a bug that
+    # is not there. Scoped to matmul so a real overflow elsewhere still surfaces.
+    for message in ("divide by zero encountered in matmul", "overflow encountered in matmul", "invalid value encountered in matmul"):
+        warnings.filterwarnings("ignore", message=re.escape(message), category=RuntimeWarning)
 
 
 def model_name() -> str:

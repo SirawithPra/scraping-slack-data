@@ -162,6 +162,7 @@ class Retriever:
         self.raw_matrix = raw
 
         self.bm25 = Bm25Index(self.texts) if self._needs_lexical() else None
+        self._relevance_bm25: Bm25Index | None = None  # lazy; see _relevance_lexical
         self.signals = SignalIndex(self.records) if self._needs_signals() else None
         self.hubness = (
             hubness_penalty(self.matrix, self.config.csls) if self.config.csls else np.zeros(len(self.records), dtype=np.float32)
@@ -200,6 +201,53 @@ class Retriever:
         if self.signals is None:
             return np.zeros(len(self.records), dtype=np.float32)
         return self.signals.anchor_scores(query)
+
+    # ---- relevance, as an absolute question ---------------------------------
+
+    def relevance(self, query: str) -> dict[str, float]:
+        """How well the corpus answers this query at all, in absolute terms.
+
+        Separate from `rank`, and deliberately not derived from it, because ranking
+        answers "which of these is best" and cannot answer "is any of them anything".
+        A `Hit.parts` value is min-max normalised across the result set, so the top
+        hit's `bm25` is usually 1.00 even when the query shares no word with the
+        corpus — useless for deciding whether to report nothing.
+
+        Two numbers, because they fail in opposite directions:
+
+        `lexical`  raw BM25 of the best-matching record. Gibberish shares no
+                   vocabulary, so this is *exactly* 0.0 for it — measured, 4 of 5
+                   nonsense probes score 0.000 on a 1,102-record corpus.
+        `dense`    raw cosine of the nearest record. Catches a real question asked
+                   in other words, which BM25 misses.
+
+        Neither alone is a gate. `dense` cannot reject nonsense at all: max cosine
+        over N documents rises with N, so with a thousand records something always
+        looks similar, and across five embedding models no cosine floor separated
+        nonsense from genuine queries. `lexical` alone would reject a genuine
+        paraphrase. Requiring both rejected 4 of 5 nonsense probes while losing 0 of
+        12 real ones, which is the best measured on this corpus.
+        """
+        if not len(self.records):
+            return {"lexical": 0.0, "dense": 0.0}
+        return {
+            "lexical": float(np.max(self._relevance_lexical().scores(query))),
+            "dense": float(np.max(self.dense_scores(query))),
+        }
+
+    def _relevance_lexical(self) -> Bm25Index:
+        """BM25 for `relevance`, built on demand even when the preset has no lexical stage.
+
+        Whether the corpus shares a word with the query is a property of the corpus,
+        not of the ranking recipe. `preset=dense` sets lexical=0 and so builds no
+        index; reading `lexical_scores` there returns zeros, which would read as
+        "no word in common" for every query and reject the whole corpus.
+        """
+        if self.bm25 is not None:
+            return self.bm25
+        if self._relevance_bm25 is None:
+            self._relevance_bm25 = Bm25Index(self.texts)
+        return self._relevance_bm25
 
     # ---- composition -------------------------------------------------------
 

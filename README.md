@@ -22,6 +22,7 @@ own `data/`.
 | You want | Go to |
 | --- | --- |
 | Install it and use it | [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — Thai, every command tested |
+| Use it day to day — standup, meeting notes, correcting it | [docs/DAILY_USE.md](docs/DAILY_USE.md) — Thai |
 | See how it works | [docs/architecture.html](docs/architecture.html) — five flow diagrams plus the folder layout |
 | The reasoning and the measurements | [pipeline/README.md](pipeline/README.md) |
 | Which model was chosen and why the fine-tunes lost | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) — Thai, every number re-measured |
@@ -46,7 +47,7 @@ python3 -m tam.web.server --records data/processed/sample_combined.json \
         --days 3650 --port 8899
 ```
 
-It prints `Ready: 27 record(s), 5 topic(s), 1 blocked` before it serves anything.
+It prints `Ready: 29 record(s), 4 topic(s), 2 blocked` before it serves anything.
 Then open <http://localhost:8899> — digest, blockers, one work item's timeline
 across Slack *and* the meeting, and a search that shows why each result matched.
 
@@ -55,11 +56,16 @@ committed Slack export is dated 2025-08-01, so a narrow window shows the meeting
 and nothing else. Point `--records` at a real export and `--days 7` is the value
 you want.
 
+Budget for the first run: the default embedding model `BAAI/bge-m3` is a 2.2 GB
+download into `~/.cache/huggingface`, once. After that it is cached, and so are the
+embeddings themselves.
+
 ## The two halves, joined
 
 The bot can build its own ledger, or read the pipeline's. Reading the pipeline is
 the better mode: one side owns what a work item is, and the grouping comes from a
-trained embedding model rather than character trigrams.
+multilingual embedding model (`BAAI/bge-m3`, the code default) rather than
+character trigrams.
 
 Two terminals, because the first one stays in the foreground:
 
@@ -74,44 +80,70 @@ TAM_API_URL=http://127.0.0.1:8899 npm run check-api
 ```
 
 `check-api` exercises the bot's whole boot path with no Slack in the loop and
-prints what came back: five work items, every evidence id and citation resolved
+prints what came back: four work items, every evidence id and citation resolved
 inside its own item, permalinks rebuilt for the 18 Slack messages and correctly
 none for the 9 meeting utterances. With `TAM_API_URL` set there is **no
 fallback**: if the pipeline cannot answer, the bot refuses to start rather than
 serve stale fixture data that looks identical to live.
 
-Its last step measures the relevance gate, and **on this 27-record sample the gate
-does not hold**. Three gibberish queries are scored against the corpus:
+## The relevance gate: two signals, not a threshold
+
+`check-api`'s last step measures the gate that decides whether recall answers at
+all. It reads two **absolute** numbers that `/api/search` returns as
+`relevance`, and both have to fire:
+
+| signal | rule | what it catches |
+| --- | --- | --- |
+| `lexical` — raw BM25 of the best-matching record | `> 0` | nonsense shares no vocabulary with the corpus, so BM25 scores it exactly `0.00` |
+| `dense` — raw cosine of the nearest record | `>= TAM_MIN_COSINE` | a real question asked in words the corpus does not use, which BM25 alone would throw away |
+
+Cosine alone — the old mechanism — cannot do this, and the fault was the
+mechanism rather than the model. `max cosine` over N documents rises with N for
+*any* query, so past a few hundred records something always looks similar. Here is
+the calibration block from a 936-record private export served with `BAAI/bge-m3`:
 
 ```text
-  0.481  ✕ passes the gate  "qqqzzzxxx wvwvwv jjjkkk zzzqqq"
-  0.210  · filtered out     "zxqv frobnicate wibble plumbus grommet"
-  0.767  ✕ passes the gate  "ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ"
-  0.726  · a real query     "Profile module bug บน Android"
+  bm25   0.00 · cos 0.597  · filtered      "qqqzzzxxx wvwvwv jjjkkk zzzqqq"
+  bm25   0.00 · cos 0.457  · filtered      "zxqv frobnicate wibble plumbus grommet"
+  bm25   0.00 · cos 0.578  · filtered      "ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ"
+  bm25  11.06 · cos 0.731  ✕ passes gate   "ๆๆๆ ฯฯฯ ฤฤฤ ฅฅฅ"
 ```
 
-Thai gibberish scores *above* a genuine query, so no floor separates them here.
-The check scores several real queries too, because a floor has to clear the
-*weakest* genuine question rather than the strongest, and on every corpus tried so
-far the two overlap:
+(The verdict labels are translated — the script itself prints Thai; the full
+untranslated block is in [docs/USER_MANUAL.md](docs/USER_MANUAL.md) §7.6.)
 
-| corpus | worst gibberish | weakest real query |
-| --- | --- | --- |
-| 27-record committed sample | 0.767 | 0.726 |
-| 42-record export | 0.581 | 0.473 |
-| 936-record export, 4 channels | 0.918 | 0.529 |
+All four clear a 0.45 cosine floor (0.457 – 0.731), so cosine would have admitted
+every one of them; three score BM25 `0.00` and the pair rejects them. Six real
+queries taken from the same corpus were all kept — the gate lost none of them.
 
-It is tempting to blame corpus size. Measured, size is not the driver: subsampling
-that 936-record corpus to 25 / 50 / 100 / 200 / 400 records moves the worst
-gibberish only 0.870 → 0.918, and not even monotonically. What moves it is what the
-corpus *contains* — the three corpora above differ by 0.34 at similar model and
-identical probes. So the floor is a property of one corpus and one model together;
-there is no default that is right everywhere, which is why `check-api` measures it
-where it runs instead of trusting the number in this table.
+**Three of four, not four — and the run says so out loud.** `ๆ` and `ฯ` are
+ordinary Thai punctuation that occurs in real messages, so that probe has a
+genuine lexical match. It is the edge of the mechanism, not a misconfiguration,
+and it stays in the probe list on purpose: a check that quietly dropped it would
+report a clean pass over a hole that is still open.
 
-The exit code answers only "is the integration sound?", so this reports loudly
-without failing the run; `--strict-gate` folds it back in, for CI against a real
-corpus.
+It is tempting to blame corpus size for any of this. Measured, size is not the
+driver — subsampling one corpus barely moves the worst nonsense score, while
+corpora of *similar size and different content* move it a lot. So the floor is a
+property of one corpus and one model together; there is no default that is right
+everywhere, which is why `check-api` re-measures both signals where it runs
+instead of trusting a number printed in a README. The subsample table, the five
+embedding models compared, the cross-encoder reranker that was tried as a gate and
+rejected, and the two locally fine-tuned models that lost are all in
+[docs/EXPERIMENTS.md](docs/EXPERIMENTS.md).
+
+The exit code answers only "is the integration sound?" — did the pipeline answer,
+do items resolve, does recall come from embeddings. Calibration prints either way
+and does not fail the run: the block above exits `0` with a `⚠ 3/4` warning.
+`--strict-gate` folds calibration back into the exit code for CI against a real
+corpus, and the same run then exits `1`. Pass a query *before* the flag —
+`npm run check-api -- "<query>" --strict-gate` — because the first positional
+argument is read as the recall query, so `-- --strict-gate` on its own makes the
+flag itself the query and the run fails for the wrong reason.
+
+A pipeline too old to send `relevance` makes the bot throw rather than pass
+everything through: a gate that silently stops gating is the failure this whole
+mechanism exists to prevent.
 
 ## What is real, and what is not
 

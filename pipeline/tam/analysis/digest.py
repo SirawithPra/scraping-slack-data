@@ -43,6 +43,7 @@ from tam.analysis.graph import EdgeWeights, build_graph, cluster_label, detect_c
 from tam.analysis.linker import Link, link_records, load_overrides
 from tam.analysis.relations import Relation, extract_relations
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
+from tam.ingest.users import Names
 from tam.retrieval.signals import SignalIndex, timestamp
 
 # A "day" of standup usually means "since the last one", which is rarely 24h.
@@ -56,6 +57,18 @@ STATE_RELATIONS = ("resolves", "blocked_by")
 MOVEMENT_RELATIONS = ("duplicates", "follows_up", "answers")
 
 log = logging.getLogger("digest")
+
+# One resolver per process, built on first use. Reading the name cache per topic would
+# re-read the file for every render; the mode cannot change inside a run anyway.
+_names: Names | None = None
+
+
+def names() -> Names:
+    """The display-name resolver for this process. See tam.ingest.users."""
+    global _names
+    if _names is None:
+        _names = Names()
+    return _names
 
 
 @dataclass
@@ -81,7 +94,18 @@ class Topic:
 
     @property
     def participants(self) -> list[str]:
+        """Raw ids and transcript speaker names, as stored. For machines.
+
+        Kept unresolved on purpose: this is what a caller needs to DM someone or to
+        join a person to a message. `participant_names` is the same list rendered for
+        a reader, and both go on the wire so neither use has to guess.
+        """
         return sorted({str(record.get("user") or "") for record in self.records} - {""})
+
+    @property
+    def participant_names(self) -> list[str]:
+        """The same people, readable. See tam.ingest.users for the modes."""
+        return names().all(self.participants)
 
     @property
     def sources(self) -> dict[str, int]:
@@ -127,6 +151,9 @@ class Topic:
             "evidence": self.evidence,
             "evidence_id": self.evidence_id,
             "participants": self.participants,
+            # Both, deliberately: ids address a person, names describe one, and a
+            # consumer that has to derive one from the other gets it wrong.
+            "participant_names": self.participant_names,
             "sources": self.sources,
             "messages": len(self.records),
             "first": format_timestamp(str(self.first_ts)),
@@ -365,10 +392,10 @@ def timeline(topic: Topic, records: Sequence[dict[str, Any]]) -> list[dict[str, 
             "from_ts": timestamp(source),
             "from_id": str(source["id"]),
             "from_text": " ".join(str(source["text"]).split())[:160],
-            "from_user": str(source.get("user") or "-"),
+            "from_user": names().of(source.get("user")) or "-",
             "to_id": str(target["id"]),
             "to_text": " ".join(str(target["text"]).split())[:160],
-            "to_user": str(target.get("user") or "-"),
+            "to_user": names().of(target.get("user")) or "-",
             "evidence": relation.evidence,
             "also_answers": existing["also_answers"] + 1 if existing else 0,
         }
@@ -432,8 +459,8 @@ def main() -> None:
             print("  (no typed relation in this topic — only same_topic edges)")
         for event in events:
             print(f"  {event['when']}  {event['relation']}")
-            print(f"     from [{event['from_user']}] {event['from_text'][:88]}")
-            print(f"       to [{event['to_user']}] {event['to_text'][:88]}")
+            print(f"     from [{event['from_user']}] {names().in_text(event['from_text'])[:88]}")
+            print(f"       to [{event['to_user']}] {names().in_text(event['to_text'])[:88]}")
         return
 
     topics = digest.blocked if args.blockers else digest.topics
@@ -452,12 +479,13 @@ def main() -> None:
         sources = ", ".join(f"{count} {name}" for name, count in sorted(topic.sources.items()))
         age = f"{topic.age_days:.1f}d" if np.isfinite(topic.age_days) else "-"
         print(f"\n{marker} {topic.item_id} · #{topic.key} {topic.label}")
-        print(f"   {topic.state:8} {age:>7}   {len(topic.records)} msg ({sources})   {', '.join(topic.participants[:5])}")
+        print(f"   {topic.state:8} {age:>7}   {len(topic.records)} msg ({sources})   {', '.join(topic.participant_names[:5])}")
         if topic.evidence:
             print(f"   {topic.evidence}")
         for record in topic.recent(digest.since)[-3:]:
             tag = "meeting" if record.get("source") == "meeting" else "slack"
-            print(f"     [{tag}] {record.get('user') or '-'}: {' '.join(str(record['text']).split())[:92]}")
+            body = names().in_text(" ".join(str(record["text"]).split()))
+            print(f"     [{tag}] {names().of(record.get('user')) or '-'}: {body[:92]}")
 
     print(f"\n{len(digest.blocked)} blocked · {len(digest.resolved)} resolved · {len(digest.topics)} active topics")
     print("state comes from typed relations (tam.analysis.relations); nothing here is generated")

@@ -13,7 +13,7 @@
  */
 
 import 'dotenv/config';
-import { apiConfig, hitToMessage, ping, searchViaApi } from '../src/tam-api.js';
+import { apiConfig, hitToMessage, passesGate, ping, searchViaApi } from '../src/tam-api.js';
 import { hydrate, ledger, ledgerOrigin, sortedItems } from '../src/data.js';
 import { searchBest } from '../src/search.js';
 
@@ -177,7 +177,10 @@ if (evidenceProblems) {
 console.log('✓ ทุก item: หลักฐาน, citation และ timeline ชี้ไปข้อความที่มีอยู่จริงใน item');
 console.log('✓ จำนวนข้อความต่อ item ตรงกับที่ /api/digest บอก');
 
-const q = process.argv[2] ?? 'Profile module bug บน Android';
+// Skip flags when picking the recall query. Without this, `check-api --strict-gate`
+// searched for the literal string "--strict-gate" — a query that legitimately matches
+// nothing, so the calibration section then reported on a probe nobody chose.
+const q = process.argv.slice(2).find((a) => !a.startsWith('-')) ?? 'Profile module bug บน Android';
 console.log(`\n→ recall ผ่าน pipeline: “${q}”`);
 const hits = await searchBest(q, 5);
 if (!hits.length) {
@@ -219,27 +222,33 @@ const NONSENSE_PROBES = [
   'qqqzzzxxx wvwvwv jjjkkk zzzqqq',
   'zxqv frobnicate wibble plumbus grommet',
   'ฟฟฟกกก ผผผ ฃฃฃ ฅฅฅ',
+  // The one that defeats a lexical gate, kept in on purpose. ๆ and ฯ are real Thai
+  // punctuation that occurs in ordinary messages, so BM25 finds a genuine match and
+  // the gate lets it through. Leaving it out would make this check report a clean
+  // pass while a known hole stayed open; the run should say what it cannot do.
+  'ๆๆๆ ฯฯฯ ฤฤฤ ฅฅฅ',
 ];
 const NONSENSE = NONSENSE_PROBES[0]!;
 console.log('\n→ calibration — วัดว่า gate แยก query ขยะออกจาก query จริงได้จริงไหม');
 
-/** Raw cosine of the nearest record — the only absolute number the API exposes. */
-async function nearestCosine(api: typeof cfg & {}, probe: string): Promise<number> {
-  const url = `/api/search?q=${encodeURIComponent(probe)}&k=1&preset=dense`;
+/** Both absolute relevance signals for one probe, as the server computes them. */
+async function relevanceOf(api: typeof cfg & {}, probe: string): Promise<{ lexical: number; dense: number }> {
+  const url = `/api/search?q=${encodeURIComponent(probe)}&k=1`;
   const res = await fetch(new URL(url, api.baseUrl), { signal: AbortSignal.timeout(api.timeoutMs) });
   if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
-  const body = (await res.json()) as { hits?: { score: number }[] };
-  return body.hits?.[0]?.score ?? 0;
+  const body = (await res.json()) as { relevance?: { lexical: number; dense: number } };
+  if (!body.relevance) throw new Error(`${url} → ไม่มี relevance (pipeline เก่า) — gate ทำงานไม่ได้`);
+  return body.relevance;
 }
 
-let worstNonsense = 0;
-let weakestReal = 1;
+let junkPassed = 0;
+let realRejected = 0;
 try {
   for (const probe of NONSENSE_PROBES) {
-    const score = await nearestCosine(cfg, probe);
-    worstNonsense = Math.max(worstNonsense, score);
-    const verdict = score >= cfg.minCosine ? '✕ ผ่าน gate' : '· ถูกกรอง';
-    console.log(`  ${score.toFixed(3)}  ${verdict}  “${probe}”`);
+    const r = await relevanceOf(cfg, probe);
+    const pass = passesGate(r, cfg.minCosine);
+    if (pass) junkPassed += 1;
+    console.log(`  bm25 ${r.lexical.toFixed(2).padStart(6)} · cos ${r.dense.toFixed(3)}  ${pass ? '✕ ผ่าน gate' : '· ถูกกรอง'}  “${probe}”`);
   }
   // Several real queries, not one. A floor has to clear the *weakest* genuine
   // query, not the strongest — comparing gibberish against one well-chosen query
@@ -248,12 +257,12 @@ try {
   // about this data whatever the data is.
   const realProbes = [q, ...ledger().items.map((i) => i.headline).filter(Boolean)].slice(0, 6);
   for (const probe of realProbes) {
-    const score = await nearestCosine(cfg, probe);
-    weakestReal = Math.min(weakestReal, score);
-    const verdict = score < cfg.minCosine ? '✕ ถูกกรองทิ้ง' : '· ผ่าน';
-    console.log(`  ${score.toFixed(3)}  ${verdict}  (จริง) “${probe.slice(0, 46)}”`);
+    const r = await relevanceOf(cfg, probe);
+    const pass = passesGate(r, cfg.minCosine);
+    if (!pass) realRejected += 1;
+    console.log(`  bm25 ${r.lexical.toFixed(2).padStart(6)} · cos ${r.dense.toFixed(3)}  ${pass ? '· ผ่าน' : '✕ ถูกกรองทิ้ง'}  (จริง) “${probe.slice(0, 40)}”`);
   }
-  console.log(`  floor ${cfg.minCosine} · ขยะแย่สุด ${worstNonsense.toFixed(3)} · query จริงอ่อนสุด ${weakestReal.toFixed(3)}`);
+  console.log(`  กฎ: bm25 > 0 และ cos >= ${cfg.minCosine} · ขยะที่หลุด ${junkPassed}/${NONSENSE_PROBES.length} · query จริงที่เสีย ${realRejected}/${realProbes.length}`);
 } catch (err) {
   console.error(`✕ calibration วัดไม่ได้ — pipeline ตอบไม่ได้: ${(err as Error).message}`);
   process.exit(1);
@@ -288,23 +297,19 @@ try {
 // made the documented quickstart exit 1 while everything it was checking worked.
 // `--strict-gate` puts calibration back in the exit code, for a real corpus in CI.
 const strictGate = process.argv.includes('--strict-gate');
-const gateHolds = worstNonsense < cfg.minCosine;
+const gateHolds = junkPassed === 0 && realRejected === 0;
 if (gateHolds && junk.length === 0) {
-  console.log(`✓ gate ทำงาน — ขยะทุกตัวต่ำกว่า floor ${cfg.minCosine} และไม่คืนผลลัพธ์`);
+  console.log(`✓ gate ทำงาน — กรองขยะได้ครบ ${NONSENSE_PROBES.length}/${NONSENSE_PROBES.length} และไม่เสีย query จริง`);
+} else if (junkPassed > 0 && realRejected === 0) {
+  console.warn(`⚠ gate กรองขยะได้ ${NONSENSE_PROBES.length - junkPassed}/${NONSENSE_PROBES.length} — ยังมี ${junkPassed} ตัวหลุด แต่ไม่เสีย query จริงเลย`);
+  console.warn('  ตัวที่หลุดมักเป็นอักขระไทยซ้ำ ๆ (ๆ ฯ) ซึ่งมีอยู่ใน corpus จริง จึงมีคำตรงกันจริง');
+  console.warn('  นั่นคือขอบเขตของกลไก ไม่ใช่การตั้งค่าผิด — ดู docs/EXPERIMENTS.md');
 } else {
-  console.warn(`✕ gate ไม่ทำงานกับ corpus/โมเดลชุดนี้ — ขยะสูงสุด ${worstNonsense.toFixed(3)} ≥ floor ${cfg.minCosine}`);
-  if (weakestReal > worstNonsense) {
-    // Only now is a number safe to name: it clears every gibberish probe and still
-    // admits the weakest real query.
-    const suggested = ((worstNonsense + weakestReal) / 2).toFixed(2);
-    console.warn(`  ยังมีช่องว่างอยู่ (query จริงอ่อนสุด ${weakestReal.toFixed(3)}) — floor ที่แยกได้คือราว ${suggested}`);
-    console.warn(`  ตั้ง TAM_MIN_COSINE=${suggested} ได้ แต่ต้องวัดซ้ำกับ corpus ของคุณเอง`);
-  } else {
-    console.warn(`  ขยะ (${worstNonsense.toFixed(3)}) ทับกับ query จริงที่อ่อนสุด (${weakestReal.toFixed(3)}) —`);
-    console.warn('  ไม่มี floor ไหนแยกได้ ดันขึ้นก็ตัด query จริงทิ้ง ต้องเปลี่ยนโมเดล ไม่ใช่ปรับเลข');
-  }
-  console.warn('  corpus เล็กยิ่ง calibrate ยาก — เพื่อนบ้านที่ใกล้สุดของข้อความขยะจะยิ่งใกล้');
-  console.warn('  เมื่อ corpus ยิ่งเล็ก ตัวเลขจาก corpus จริงเท่านั้นที่เชื่อได้');
+  console.warn(`✕ gate ตัด query จริงทิ้ง ${realRejected} อัน — แย่กว่าปล่อยขยะผ่าน`);
+  console.warn(`  ลด TAM_MIN_COSINE (ตอนนี้ ${cfg.minCosine}) หรือเช็คว่า corpus มีเรื่องนั้นจริงไหม`);
+  console.warn('  อย่าดันขึ้นเพื่อไล่ขยะ — เสีย query จริงคือความเสียหายที่คนใช้เห็น');
+}
+if (!gateHolds) {
   console.warn(strictGate
     ? '  --strict-gate เปิดอยู่ ข้อนี้จึงนับเป็น fail'
     : '  (ข้อนี้ไม่ทำให้ exit code เป็น 1 — ใส่ --strict-gate ถ้าต้องการให้ fail)');

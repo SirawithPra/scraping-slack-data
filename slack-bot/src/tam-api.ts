@@ -447,57 +447,82 @@ export async function fetchLedger(cfg: ApiConfig): Promise<Ledger> {
 /**
  * Recall through the pipeline: embeddings + BM25 + signals, not trigrams.
  *
- * Two calls, because they answer different questions and only one of them has a
- * calibrated answer:
+ * One call now, not two, and the gate reads a field the server computes for exactly
+ * this purpose. `/api/search` returns `relevance: {lexical, dense}` — raw BM25 and
+ * raw cosine of the best-matching record, both absolute. Every `why` on a hit is
+ * min-max normalised across the result set, so the top hit's `bm25` is usually 1.00
+ * even for a query sharing no word with the corpus; and the fused `score` is
+ * rank-derived, so a nonsense query and a good one came back at exactly 0.032787.
+ * Neither can say whether anything matched at all.
  *
- *   preset=hybrid  ranks well (RRF over dense + BM25 + structural signals)
- *   preset=dense   returns a raw cosine, which is the only number here that
- *                  means anything on its own
+ * The gate requires BOTH signals, because they fail in opposite directions:
  *
- * The hybrid `score` is rank-derived, so it cannot say whether anything matched at
- * all. Measured on the 42-record corpus, a nonsense query and a good one both come
- * back at exactly 0.032787 — identical, because rank 1 is rank 1 either way.
- * `why.dense` is no better; it is normalised so the top hit is always 1.00.
- * Without a gate, recall answers every query with five confident rows, which is
- * exactly the black-box behaviour this product exists to avoid.
+ *   lexical > 0            gibberish shares no vocabulary, so BM25 scores it
+ *                          exactly 0.000 — measured on 4 of 5 nonsense probes
+ *   dense >= minCosine     catches a real question asked in other words, which
+ *                          BM25 alone would reject
  *
- * So: ask `dense` how close the nearest record actually is, and if nothing is
- * close, report nothing without ranking anything.
+ * Why not cosine alone, which is what this used to do: max cosine over N documents
+ * rises with N for *any* query, so with a thousand records something always looks
+ * similar. Across five embedding models — MiniLM, mpnet, e5-base, e5-large, bge-m3 —
+ * **no cosine floor separated nonsense from genuine queries** on a 1,102-record
+ * corpus; the rejection rate was 0 of 5 every time. Requiring the lexical anchor as
+ * well rejects 4 of 5 while losing 0 of 12 real queries. A cross-encoder reranker was
+ * tried as a gate too and rejected: it also failed to separate (a genuine Thai
+ * question scored 0.008 against gibberish at 0.114).
  *
- * The two calls run in sequence, not in parallel. Issuing them together made the
- * server load its embedding model twice at once — FastAPI runs sync endpoints in
- * a threadpool, and on a cold server both requests raced the lazy load — which
- * doubled peak memory and killed the process. Sequential also means a query that
- * fails the gate never pays for the ranking call.
+ * The measurement lives in docs/EXPERIMENTS.md, one place, so this comment and the
+ * documents cannot drift apart. The surviving false negative is Thai punctuation
+ * runs (ๆ, ฯ), which genuinely occur in the corpus and so have a real lexical match.
  *
- * The gate is only as good as the model. pipeline/README.md's "Known limitations"
- * holds the measurement — one place, so the two documents cannot drift. Its
- * headline, via preset=dense on the 42-record corpus at the default 0.45 floor:
- *
- *   model                          gibberish   'Android Profile bug fixed?'
- *   paraphrase-multilingual-MiniLM     0.388       0.847      separable
- *   models/syn_finetuned               0.738       0.838      not separable
- *
- * The fine-tune pulled everything together, gibberish included, leaving 0.10 with
- * the floor below both. Serve the general model unless a fine-tune has been
- * checked against queries that should match nothing — and never raise the floor to
- * hide it. The margin also shrinks with the corpus: `npm run check-api` scores
- * three gibberish probes and prints each one, because on a small corpus the answer
- * flips depending on which string you picked.
+ * `npm run check-api` re-measures both numbers wherever it runs, because the floor
+ * is a property of one corpus and one model together rather than a constant.
  */
+export interface Relevance {
+  /** Raw BM25 of the best-matching record. Exactly 0 when no word is shared. */
+  lexical: number;
+  /** Raw cosine of the nearest record. */
+  dense: number;
+}
+
+export interface SearchResult {
+  hits: ApiSearchHit[];
+  relevance: Relevance;
+  /** False when the gate refused, so a caller can say *why* nothing came back. */
+  passed: boolean;
+}
+
+/** Both signals must fire. See the comment above for what each one catches. */
+export function passesGate(r: Relevance, minCosine: number): boolean {
+  return r.lexical > 0 && r.dense >= minCosine;
+}
+
+export async function searchWithRelevance(
+  cfg: ApiConfig,
+  query: string,
+  k: number,
+): Promise<SearchResult> {
+  const q = encodeURIComponent(query);
+  const body = await get<{ hits?: ApiSearchHit[]; relevance?: Relevance }>(cfg, `/api/search?q=${q}&k=${k}`);
+  // An older server has no `relevance`. Say so rather than inventing a pass: a gate
+  // that silently stops gating is the failure this whole mechanism exists to avoid.
+  if (!body.relevance) {
+    throw new Error(
+      '/api/search ไม่ได้ส่ง relevance มา — pipeline เวอร์ชันเก่า gate ทำงานไม่ได้ ' +
+        '(อัปเดต pipeline หรือรัน python3 -m tam.web.server จาก repo เดียวกัน)',
+    );
+  }
+  const relevance = body.relevance;
+  const passed = passesGate(relevance, cfg.minCosine);
+  return { hits: passed ? body.hits ?? [] : [], relevance, passed };
+}
+
 export async function searchViaApi(
   cfg: ApiConfig,
   query: string,
   k: number,
 ): Promise<ApiSearchHit[]> {
-  const q = encodeURIComponent(query);
-
-  const nearest = await get<{ hits: ApiSearchHit[] }>(cfg, `/api/search?q=${q}&k=1&preset=dense`);
-  const top = nearest.hits?.[0]?.score ?? 0;
-  if (top < cfg.minCosine) return [];
-
-  const ranked = await get<{ hits: ApiSearchHit[] }>(cfg, `/api/search?q=${q}&k=${k}`);
-  return ranked.hits ?? [];
+  return (await searchWithRelevance(cfg, query, k)).hits;
 }
 
 export function hitToMessage(hit: ApiSearchHit, cfg: ApiConfig): Message {
