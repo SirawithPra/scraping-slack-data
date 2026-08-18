@@ -187,7 +187,39 @@ def build_graph(
     return graph
 
 
-def detect_communities(graph: nx.Graph, *, resolution: float = 1.0) -> list[int]:
+#: Louvain resolution. Higher splits more; the default was 1.0 and is 4.0 because both
+#: failure directions were measured on the real corpus, not just the one that is easy to
+#: count.
+#:
+#: Over-merging, at 1.0: the largest work item on screen held **132 messages**, one cluster
+#: mixed **19 distinct tickets** into 40 messages and another 17 into 90, and the median
+#: cluster spanned 41 days of a 74-day export. That is a channel, not a work item.
+#:
+#: Over-splitting was the reason not to raise it, and it turned out to point the same way.
+#: Of the 13 tickets that Slack prose mentions in two or more messages, the fraction whose
+#: messages land in different clusters *falls* from 31% at 1.0 to 9% at 4.0 — because at a
+#: low resolution the blobs absorb messages by channel and time rather than by subject, so
+#: two people discussing one ticket in two places end up in two different blobs. There is
+#: no trade to make here; 1.0 was worse both ways.
+#:
+#: At 4.0 the largest item is 50 messages (median 20), the worst cluster mixes 7 tickets
+#: instead of 19, and mean tickets per cluster falls 4.82 → 2.72. The blocked items and
+#: their evidence are identical, so nothing about state detection rests on this.
+#:
+#: The cost, stated: digest coverage falls 90% → 85% of records, because singletons drop
+#: below `min_messages`. Those are messages nobody answered about subjects nobody else
+#: raised; they stay in the corpus and stay searchable, they just stop being called work
+#: items. Above 4.0 the gains flatten (worst cluster 7 → 7, split 9% → 8%) while the
+#: standup has more to read, so this is the knee and not a maximum.
+#:
+#: What it does *not* fix: `/blockers` still finds 2. That count is identical from 1.0 to
+#: 6.0 — an earlier note in this repo claiming resolution 4.0 raised it to 4 was measured
+#: before the declaration rule was corrected and is wrong. Blocker recall is a state
+#: problem, not a clustering one.
+DEFAULT_RESOLUTION = 4.0
+
+
+def detect_communities(graph: nx.Graph, *, resolution: float = DEFAULT_RESOLUTION) -> list[int]:
     """Louvain community index per node.
 
     Resolution is the one knob: above 1.0 splits into more, smaller topics; below
@@ -393,7 +425,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--records", type=Path, default=DEFAULT_RECORDS, help=f"Prepared records (default {DEFAULT_RECORDS})")
     parser.add_argument("--out", type=Path, default=DEFAULT_OUTPUT, help=f"Output HTML (default {DEFAULT_OUTPUT})")
     parser.add_argument("--clusters", type=Path, help="Also write the cluster assignment as JSON")
-    parser.add_argument("--resolution", type=float, default=1.0, help="Louvain resolution; >1 gives more clusters (default 1.0)")
+    parser.add_argument("--resolution", type=float, default=DEFAULT_RESOLUTION, help=f"Louvain resolution; >1 gives more clusters (default {DEFAULT_RESOLUTION:g})")
     parser.add_argument("--knn", type=int, default=6, help="Dense neighbours per message (default 6)")
     parser.add_argument("--no-mutual", action="store_true", help="Keep one-sided dense edges too (denser graph)")
     parser.add_argument("--transform", default="none", choices=("none", "center", "abtt", "whiten"), help="Space transform before building edges")

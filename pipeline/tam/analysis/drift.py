@@ -103,12 +103,22 @@ def _mentioning(topic: Any, ticket: str) -> list[dict[str, Any]]:
 
     So the comparison is restricted to messages that actually name the ticket. Far fewer
     of them, and each one is about the thing being compared.
+
+    Tracker records are excluded: since the issues were merged into the corpus, a ticket
+    whose description quotes its own key would otherwise count as somebody discussing it,
+    and an item can now be *named* after a ticket purely because that ticket's record
+    landed in its cluster. Cluster proximity is not evidence that a conversation is about
+    a ticket — measured: of the four drifts the merge produced, only one had any human
+    mention at all, and two had none, so their state came from unrelated chatter ("added
+    permission done krub") compared against a ticket nobody in the thread had named.
     """
     key = ticket.upper()
     hits = [
         record
         for record in topic.records
-        if key in str(record.get("text", "")).upper() and np.isfinite(timestamp(record))
+        if not record.get("youtrack_key")
+        and key in str(record.get("text", "")).upper()
+        and np.isfinite(timestamp(record))
     ]
     return sorted(hits, key=timestamp)
 
@@ -137,6 +147,15 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
             and issue.updated > 0
             and last_ts > issue.updated + QUIET_AFTER_CLOSE_HOURS * 3600
         )
+
+        # Every branch below compares this topic's state against this ticket's, so the
+        # topic has to be about the ticket for the comparison to mean anything. Without
+        # this the merge inflated the count from 1 to 4 with three findings whose evidence
+        # named no ticket. It costs coverage honestly: only 19 of 194 issues are ever
+        # named in Slack prose, which is a fact about how the team writes, and reporting
+        # it is better than reporting comparisons nobody can check.
+        if not mentions:
+            continue
 
         if issue.resolved and topic.state == "blocked":
             # The sharpest one: a person has said they are stuck on work the board

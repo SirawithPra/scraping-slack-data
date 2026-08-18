@@ -39,7 +39,7 @@ import numpy as np
 from dotenv import load_dotenv
 
 from tam.retrieval.embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
-from tam.analysis.graph import EdgeWeights, build_graph, cluster_label, detect_communities
+from tam.analysis.graph import DEFAULT_RESOLUTION, EdgeWeights, build_graph, cluster_label, detect_communities
 from tam.analysis.linker import Link, link_records, load_overrides
 from tam.analysis.relations import Relation, extract_relations
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
@@ -378,7 +378,7 @@ def build_digest(
     since: float,
     until: float | None = None,
     knn: int = 6,
-    resolution: float = 1.0,
+    resolution: float = DEFAULT_RESOLUTION,
     method: str = "rules",
     min_messages: int = 2,
     overrides: dict[str, str] | None = None,
@@ -535,7 +535,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--blockers", action="store_true", help="Only the stuck items")
     parser.add_argument("--item", help="Show one topic's timeline, by stable item id (REV-1421, c3f9a2b) or cluster key")
     parser.add_argument("--knn", type=int, default=6, help="Dense neighbours per message (default 6)")
-    parser.add_argument("--resolution", type=float, default=1.0, help="Louvain resolution (default 1.0)")
+    parser.add_argument("--resolution", type=float, default=DEFAULT_RESOLUTION, help=f"Louvain resolution (default {DEFAULT_RESOLUTION:g})")
     parser.add_argument("--method", default="rules", choices=("rules", "nli"), help="Relation typing (default rules)")
     parser.add_argument("--overrides", type=Path, help="Human link corrections, as tam.analysis.linker reads them — they name work items, not states")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of text")

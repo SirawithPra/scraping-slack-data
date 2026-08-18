@@ -48,7 +48,7 @@ from typing import Any, Sequence
 from dotenv import load_dotenv
 
 from tam.retrieval.embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
-from tam.analysis.graph import EdgeWeights, build_graph, cluster_label, detect_communities
+from tam.analysis.graph import DEFAULT_RESOLUTION, EdgeWeights, build_graph, cluster_label, detect_communities
 from tam.core import DEFAULT_RECORDS, embed_records, load_records
 from tam.retrieval.signals import ANCHOR_PATTERNS, SignalIndex
 
@@ -322,7 +322,7 @@ def link_records(
     ]
 
 
-def cluster_labels(records: Sequence[dict[str, Any]], *, knn: int = 6, resolution: float = 1.0) -> tuple[list[int], dict[int, str]]:
+def cluster_labels(records: Sequence[dict[str, Any]], *, knn: int = 6, resolution: float = DEFAULT_RESOLUTION) -> tuple[list[int], dict[int, str]]:
     """Community per record, plus a readable name per community.
 
     Same path digest.py takes, so the cluster tier here and the work items there
@@ -398,7 +398,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--projects", help="Comma-separated ticket prefixes, e.g. REV,PROJ. Overrides TICKET_PROJECTS and the corpus guess")
     parser.add_argument("--no-cluster", action="store_true", help="Explicit and thread tiers only — no embeddings")
     parser.add_argument("--knn", type=int, default=6, help="Dense neighbours per message (default 6)")
-    parser.add_argument("--resolution", type=float, default=1.0, help="Louvain resolution (default 1.0)")
+    parser.add_argument("--resolution", type=float, default=DEFAULT_RESOLUTION, help=f"Louvain resolution (default {DEFAULT_RESOLUTION:g})")
     parser.add_argument("--min-cluster", type=int, default=MIN_CLUSTER_SIZE, help=f"Smallest cluster that counts as a work item (default {MIN_CLUSTER_SIZE})")
     parser.add_argument("--explain", help="Show one record's link and the evidence for it")
     parser.add_argument("--json", action="store_true", help="Print JSON instead of text")
