@@ -247,7 +247,7 @@ TAM_SCHEDULE_TZ=Asia/Bangkok
 
 | อยากให้ทำ | สถานะ |
 |---|---|
-| ต่อ YouTrack | **ต่อแล้ว** อ่าน ticket จริง 195 ใบ (เปิดค้าง 61) → `/meowtam silent` · `/meowtam drift` · `GET /api/tracker` |
+| ต่อ YouTrack | **ต่อแล้ว และรวมเป็น corpus เดียวกัน** — ticket 195 ใบ (เปิดค้าง 61) ค้นเจอจาก `/search` และ `/meowtam recall` ได้เหมือนข้อความ Slack · เทียบสองแหล่งที่ `/meowtam silent` · `/meowtam drift` · `GET /api/tracker` |
 | ต่อ Notion / Jira | ยังไม่ได้ต่อ — `youtrack.py` เป็นตัวอ่านเฉพาะ YouTrack |
 | เขียนกลับเข้า ticket | ยังไม่มี |
 | DM คนที่พูดในที่ประชุม | ทำไม่ได้เมื่อ transcript ให้มาเป็นชื่อ ไม่ใช่ id — และมันจะไม่เดา |
