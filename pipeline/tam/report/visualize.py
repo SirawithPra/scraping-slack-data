@@ -26,42 +26,43 @@ from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_reco
 DEFAULT_OUTPUT = Path("output/report.html")
 DEFAULT_KS = (1, 3, 5, 10)
 
-# Chart chrome and ink. The bot is called Meowtam and has signed every message with a paw
-# since it was written, so the palette is the cat's rather than a generic dashboard blue:
-# warm paper, a dark-tabby ink, and a paw-pad coral as the one accent. The neutrals carry
-# a brown bias on purpose — a pure mid-grey beside a warm accent reads as unconsidered.
-SURFACE = "#FFFDFC"
-PAGE = "#FBF7F4"          # warm paper with a faint pink cast, not the usual cream
-INK = "#241C1A"           # warm near-black; pure #000 goes cold against the coral
-INK_SECONDARY = "#5E4E49"
-INK_MUTED = "#756259"
-GRID = "#EADFD9"
-AXIS = "#D3C2BA"
-SERIES_1 = "#E4735A"      # categorical slot 1 — paw pad
-SERIES_2 = "#3E7C6A"      # categorical slot 2 — cat-eye green, and the contrast to coral
-# Sequential coral ramp, light -> dark. One hue, never a rainbow.
-BLUE_SCALE = [[0.0, "#FBE0D8"], [0.25, "#F2AE9C"], [0.5, "#E4735A"], [0.75, "#BE4F39"], [1.0, "#7C2E1F"]]
-# No webfont: the CSP on published pages blocks font CDNs, and the content is Thai, so a
-# missing face would silently fall back and lose the script's shaping. Character comes from
-# weight, spacing and scale instead.
+# Chart chrome and ink, and the same palette the deck uses — one project, one look.
+#
+# The school is security-infra (Evervault et al.): a committed dark ground, hairlines at
+# exactly 1px, monospace on every label and every number, and one warm accent used
+# sparingly enough that it always means something. The accent is the paw the bot has
+# signed its Slack messages with since it was written, so the brand mark and the accent
+# are the same thing rather than two decisions.
+#
+# Dark is the default, not a preference. Light exists under [data-theme="light"] for one
+# practical reason: a projector in a bright room eats a dark page alive.
+SURFACE = "#141110"
+PAGE = "#0C0A09"          # warm near-black; pure #000 goes cold beside coral
+INK = "#F5EFEC"
+INK_SECONDARY = "#A99C97"
+INK_MUTED = "#948781"
+GRID = "#241F1D"          # the hairline
+AXIS = "#332C29"
+SERIES_1 = "#F0866A"      # the paw
+SERIES_2 = "#6FBFA4"      # the one contrast, for "verified" rather than a second brand hue
+# Sequential coral ramp, dark -> light, so it reads on the dark ground. One hue, never a rainbow.
+BLUE_SCALE = [[0.0, "#3A1D15"], [0.25, "#6E3527"], [0.5, "#A9503A"], [0.75, "#D97256"], [1.0, "#F5A992"]]
+# No webfont: a CSP blocks font CDNs on published pages and the content is Thai, so a
+# missing face would fall back silently and lose the script's shaping.
 FONT = '"Noto Sans Thai", "Sukhumvit Set", system-ui, -apple-system, "Segoe UI", sans-serif'
-DE_EMPHASIS = "#D3C2BA"  # neutral for "absence"; never a second hue
+MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace'
+DE_EMPHASIS = "#332C29"   # neutral for "absence"; never a second hue
+WARN = "#E0A860"
+GOOD = "#6FBFA4"
+ACCENT_DIM = "#8E4634"
+ON_ACCENT = "#1A0F0B"
 
-# Dark counterparts, so the dashboard follows the reader's system instead of forcing a
-# bright page at night. Same coral in both: it holds on warm charcoal and on warm paper.
-DARK = {
-    "surface": "#221A18",
-    "page": "#191312",
-    "ink": "#F6EDE9",
-    "ink2": "#C6B2AA",
-    "ink3": "#96837C",
-    "grid": "#3A2C28",
-    "accent": "#F08D75",
-    "accent2": "#6FBFA4",
-    "warn": "#E0A860",
+# The light escape hatch, same values as the deck's [data-theme="light"] block.
+LIGHT = {
+    "page": "#FBF7F4", "surface": "#FFFDFC", "ink": "#241C1A", "ink2": "#5E4E49",
+    "ink3": "#756259", "grid": "#EADFD9", "accent": "#BF5138", "accent2": "#2F6455",
+    "warn": "#95610F", "on_accent": "#FFFDFC", "accent_dim": "#E4735A",
 }
-WARN = "#C07A18"          # tabby amber, for "read this number carefully"
-GOOD = "#3E7C6A"
 
 log = logging.getLogger("visualize")
 
@@ -314,81 +315,73 @@ def build_page(title: str, tiles: list[str], sections: list[tuple[str, str]], su
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{html.escape(title)}</title>
 <style>
-  /* Tokens live on bare :root so the un-stamped document — which is what most readers
-     get, because "system" is the default theme — resolves a complete palette. The dark
-     block only redefines tokens, and is guarded so an explicit light choice beats a dark
-     OS. Nothing below sets a colour outside a token. */
+  /* Dark is the design, so the bare :root carries it and nothing is left to
+     prefers-color-scheme. Light lives behind an explicit stamp, for a bright room. */
   :root {{
-    --page:{PAGE}; --surface:{SURFACE}; --ink:{INK}; --ink2:{INK_SECONDARY}; --ink3:{INK_MUTED};
-    --grid:{GRID}; --accent:{SERIES_1}; --accent-2:{SERIES_2}; --warn:{WARN};
-    --paw:{SERIES_1}; --on-accent:{SURFACE};
-    /* The mark itself, inline: one pad and four toes. A mask rather than an <img> so it
-       takes --paw and follows the theme, and inline so there is no request to make. */
-    --paw-svg:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
-    --r-lg:16px; --r-md:12px; --r-sm:8px;
-    --shadow:0 1px 2px rgba(36,28,26,.05), 0 10px 28px -18px rgba(36,28,26,.30);
+    --page:{PAGE}; --surface:{SURFACE}; --surface-2:#1B1716;
+    --ink:{INK}; --ink2:{INK_SECONDARY}; --ink3:{INK_MUTED};
+    --line:{GRID}; --line-2:{AXIS};
+    --accent:{SERIES_1}; --accent-dim:{ACCENT_DIM}; --accent-wash:rgba(240,134,106,.10);
+    --good:{GOOD}; --warn:{WARN}; --on-accent:{ON_ACCENT};
+    --u:4px; --r:3px;
+    --f-mono:{MONO};
+    --paw:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
   }}
-  @media (prefers-color-scheme: dark) {{
-    :root:not([data-theme="light"]) {{
-      --page:{DARK["page"]}; --surface:{DARK["surface"]}; --ink:{DARK["ink"]};
-      --ink2:{DARK["ink2"]}; --ink3:{DARK["ink3"]}; --grid:{DARK["grid"]};
-      --accent:{DARK["accent"]}; --accent-2:{DARK["accent2"]}; --warn:{DARK["warn"]};
-      --paw:{DARK["accent"]}; --on-accent:#2A1E1A;
-      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
-    }}
-  }}
-  :root[data-theme="dark"] {{
-    --page:{DARK["page"]}; --surface:{DARK["surface"]}; --ink:{DARK["ink"]};
-    --ink2:{DARK["ink2"]}; --ink3:{DARK["ink3"]}; --grid:{DARK["grid"]};
-    --accent:{DARK["accent"]}; --accent-2:{DARK["accent2"]}; --warn:{DARK["warn"]};
-    --paw:{DARK["accent"]}; --on-accent:#2A1E1A;
-    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
+  :root[data-theme="light"] {{
+    --page:{LIGHT["page"]}; --surface:{LIGHT["surface"]}; --surface-2:#F5EDE8;
+    --ink:{LIGHT["ink"]}; --ink2:{LIGHT["ink2"]}; --ink3:{LIGHT["ink3"]};
+    --line:{LIGHT["grid"]}; --line-2:#D3C2BA;
+    --accent:{LIGHT["accent"]}; --accent-dim:{LIGHT["accent_dim"]}; --accent-wash:rgba(191,81,56,.08);
+    --good:{LIGHT["accent2"]}; --warn:{LIGHT["warn"]}; --on-accent:{LIGHT["on_accent"]};
   }}
 
   * {{ box-sizing: border-box; }}
-  body {{ margin: 0; padding: 30px 20px 72px; background: var(--page); color: var(--ink);
-         font-family: {FONT}; line-height: 1.6; -webkit-font-smoothing: antialiased; }}
-  main {{ max-width: 1080px; margin: 0 auto; }}
+  body {{ margin: 0; padding: calc(var(--u)*8) calc(var(--u)*5) calc(var(--u)*18);
+         background: var(--page); color: var(--ink);
+         font-family: {FONT}; font-size: .93rem; line-height: 1.68;
+         -webkit-font-smoothing: antialiased; }}
+  main {{ max-width: 1100px; margin: 0 auto; }}
 
-  /* The paw is the product's own mark — the bot has signed every Slack message with one
-     since it was written — so it carries the heading rather than decorating it. */
-  h1 {{ font-size: 25px; line-height: 1.25; margin: 0 0 6px; letter-spacing: -.015em;
-        text-wrap: balance; display: flex; align-items: center; gap: 10px; }}
-  h1::before {{ content: ""; flex: none; width: 26px; height: 26px;
-        background: var(--paw); border-radius: 50%;
-        -webkit-mask: var(--paw-svg) center/contain no-repeat; mask: var(--paw-svg) center/contain no-repeat; }}
-  .sub {{ color: var(--ink2); font-size: 14px; margin: 0 0 26px; }}
+  /* The paw carries the heading: it is the product's mark, not an ornament. */
+  h1 {{ font-size: 1.7rem; line-height: 1.22; margin: 0 0 calc(var(--u)*2);
+        letter-spacing: -.022em; font-weight: 650; text-wrap: balance;
+        display: flex; align-items: center; gap: calc(var(--u)*3); }}
+  h1::before {{ content: ""; flex: none; width: 22px; height: 22px; background: var(--accent);
+        -webkit-mask: var(--paw) center/contain no-repeat; mask: var(--paw) center/contain no-repeat; }}
+  .sub {{ font-family: var(--f-mono); font-size: .7rem; text-transform: uppercase;
+          letter-spacing: .11em; color: var(--ink3); margin: 0 0 calc(var(--u)*7); }}
 
-  .tiles {{ display: grid; gap: 14px; margin-bottom: 30px;
+  .tiles {{ display: grid; gap: calc(var(--u)*5); margin-bottom: calc(var(--u)*7);
             grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }}
-  /* Two ears, and only on the stat tiles. They mark "this is a counted thing" — every
-     card that gets them is one, so the shape means something rather than appearing
-     everywhere as a motif. */
-  .tile {{ position: relative; background: var(--surface); border: 1px solid var(--grid);
-           border-radius: var(--r-lg); padding: 15px 17px; box-shadow: var(--shadow); }}
-  .tile::before, .tile::after {{ content: ""; position: absolute; top: -9px; width: 0; height: 0;
-           border-left: 9px solid transparent; border-right: 9px solid transparent;
-           border-bottom: 11px solid var(--grid); }}
-  .tile::before {{ left: 16px; transform: rotate(-14deg); }}
-  .tile::after {{ left: 40px; transform: rotate(14deg); }}
-  .tile-label {{ font-size: 11px; color: var(--ink2); text-transform: uppercase; letter-spacing: .07em; }}
-  .tile-value {{ font-size: 31px; font-weight: 650; color: var(--ink); margin: 3px 0;
-                 font-variant-numeric: tabular-nums; letter-spacing: -.02em; }}
-  .tile-note {{ font-size: 11px; color: var(--ink3); }}
+  /* A metric is the loudest thing on the page: mono, tabular, and sat on a rule rather
+     than boxed in a card. Boxes around numbers add chrome and say nothing. */
+  .tile {{ background: transparent; border: 0; border-top: 1px solid var(--line-2);
+           border-radius: 0; padding: calc(var(--u)*4) 0 0; }}
+  .tile-label {{ font-family: var(--f-mono); font-size: .68rem; color: var(--ink3);
+                 text-transform: uppercase; letter-spacing: .11em; }}
+  .tile-value {{ font-family: var(--f-mono); font-size: 2.1rem; font-weight: 600; color: var(--ink);
+                 margin: calc(var(--u)*2) 0 0; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }}
+  .tile-note {{ font-size: .7rem; color: var(--ink3); margin-top: calc(var(--u)*1.5); }}
 
-  section {{ background: var(--surface); border: 1px solid var(--grid); border-radius: var(--r-lg);
-             padding: 20px 20px 10px; margin-bottom: 22px; box-shadow: var(--shadow); }}
-  .lede {{ margin: 0 0 6px; font-size: 13px; color: var(--ink2); }}
-  .table-view {{ margin: 4px 0 16px; font-size: 13px; }}
+  section {{ background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+             padding: calc(var(--u)*6) calc(var(--u)*6) calc(var(--u)*3); margin-bottom: calc(var(--u)*5); }}
+  .lede {{ margin: 0 0 calc(var(--u)*2); font-size: .82rem; color: var(--ink2); }}
+  .table-view {{ margin: calc(var(--u)*1) 0 calc(var(--u)*4); font-size: .82rem; }}
   .table-view summary {{ cursor: pointer; color: var(--accent); }}
-  table {{ border-collapse: collapse; width: 100%; margin-top: 12px; }}
-  th, td {{ text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); vertical-align: top; }}
-  th {{ color: var(--ink3); font-weight: 650; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }}
-  td.num {{ font-variant-numeric: tabular-nums; white-space: nowrap; }}
-  /* Wide content scrolls inside its own box so the page body never moves sideways. */
+  table {{ border-collapse: collapse; width: 100%; margin-top: calc(var(--u)*3); font-size: .82rem; }}
+  th, td {{ text-align: left; padding: calc(var(--u)*2.5) calc(var(--u)*3);
+            border-bottom: 1px solid var(--line); vertical-align: top; }}
+  th {{ font-family: var(--f-mono); font-size: .68rem; color: var(--ink3); font-weight: 600;
+        text-transform: uppercase; letter-spacing: .11em; white-space: nowrap; }}
+  td.num {{ font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }}
+  /* Wide content scrolls in its own box so the page body never moves sideways. */
   .plot-wrap {{ overflow-x: auto; }}
-  a {{ color: var(--accent); }}
-  :focus-visible {{ outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }}
+  a {{ color: var(--accent); text-decoration: none; border-bottom: 1px solid var(--accent-dim); }}
+  a:hover {{ border-bottom-color: var(--accent); }}
+  code {{ font-family: var(--f-mono); font-size: .9em; background: var(--surface-2);
+          border: 1px solid var(--line); border-radius: 2px; padding: .05em .34em; }}
+  :focus-visible {{ outline: 1px solid var(--accent); outline-offset: 3px; }}
+  ::selection {{ background: var(--accent); color: var(--on-accent); }}
   @media (prefers-reduced-motion: reduce) {{ * {{ transition: none !important; animation: none !important; }} }}
 </style></head>
 <body><main>

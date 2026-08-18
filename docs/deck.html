@@ -1,204 +1,315 @@
 <title>ตาม (Tam)</title>
 <style>
-  /* ---------- tokens: complete light palette on bare :root ---------- */
+  /* ================================================================
+     ตาม (Tam) — a cat that reads the code review you forgot to have.
+
+     The look is taken from the security-infra school (Evervault et al.): a
+     committed dark ground, hairline rules at exactly 1px, monospace carrying
+     every label and every number, sans carrying only prose, and one warm
+     accent used sparingly enough that it always means something.
+
+     Their signature device is the encrypted string — plaintext shown becoming
+     ciphertext, so the product proves itself in the page. Ours is the same
+     move on our own subject: raw chatter shown becoming a work item. That is
+     `.reveal` below, and it is the one flourish that earns its place.
+
+     Dark is the default rather than a preference, so the bare :root carries
+     the dark palette. `data-theme="light"` exists for one reason and it is
+     practical: a projector in a bright room eats a dark deck alive. Press it
+     if the room is bad — nothing else changes.
+     ================================================================ */
   :root{
-    /* Meowtam's own palette: warm paper, dark-tabby ink, paw-pad coral. Two corals on
-       purpose — --accent carries text and has to hold contrast on paper, while --paw is
-       the bright one and is only ever a large fill or a mark, never a word. */
+    --ground:#0C0A09;        /* warm near-black: pure #000 goes cold next to coral */
+    --surface:#141110; --surface-2:#1B1716; --surface-3:#241F1D;
+    --ink:#F5EFEC; --ink-2:#A99C97; --ink-3:#948781;
+    --line:#241F1D; --line-2:#332C29;      /* hairlines, and the one you can see */
+    --accent:#F0866A;        /* the paw. one accent, and it is the product's mark */
+    --accent-dim:#8E4634; --accent-wash:rgba(240,134,106,.10);
+    --good:#6FBFA4; --good-wash:rgba(111,191,164,.10);
+    --warn:#E0A860; --warn-wash:rgba(224,168,96,.10);
+    --on-accent:#1A0F0B;
+
+    --f-sans:"Noto Sans Thai","Sukhumvit Set",system-ui,-apple-system,"Segoe UI",sans-serif;
+    --f-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,"Noto Sans Thai Mono",Consolas,monospace;
+
+    --s-2:.70rem; --s-1:.79rem; --s0:.93rem; --s1:1.05rem; --s2:1.3rem;
+    --s3:1.7rem; --s4:2.35rem; --s5:3.4rem; --s6:4.6rem;
+
+    --u:4px;                 /* every gap below is a multiple of this */
+    --r:3px;                 /* radius: nearly square. precision, not softness */
+    --paw:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
+  }
+  :root[data-theme="light"]{
     --ground:#FBF7F4; --surface:#FFFDFC; --surface-2:#F5EDE8; --surface-3:#EDE0D9;
     --ink:#241C1A; --ink-2:#5E4E49; --ink-3:#756259;
-    --rule:#EADFD9; --rule-strong:#D3C2BA;
-    --accent:#BF5138; --accent-soft:#FBE7E0; --accent-ink:#FFFDFC; --paw:#E4735A;
-    --warn:#95610F; --warn-soft:#F7EBD8;
-    --good:#2F6455; --good-soft:#DDEBE5;
-    --shadow:0 1px 2px rgba(36,28,26,.05), 0 10px 28px -16px rgba(36,28,26,.26);
-
-    --f-display:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI","Helvetica Neue",sans-serif;
-    --f-body:"Noto Sans Thai","Sarabun",system-ui,-apple-system,"Segoe UI","Helvetica Neue",sans-serif;
-    --f-mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
-
-    --s-1:.78rem; --s0:.94rem; --s1:1.06rem; --s2:1.35rem;
-    --s3:1.75rem; --s4:2.3rem; --s5:3.1rem;
-  }
-  @media (prefers-color-scheme:dark){
-    :root:not([data-theme="light"]){
-      --ground:#191312; --surface:#221A18; --surface-2:#2B211E; --surface-3:#362925;
-      --ink:#F6EDE9; --ink-2:#C6B2AA; --ink-3:#96837C;
-      --rule:#3A2C28; --rule-strong:#4E3B35;
-      --accent:#F08D75; --accent-soft:#3A211B; --accent-ink:#2A1E1A; --paw:#F08D75;
-      --warn:#E0A860; --warn-soft:#33260F;
-      --good:#6FBFA4; --good-soft:#15302A;
-      --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
-    }
-  }
-  :root[data-theme="dark"]{
-    --ground:#191312; --surface:#221A18; --surface-2:#2B211E; --surface-3:#362925;
-    --ink:#F6EDE9; --ink-2:#C6B2AA; --ink-3:#96837C;
-    --rule:#3A2C28; --rule-strong:#4E3B35;
-    --accent:#F08D75; --accent-soft:#3A211B; --accent-ink:#2A1E1A; --paw:#F08D75;
-    --warn:#E0A860; --warn-soft:#33260F;
-    --good:#6FBFA4; --good-soft:#15302A;
-    --shadow:0 1px 2px rgba(0,0,0,.45), 0 12px 32px -18px rgba(0,0,0,.7);
+    --line:#EADFD9; --line-2:#D3C2BA;
+    --accent:#BF5138; --accent-dim:#E4735A; --accent-wash:rgba(191,81,56,.08);
+    --good:#2F6455; --good-wash:rgba(47,100,85,.08);
+    --warn:#95610F; --warn-wash:rgba(149,97,15,.08);
+    --on-accent:#FFFDFC;
   }
 
   *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
   body{
     margin:0; background:var(--ground); color:var(--ink);
-    font-family:var(--f-body); font-size:var(--s1); line-height:1.65;
-    -webkit-font-smoothing:antialiased;
+    font-family:var(--f-sans); font-size:var(--s0); line-height:1.68;
+    -webkit-font-smoothing:antialiased; font-feature-settings:"kern" 1;
   }
+  ::selection{background:var(--accent); color:var(--on-accent)}
+  a{color:var(--accent); text-decoration:none; border-bottom:1px solid var(--accent-dim)}
+  a:hover{border-bottom-color:var(--accent)}
+  :focus-visible{outline:1px solid var(--accent); outline-offset:3px}
+  code{font-family:var(--f-mono); font-size:.92em; color:var(--ink); background:var(--surface-2);
+       border:1px solid var(--line); border-radius:2px; padding:.05em .34em}
+  strong{color:var(--ink); font-weight:650}
+  em{font-style:normal; color:var(--accent)}
 
-  /* ---------- deck shell ---------- */
-  .deck{max-width:1060px; margin:0 auto; padding:28px 20px 72px; display:flex; flex-direction:column; gap:22px}
+  .deck{max-width:1100px; margin:0 auto; padding:calc(var(--u)*10) calc(var(--u)*5) calc(var(--u)*24)}
 
-  .masthead{display:flex; flex-wrap:wrap; align-items:baseline; gap:10px 16px; padding:0 4px 2px}
-  .masthead .mark{font-family:var(--f-display); font-weight:800; font-size:var(--s2); letter-spacing:-.01em}
-  .masthead .meta{font-family:var(--f-mono); font-size:var(--s-1); color:var(--ink-3); margin-left:auto}
+  /* ---------- masthead ---------- */
+  /* The cover slide carries the title, so this is a brand bar and not a hero: the
+     name, what the document is, and the date, beside the first cat. */
+  .masthead{
+    border:1px solid var(--line); border-radius:var(--r); background:var(--surface);
+    padding:calc(var(--u)*6) calc(var(--u)*8);
+    display:grid; grid-template-columns:1fr auto; gap:calc(var(--u)*8); align-items:center;
+    margin-bottom:calc(var(--u)*5);
+  }
+  .masthead .brand{display:flex; flex-direction:column; gap:calc(var(--u)*1.5)}
+  .masthead .tagline{
+    font-family:var(--f-mono); font-size:var(--s-1); color:var(--accent);
+    letter-spacing:.04em; margin-top:calc(var(--u)*1);
+  }
+  @media (max-width:860px){ .masthead{grid-template-columns:1fr} }
 
-  /* ---------- slide ---------- */
+  /* ---------- slides ---------- */
   .slide{
-    position:relative; background:var(--surface); border:1px solid var(--rule);
-    border-radius:6px; box-shadow:var(--shadow); overflow:hidden;
-    display:flex; flex-direction:column;
+    border:1px solid var(--line); border-radius:var(--r); background:var(--surface);
+    margin-bottom:calc(var(--u)*5); overflow:hidden;
   }
   .slide-head{
-    display:flex; align-items:center; gap:12px;
-    padding:14px 26px; border-bottom:1px solid var(--rule); background:var(--surface-2);
+    display:flex; align-items:center; gap:calc(var(--u)*3);
+    padding:calc(var(--u)*4) calc(var(--u)*8);
+    border-bottom:1px solid var(--line); background:var(--surface-2);
   }
+  /* Index, in mono, in the accent. The number is information: these are ten
+     numbered slides and a reader in a review will refer to them by number. */
   .num{
-    font-family:var(--f-mono); font-size:var(--s-1); font-weight:600;
-    color:var(--accent-ink); background:var(--accent);
-    padding:2px 8px; border-radius:3px; flex:none;
+    font-family:var(--f-mono); font-size:var(--s-2); font-weight:600;
+    color:var(--accent); background:transparent; border:1px solid var(--accent-dim);
+    border-radius:2px; padding:1px 6px; flex:none; letter-spacing:.04em;
   }
   .eyebrow{
-    font-family:var(--f-mono); font-size:var(--s-1); text-transform:uppercase;
-    letter-spacing:.09em; color:var(--ink-2);
+    font-family:var(--f-mono); font-size:var(--s-2); text-transform:uppercase;
+    letter-spacing:.13em; color:var(--ink-3);
   }
-  .slide-body{padding:30px 26px 26px; display:flex; flex-direction:column; gap:18px; flex:1}
-
-  h2{font-family:var(--f-display); font-weight:800; font-size:var(--s3); line-height:1.25;
-     letter-spacing:-.015em; margin:0; text-wrap:balance}
-  h3{font-family:var(--f-display); font-weight:700; font-size:var(--s1); margin:0; color:var(--ink)}
-  p{margin:0; max-width:66ch; color:var(--ink-2)}
-  p strong,li strong{color:var(--ink); font-weight:700}
-  .lede{font-size:var(--s2); line-height:1.55; color:var(--ink); max-width:60ch}
-
-  /* evidence rail — the deck's structural device: every claim carries its source */
-  .rail{
-    margin-top:auto; border-top:1px dashed var(--rule-strong);
-    padding-top:12px; display:flex; flex-wrap:wrap; gap:6px 18px;
-    font-family:var(--f-mono); font-size:var(--s-1); color:var(--ink-3);
+  .slide-body{padding:calc(var(--u)*8)}
+  .slide-body h2{
+    font-size:var(--s3); line-height:1.22; margin:0 0 calc(var(--u)*5);
+    letter-spacing:-.022em; font-weight:650; text-wrap:balance; max-width:46ch;
   }
-  .rail span{white-space:nowrap}
-  .rail b{color:var(--ink-2); font-weight:600}
+  .slide-body h3{font-size:var(--s1); margin:0 0 calc(var(--u)*2); font-weight:650; letter-spacing:-.01em}
+  .slide-body p{margin:0 0 calc(var(--u)*4); color:var(--ink-2); max-width:76ch}
+  .slide-body p:last-child{margin-bottom:0}
+  .lede{color:var(--ink-2)}
 
-  /* ---------- pieces ---------- */
-  .grid{display:grid; gap:14px}
-  .g2{grid-template-columns:repeat(auto-fit,minmax(240px,1fr))}
+  /* ---------- the paw list ---------- */
+  ul{margin:0 0 calc(var(--u)*4); padding:0; list-style:none;
+     display:flex; flex-direction:column; gap:calc(var(--u)*2.5); color:var(--ink-2)}
+  ul.tight{gap:calc(var(--u)*1.5)}
+  ul>li{position:relative; padding-left:calc(var(--u)*6)}
+  ul>li::before{
+    content:""; position:absolute; left:0; top:.44em; width:.7em; height:.7em;
+    background:var(--accent); opacity:.8;
+    -webkit-mask:var(--paw) center/contain no-repeat; mask:var(--paw) center/contain no-repeat;
+  }
+
+  /* ---------- grids, cards, stats ---------- */
+  .grid{display:grid; gap:calc(var(--u)*4); margin:0 0 calc(var(--u)*4)}
+  .g2{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}
   .g3{grid-template-columns:repeat(auto-fit,minmax(190px,1fr))}
+  .card{
+    background:var(--surface-2); border:1px solid var(--line); border-radius:var(--r);
+    padding:calc(var(--u)*4) calc(var(--u)*5);
+  }
+  .card .k{
+    display:block; font-family:var(--f-mono); font-size:var(--s-2); text-transform:uppercase;
+    letter-spacing:.11em; color:var(--ink-3); margin-bottom:calc(var(--u)*2);
+  }
+  .card p{font-size:var(--s0); margin:0}
+  .card h3{margin:0 0 calc(var(--u)*2)}
 
-  .card{background:var(--surface-2); border:1px solid var(--rule); border-radius:5px; padding:16px 18px;
-        display:flex; flex-direction:column; gap:7px}
-  .card .k{font-family:var(--f-mono); font-size:var(--s-1); text-transform:uppercase;
-           letter-spacing:.08em; color:var(--ink-3)}
-  .card p{font-size:var(--s0)}
+  /* A metric is the loudest thing on a slide, so it is mono, tabular, and big. */
+  .stat{
+    background:transparent; border:0; border-top:1px solid var(--line-2);
+    padding:calc(var(--u)*4) 0 0;
+  }
+  .stat .v{
+    display:block; font-family:var(--f-mono); font-variant-numeric:tabular-nums;
+    font-weight:600; font-size:var(--s4); line-height:1; letter-spacing:-.035em; color:var(--ink);
+  }
+  .stat .l{display:block; font-size:var(--s-1); color:var(--ink-3); margin-top:calc(var(--u)*2.5)}
 
-  .stat{background:var(--surface-2); border:1px solid var(--rule); border-radius:5px; padding:14px 16px}
-  .stat .v{font-family:var(--f-mono); font-variant-numeric:tabular-nums; font-weight:700;
-           font-size:var(--s4); line-height:1.1; letter-spacing:-.02em; color:var(--accent)}
-  .stat .l{font-size:var(--s-1); color:var(--ink-2); margin-top:4px}
+  /* ---------- pills ---------- */
+  .pill{
+    display:inline-block; font-family:var(--f-mono); font-size:var(--s-2); font-weight:600;
+    letter-spacing:.05em; padding:1px 7px; border-radius:2px; border:1px solid currentColor;
+  }
+  .pill.ok{color:var(--good); background:var(--good-wash)}
+  .pill.hold{color:var(--warn); background:var(--warn-wash)}
 
-  ul{margin:0; padding-left:1.1em; display:flex; flex-direction:column; gap:9px; color:var(--ink-2)}
-  ul.tight{gap:5px}
-  li{max-width:64ch}
-  li::marker{color:var(--ink-3)}
+  /* ---------- code ---------- */
+  pre{
+    margin:0 0 calc(var(--u)*4); background:var(--ground); color:var(--ink-2);
+    border:1px solid var(--line); border-radius:var(--r);
+    padding:calc(var(--u)*4) calc(var(--u)*5); overflow-x:auto;
+    font-family:var(--f-mono); font-size:var(--s-1); line-height:1.72; tab-size:2;
+  }
+  pre code{background:none; border:0; padding:0; color:inherit}
 
-  .tw{overflow-x:auto; border:1px solid var(--rule); border-radius:5px}
-  table{border-collapse:collapse; width:100%; font-size:var(--s0); min-width:440px}
-  th,td{text-align:left; padding:10px 14px; border-bottom:1px solid var(--rule); vertical-align:top}
-  thead th{background:var(--surface-2); font-family:var(--f-mono); font-size:var(--s-1);
-           text-transform:uppercase; letter-spacing:.07em; color:var(--ink-2); font-weight:600}
+  /* ---------- tables ---------- */
+  .tw{overflow-x:auto; border:1px solid var(--line); border-radius:var(--r); margin:0 0 calc(var(--u)*4)}
+  table{border-collapse:collapse; width:100%; font-size:var(--s-1)}
+  th,td{text-align:left; padding:calc(var(--u)*2.5) calc(var(--u)*4);
+        border-bottom:1px solid var(--line); vertical-align:top}
+  thead th{
+    font-family:var(--f-mono); font-size:var(--s-2); text-transform:uppercase;
+    letter-spacing:.11em; color:var(--ink-3); font-weight:600;
+    background:var(--surface-2); white-space:nowrap;
+  }
   tbody tr:last-child td{border-bottom:0}
-  td code,th code{font-family:var(--f-mono); font-size:.9em}
+  td strong{color:var(--ink)}
 
-  pre{margin:0; background:var(--surface-3); border:1px solid var(--rule); border-radius:5px;
-      padding:14px 16px; overflow-x:auto; font-family:var(--f-mono); font-size:var(--s-1);
-      line-height:1.7; color:var(--ink)}
-  code{font-family:var(--f-mono)}
-  p code,li code,td code{background:var(--surface-3); padding:1px 5px; border-radius:3px; font-size:.88em}
-
-  /* state = icon + word, never colour alone (a design rule from the product itself) */
-  .pill{display:inline-flex; align-items:center; gap:6px; font-family:var(--f-mono);
-        font-size:var(--s-1); font-weight:600; padding:2px 9px; border-radius:3px; white-space:nowrap}
-  .pill.ok{background:var(--good-soft); color:var(--good)}
-  .pill.hold{background:var(--warn-soft); color:var(--warn)}
-  .pill.info{background:var(--accent-soft); color:var(--accent)}
-
-  .flow{display:flex; flex-direction:column; gap:0; font-family:var(--f-mono); font-size:var(--s-1)}
-  .flow div{padding:9px 14px; border:1px solid var(--rule); border-bottom:0; background:var(--surface-2)}
-  .flow div:first-child{border-radius:5px 5px 0 0}
-  .flow div:last-child{border-bottom:1px solid var(--rule); border-radius:0 0 5px 5px}
-  .flow .hi{background:var(--accent-soft); color:var(--accent); font-weight:600}
-
-  a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px}
-  a:focus-visible,.slide:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
-
-  .foot{font-family:var(--f-mono); font-size:var(--s-1); color:var(--ink-3); text-align:center; padding-top:8px}
-
-  @media (max-width:640px){
-    .slide-body{padding:22px 18px}
-    .slide-head{padding:12px 18px}
-    :root{--s3:1.5rem; --s4:1.9rem; --s5:2.3rem}
+  /* ---------- rail ---------- */
+  .rail{
+    display:flex; flex-wrap:wrap; gap:calc(var(--u)*6);
+    border-top:1px solid var(--line); padding-top:calc(var(--u)*4); margin-top:calc(var(--u)*4);
+    font-size:var(--s-1); color:var(--ink-3);
   }
-  @media (prefers-reduced-motion:no-preference){
-    .slide{animation:rise .5s cubic-bezier(.2,.7,.3,1) both}
-    @keyframes rise{from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none}}
+  .rail>span{flex:1 1 210px}
+  .rail b{color:var(--ink-2); font-weight:650}
+
+  /* ---------- flow ---------- */
+  .flow{
+    display:flex; flex-wrap:wrap; align-items:center; gap:calc(var(--u)*2);
+    font-family:var(--f-mono); font-size:var(--s-1); color:var(--ink-2);
+    margin:0 0 calc(var(--u)*4);
   }
+  .flow>span{border:1px solid var(--line); border-radius:2px; padding:calc(var(--u)*1.5) calc(var(--u)*3);
+             background:var(--surface-2)}
+  .flow>i{color:var(--accent); font-style:normal}
+
+  /* ================================================================
+     .reveal — the one device. Raw chatter on the left, the work item it
+     becomes on the right, with the transformation visible rather than
+     asserted. The security-infra decks do this with plaintext→ciphertext;
+     the subject here is noise→ledger, which is the same claim about the
+     same kind of product, so it earns the same treatment.
+     ================================================================ */
+  .reveal{
+    display:grid; grid-template-columns:1fr auto 1fr; gap:calc(var(--u)*4); align-items:stretch;
+    margin:0 0 calc(var(--u)*4); font-family:var(--f-mono); font-size:var(--s-1);
+  }
+  .reveal .side{border:1px solid var(--line); border-radius:var(--r); padding:calc(var(--u)*4);
+                background:var(--surface-2)}
+  .reveal .side.raw{color:var(--ink-3)}
+  .reveal .side.raw span{display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .reveal .side.out{color:var(--ink); border-color:var(--accent-dim)}
+  .reveal .side.out b{color:var(--accent); font-weight:600}
+  .reveal .arrow{display:flex; align-items:center; color:var(--accent); font-size:var(--s2)}
+  .reveal .cap{grid-column:1/-1; font-family:var(--f-sans); font-size:var(--s-1); color:var(--ink-3)}
+  @media (max-width:760px){ .reveal{grid-template-columns:1fr} .reveal .arrow{justify-content:center} }
+
+  /* ================================================================
+     The cats. Five photographs of five different animals will not cohere on
+     their own, so every one is pushed through the same duotone: greyscale
+     first, then the accent laid over in `color` blend. Whatever you drop in
+     comes out belonging to this deck. It is also the only warm, living thing
+     in a very precise dark page, which is the contrast the concept wants.
+
+     If a file is missing the <img> removes itself and the framed placeholder
+     underneath shows through — a slot that reads as deliberate, never a
+     broken-image icon in the middle of a review.
+     ================================================================ */
+  .cat{
+    position:relative; margin:0; overflow:hidden; border:1px solid var(--line);
+    border-radius:var(--r); background:var(--surface-2);
+    background-image:var(--paw); background-repeat:no-repeat;
+    background-position:center 42%; background-size:38px;
+    display:flex; align-items:flex-end; min-height:150px;
+  }
+  .cat img{
+    width:100%; height:100%; object-fit:cover; display:block;
+    filter:grayscale(1) contrast(1.06) brightness(.9);
+  }
+  .cat::after{
+    content:""; position:absolute; inset:0; pointer-events:none;
+    background:var(--accent); mix-blend-mode:color; opacity:.24;
+  }
+  .cat figcaption{
+    position:absolute; left:0; right:0; bottom:0; z-index:2;
+    font-family:var(--f-mono); font-size:var(--s-2); letter-spacing:.09em;
+    text-transform:uppercase; color:var(--ink);
+    padding:calc(var(--u)*2) calc(var(--u)*3);
+    background:linear-gradient(to top, rgba(12,10,9,.86), rgba(12,10,9,0));
+  }
+  :root[data-theme="light"] .cat figcaption{
+    background:linear-gradient(to top, rgba(251,247,244,.92), rgba(251,247,244,0));
+  }
+  .cat--hero{aspect-ratio:1/1; min-height:0; width:190px; justify-self:end}
+  .cat--wide{aspect-ratio:16/7; margin:0 0 calc(var(--u)*4)}
+  .cat--tall{aspect-ratio:4/5}
+  @media (max-width:860px){ .cat--hero{width:100%; aspect-ratio:16/7; justify-self:stretch} }
+
+  /* ---------- theme switch: one button, for one bad projector ---------- */
+  .theme{
+    position:fixed; right:calc(var(--u)*4); top:calc(var(--u)*4); z-index:9;
+    font-family:var(--f-mono); font-size:var(--s-2); letter-spacing:.08em;
+    text-transform:uppercase; color:var(--ink-2); background:var(--surface);
+    border:1px solid var(--line-2); border-radius:2px; padding:calc(var(--u)*1.5) calc(var(--u)*3);
+    cursor:pointer;
+  }
+  .theme:hover{color:var(--accent); border-color:var(--accent-dim)}
+
+  .foot{
+    font-family:var(--f-mono); font-size:var(--s-2); color:var(--ink-3);
+    text-align:center; letter-spacing:.06em; margin:calc(var(--u)*8) 0 0;
+  }
+
+  @media (prefers-reduced-motion:reduce){ *{transition:none!important; animation:none!important} }
   @media print{
-    body{background:#fff}
-    .slide{break-after:page; box-shadow:none; animation:none}
-    .masthead,.foot{display:none}
+    .theme{display:none}
+    .slide{break-inside:avoid; page-break-inside:avoid}
   }
 
-    /* ---------- the cat, used where it carries something ---------- */
-    /* The bot signs every Slack message with a paw, so the mark is the product's, not a
-       decoration. Inline as a mask: it takes --paw, follows the theme, and makes no
-       request — the CSP on a published page blocks external images anyway. */
-    :root{
-      --paw-svg:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
-    }
-    /* Rounder than before, consistently. 5px reads as a browser default; this reads as a
-       decision, and it is the cheapest way to make a dense deck feel less severe. */
-    .card, .stat, .tw, pre{border-radius:12px}
-    .slide{border-radius:16px}
-    .num{border-radius:999px; padding:2px 10px}
-
-    /* A paw replaces the list bullet: same job, and it is this deck's own marker. */
-    .slide-body ul{list-style:none; padding-left:0}
-    .slide-body ul > li{position:relative; padding-left:1.5em}
-    .slide-body ul > li::before{
-      content:""; position:absolute; left:0; top:.42em; width:.72em; height:.72em;
-      background:var(--paw); opacity:.75;
-      -webkit-mask:var(--paw-svg) center/contain no-repeat; mask:var(--paw-svg) center/contain no-repeat;
-    }
-    /* Two ears on the stat tiles only. Every card that gets them is a counted thing, so
-       the shape says which cards those are instead of appearing on all of them. */
-    .stat{position:relative; overflow:visible; margin-top:7px}
-    .stat::before, .stat::after{
-      content:""; position:absolute; top:-8px; width:0; height:0;
-      border-left:8px solid transparent; border-right:8px solid transparent;
-      border-bottom:10px solid var(--rule-strong);
-    }
-    .stat::before{left:14px; transform:rotate(-14deg)}
-    .stat::after{left:36px; transform:rotate(14deg)}
+  /* ---------- carried over from the previous stylesheet ---------- */
+  /* Restored after the restyle replaced the sheet wholesale: the content still
+     uses all three, and a class the HTML references but the CSS dropped is an
+     element that silently renders as plain text. */
+  .mark{font-size:var(--s1); font-weight:660; letter-spacing:-.01em; color:var(--ink)}
+  .meta{font-family:var(--f-mono); font-size:var(--s-2); color:var(--ink-3); letter-spacing:.06em}
+  /* An inline highlight: a wash rather than a block of colour, so a highlighted
+     phrase stays readable and does not outshout the accent it borrows. */
+  .hi{color:var(--ink); background:var(--accent-wash); box-shadow:inset 0 -1px 0 var(--accent-dim);
+      padding:.02em .2em; border-radius:2px}
 </style>
 
 <div class="deck">
 
+  <button class="theme" type="button" id="theme">โหมดสว่าง</button>
+
   <header class="masthead">
-    <span class="mark">ตาม <span style="color:var(--ink-3);font-weight:600">(Tam)</span></span>
-    <span class="eyebrow">Draft deck · 10 สไลด์</span>
-    <span class="meta">18 ส.ค. 2569 · ส่ง 19 ส.ค. 2569</span>
+    <div class="brand">
+      <span class="mark">ตาม <span style="color:var(--ink-3);font-weight:600">(Tam)</span></span>
+      <span class="tagline">a cat that reads the standup you did not have</span>
+      <span class="eyebrow">Draft deck · 10 สไลด์</span>
+      <span class="meta">18 ส.ค. 2569 · ส่ง 19 ส.ค. 2569</span>
+    </div>
+    <figure class="cat cat--hero">
+      <img src="img/cat-1.jpg" alt="แมวประจำโปรเจกต์" onerror="this.remove()">
+      <figcaption>01 · on duty</figcaption>
+    </figure>
   </header>
 
   <!-- 1 -->
@@ -222,6 +333,10 @@
   <section class="slide">
     <div class="slide-head"><span class="num">02</span><span class="eyebrow">ปัญหา</span></div>
     <div class="slide-body">
+      <figure class="cat cat--wide">
+        <img src="img/cat-2.jpg" alt="แมวอ่านแชนเนล" onerror="this.remove()">
+        <figcaption>02 · reading the channel</figcaption>
+      </figure>
       <h2>สถานะจริงของงานอยู่ใน 4 ที่ และครบอยู่ที่เดียว — ในหัวคน</h2>
       <p>อาการที่ทีมเจอดูเหมือนหลายเรื่อง แต่เป็นเรื่องเดียวกันในเสื้อผ้าคนละชุด</p>
       <div class="grid g2">
@@ -240,6 +355,24 @@
     <div class="slide-head"><span class="num">03</span><span class="eyebrow">ทางแก้</span></div>
     <div class="slide-body">
       <h2>รวมเป็น "งานหนึ่งชิ้น" แล้วส่งให้ตอนที่คุณกำลังใช้ความจำ</h2>
+      <div class="reveal">
+        <div class="side raw">
+          <span>“พี่ชินเจอว่าคะแนนมันเปลี่ยนไปเปลี่ยนมา…”</span>
+          <span>“ในรูป record จาก prod ฮ้ะ”</span>
+          <span>“สรุปแล้วเดี๊ยวพรุ่งนี้ไปถาม user อีกที”</span>
+          <span>“mkt ต้องรอ เดี๊ยวเป็นสปิ้นใหม่แยก”</span>
+          <span>· 22 ข้อความ · 3 ช่อง · 41 วัน</span>
+        </div>
+        <div class="arrow">→</div>
+        <div class="side out">
+          <b>PROJ-225</b> · uat, event mobile preview<br>
+          state <b>blocked</b> since 2026-08-18<br>
+          evidence “mkt ต้องรอ …” <b>↗</b><br>
+          slack 22 · meeting 5 · ticket 2<br>
+          waiting on <b>mkt</b>
+        </div>
+        <div class="cap">ซ้ายคือสิ่งที่มีอยู่จริงใน Slack ขวาคือสิ่งที่ระบบสรุป — ทุกบรรทัดขวากดกลับไปดูข้อความต้นทางได้</div>
+      </div>
       <p class="lede">ไม่ใช่ dashboard เพิ่มอีกอัน — เป็นระบบที่อ่านสิ่งที่ทีมพิมพ์กันอยู่แล้ว แล้วเก็บเป็นบันทึกเดียวต่อหนึ่งงาน</p>
       <div class="flow">
         <div>ข้อความ Slack + เธรด &nbsp;+&nbsp; บันทึกการประชุม (VTT / SRT)</div>
@@ -324,6 +457,10 @@ slack-bot/   Slack bot — npm project แยก</pre>
   <section class="slide">
     <div class="slide-head"><span class="num">06</span><span class="eyebrow">ต้นแบบ · Dashboard บนข้อมูลจริง</span></div>
     <div class="slide-body">
+      <figure class="cat cat--wide">
+        <img src="img/cat-3.jpg" alt="แมวเฝ้า dashboard" onerror="this.remove()">
+        <figcaption>03 · on the dashboard</figcaption>
+      </figure>
       <h2>รันบนข้อมูลจริงอยู่ตอนนี้ — และโมเดลถูกเปลี่ยนเพราะการวัด</h2>
       <pre>$ curl -s http://127.0.0.1:8899/api/health        # ตัดฟิลด์เวลาออกให้อ่านง่าย
 {"ok":true,"records_path":"data/processed/real_all.json","records":1168,"topics":28,
@@ -354,6 +491,10 @@ $ curl -s http://127.0.0.1:8899/api/blockers        # ชื่อถูกแ�
   <section class="slide">
     <div class="slide-head"><span class="num">07</span><span class="eyebrow">ต้นแบบ · Slack</span></div>
     <div class="slide-body">
+      <figure class="cat cat--wide">
+        <img src="img/cat-4.jpg" alt="แมวใน Slack" onerror="this.remove()">
+        <figcaption>04 · in the channel</figcaption>
+      </figure>
       <h2>ใช้งานในหน้าต่าง Slack ไม่ต้องเปิดเว็บ</h2>
       <p>ใช้ <strong>Socket Mode</strong> — ไม่ต้องมี public URL ไม่ต้องใช้ ngrok ไม่ต้องเปิด firewall บอทต่อออกไปหา Slack เอง รันจากโน้ตบุ๊กได้เลย</p>
       <div class="tw">
@@ -449,6 +590,10 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template</pre>
   <section class="slide">
     <div class="slide-head"><span class="num">10</span><span class="eyebrow">สิ่งที่การวัดแก้ · ข้อจำกัด · ก้าวถัดไป</span></div>
     <div class="slide-body">
+      <figure class="cat cat--wide">
+        <img src="img/cat-5.jpg" alt="แมวกับงานที่เหลือ" onerror="this.remove()">
+        <figcaption>05 · what is left</figcaption>
+      </figure>
       <h2>เกณฑ์ตัดความเกี่ยวข้องกรองผิดสัญญาณมาตลอด — การวัดคือสิ่งที่จับได้</h2>
       <div class="card" style="border-color:var(--warn); background:var(--warn-soft)">
         <span class="k" style="color:var(--warn)">แก้ที่กลไก ไม่ใช่ที่ตัวเลขเกณฑ์</span>
@@ -494,5 +639,22 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template</pre>
     </div>
   </section>
 
-  <p class="foot">ตาม (Tam) · draft deck 10 สไลด์ · ปรับปรุง 18 ส.ค. 2569</p>
+  <script>
+  /* The switch exists for one situation: a projector in a bright room, where a dark deck
+     is unreadable. Dark stays the default because that is the design; the choice is
+     remembered so it survives the reload nobody wants to do mid-presentation. */
+  (function () {
+    var root = document.documentElement, btn = document.getElementById('theme');
+    var label = function () { btn.textContent = root.getAttribute('data-theme') === 'light' ? 'โหมดมืด' : 'โหมดสว่าง'; };
+    try { if (localStorage.getItem('tam-theme') === 'light') root.setAttribute('data-theme', 'light'); } catch (e) {}
+    label();
+    btn.addEventListener('click', function () {
+      var light = root.getAttribute('data-theme') === 'light';
+      if (light) { root.removeAttribute('data-theme'); } else { root.setAttribute('data-theme', 'light'); }
+      try { localStorage.setItem('tam-theme', light ? 'dark' : 'light'); } catch (e) {}
+      label();
+    });
+  })();
+</script>
+<p class="foot">ตาม (Tam) · draft deck 10 สไลด์ · ปรับปรุง 18 ส.ค. 2569</p>
 </div>

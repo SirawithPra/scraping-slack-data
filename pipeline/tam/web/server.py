@@ -319,83 +319,83 @@ def esc(value: Any) -> str:
 def page_styles() -> str:
     """The dashboard's own layer on top of build_page's tokens.
 
-    Everything here reads a variable rather than a hex value, so the page follows the
-    reader's theme. It used to interpolate the light constants directly, which meant a
-    dark-mode reader got light text on a light card.
+    Everything reads a variable, so both themes resolve from one set of rules. Dark is the
+    default because that is the design; light is behind an explicit stamp for a bright room.
     """
     return """<style>
   :root {
-    --state-blocked:#C4553A; --state-resolved:#3E7C6A; --state-active:#B98A2E;
+    --state-blocked:#F0866A; --state-resolved:#6FBFA4; --state-active:#E0A860;
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --state-blocked:#F0866A; --state-resolved:#6FBFA4; --state-active:#E0B45E;
-    }
-  }
-  :root[data-theme="dark"] {
-    --state-blocked:#F0866A; --state-resolved:#6FBFA4; --state-active:#E0B45E;
+  :root[data-theme="light"] {
+    --state-blocked:#C4553A; --state-resolved:#2F6455; --state-active:#95610F;
   }
 
-  nav { display: flex; flex-wrap: wrap; gap: 6px; margin: -6px 0 26px; font-size: 14px; }
-  nav a { color: var(--ink2); text-decoration: none; padding: 5px 12px; border-radius: 999px;
-          border: 1px solid transparent; }
-  nav a:hover { color: var(--ink); background: var(--page); border-color: var(--grid); }
-  nav a.on { color: var(--ink); background: var(--page); border-color: var(--accent); font-weight: 600; }
+  /* Nav as a row of mono labels, underlined on the current one. Pills here would compete
+     with the state chips, and the state chips are the ones carrying information. */
+  nav { display: flex; flex-wrap: wrap; gap: calc(var(--u)*6); margin: 0 0 calc(var(--u)*7);
+        font-family: var(--f-mono); font-size: .72rem; text-transform: uppercase;
+        letter-spacing: .11em; border-bottom: 1px solid var(--line); padding-bottom: calc(var(--u)*3); }
+  nav a { color: var(--ink3); text-decoration: none; border-bottom: 1px solid transparent;
+          padding-bottom: calc(var(--u)*1); }
+  nav a:hover { color: var(--ink2); }
+  nav a.on { color: var(--accent); border-bottom-color: var(--accent); }
 
-  /* A work item is a card, and the stripe down its left is its state. The paw marks the
-     row as one of the bot's own findings — the same mark it signs Slack messages with. */
-  .topic { position: relative; background: var(--surface); border: 1px solid var(--grid);
-           border-left: 4px solid var(--grid); border-radius: var(--r-md);
-           padding: 13px 16px 12px 40px; margin: 0 0 14px; }
-  .topic::before { content: ""; position: absolute; left: 15px; top: 16px; width: 15px; height: 15px;
-           background: var(--paw); opacity: .55;
-           -webkit-mask: var(--paw-svg) center/contain no-repeat; mask: var(--paw-svg) center/contain no-repeat; }
+  /* A work item: hairline box, state as the left rule, and the paw marking it as one of
+     the bot's own findings — the same mark it signs Slack messages with. */
+  .topic { position: relative; background: var(--surface); border: 1px solid var(--line);
+           border-left: 2px solid var(--line-2); border-radius: var(--r);
+           padding: calc(var(--u)*4) calc(var(--u)*5) calc(var(--u)*4) calc(var(--u)*10);
+           margin: 0 0 calc(var(--u)*3); }
+  .topic::before { content: ""; position: absolute; left: calc(var(--u)*4); top: calc(var(--u)*4.5);
+           width: 13px; height: 13px; background: var(--ink3);
+           -webkit-mask: var(--paw) center/contain no-repeat; mask: var(--paw) center/contain no-repeat; }
   .topic.blocked { border-left-color: var(--state-blocked); }
-  .topic.blocked::before { background: var(--state-blocked); opacity: 1; }
+  .topic.blocked::before { background: var(--state-blocked); }
   .topic.resolved { border-left-color: var(--state-resolved); }
   .topic.active { border-left-color: var(--state-active); }
-  .topic h3 { margin: 0 0 3px; font-size: 16px; letter-spacing: -.01em; }
-  .topic h3 a { color: var(--ink); text-decoration: none; }
-  .topic h3 a:hover { text-decoration: underline; text-decoration-color: var(--accent); }
+  .topic h3 { margin: 0 0 calc(var(--u)*1.5); font-size: 1rem; font-weight: 650; letter-spacing: -.012em; }
+  .topic h3 a { color: var(--ink); border: 0; }
+  .topic h3 a:hover { color: var(--accent); }
 
-  .meta { font-size: 12px; color: var(--ink3); margin: 0 0 7px; }
-  .detail { font-size: 14px; margin: 0 0 7px; }
-  .next { font-size: 14px; color: var(--ink2); margin: 0 0 7px; }
-  .msg { font-size: 13px; color: var(--ink2); margin: 3px 0; }
-  .who { color: var(--ink3); }
-  .tag { font-size: 10px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--grid);
-         color: var(--ink3); text-transform: uppercase; letter-spacing: .06em; }
-  .warn { color: var(--warn); font-size: 12px; }
+  .meta { font-family: var(--f-mono); font-size: .7rem; color: var(--ink3);
+          margin: 0 0 calc(var(--u)*2); letter-spacing: .03em; }
+  .detail { font-size: .88rem; margin: 0 0 calc(var(--u)*2); color: var(--ink2); }
+  .next { font-size: .88rem; color: var(--ink2); margin: 0 0 calc(var(--u)*2); }
+  .msg { font-size: .82rem; color: var(--ink2); margin: calc(var(--u)*1) 0; }
+  .who { font-family: var(--f-mono); font-size: .72rem; color: var(--ink3); }
+  .tag { font-family: var(--f-mono); font-size: .64rem; padding: 1px 6px; border-radius: 2px;
+         border: 1px solid var(--line-2); color: var(--ink3);
+         text-transform: uppercase; letter-spacing: .09em; }
+  .warn { color: var(--warn); font-size: .78rem; }
 
-  form.search { display: flex; gap: 9px; margin: 0 0 22px; }
-  form.search input[type=text] { flex: 1; padding: 11px 15px; font-size: 14px;
-      border: 1px solid var(--grid); border-radius: 999px; background: var(--surface);
+  /* The paste box is the primary control on /upload, so it gets the room to look like one. */
+  form.search { display: flex; gap: calc(var(--u)*2); margin: 0 0 calc(var(--u)*5); }
+  form.search input[type=text], textarea, .row input[type=text], .row input[type=datetime-local] {
+      padding: calc(var(--u)*2.5) calc(var(--u)*3.5); font-size: .88rem;
+      border: 1px solid var(--line-2); border-radius: var(--r); background: var(--page);
       color: var(--ink); font-family: inherit; }
-  form.search input[type=text]::placeholder { color: var(--ink3); }
-  button { padding: 11px 20px; font-size: 14px; font-weight: 600; border: 0; border-radius: 999px;
-      background: var(--accent); color: var(--on-accent); cursor: pointer; font-family: inherit; }
-  button:hover { filter: brightness(1.06); }
-
-  /* The paste box is the primary control on /upload, so it gets the room to look like
-     one rather than a field somebody squeezed in. */
-  textarea { width: 100%; padding: 13px 15px; font-size: 14px; line-height: 1.65;
-      border: 1px solid var(--grid); border-radius: var(--r-md); background: var(--surface);
-      color: var(--ink); font-family: inherit; resize: vertical; margin: 0 0 11px; }
-  textarea::placeholder { color: var(--ink3); }
-  textarea:focus, form.search input[type=text]:focus, .row input:focus { border-color: var(--accent); outline: none; }
-  .row { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; margin: 0 0 12px; }
-  .row input[type=text], .row input[type=datetime-local] { flex: 1 1 170px; min-width: 0;
-      padding: 10px 14px; font-size: 14px; border: 1px solid var(--grid);
-      border-radius: 999px; background: var(--surface); color: var(--ink); font-family: inherit; }
-  .row input[type=file] { flex: 1 1 240px; font-size: 13px; color: var(--ink2); }
-  .row input::placeholder { color: var(--ink3); }
+  form.search input[type=text] { flex: 1; }
+  textarea { width: 100%; line-height: 1.7; resize: vertical; margin: 0 0 calc(var(--u)*3);
+      font-family: var(--f-mono); font-size: .82rem; }
+  ::placeholder { color: var(--ink3); }
+  textarea:focus, input:focus { border-color: var(--accent); outline: none; }
+  .row { display: flex; flex-wrap: wrap; gap: calc(var(--u)*2); align-items: center; margin: 0 0 calc(var(--u)*3); }
+  .row input[type=text], .row input[type=datetime-local] { flex: 1 1 170px; min-width: 0; }
+  .row input[type=file] { flex: 1 1 240px; font-size: .78rem; color: var(--ink2); }
   .row button { flex: 0 0 auto; }
+  button { font-family: var(--f-mono); font-size: .72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: .1em;
+      padding: calc(var(--u)*2.5) calc(var(--u)*5); border: 1px solid var(--accent);
+      border-radius: var(--r); background: var(--accent); color: var(--on-accent); cursor: pointer; }
+  button:hover { background: transparent; color: var(--accent); }
 
-  .event { display: grid; grid-template-columns: 116px 1fr; gap: 12px; margin: 0 0 14px; font-size: 13px; }
-  .event .when { color: var(--ink3); font-variant-numeric: tabular-nums; }
-  .rel { font-weight: 650; color: var(--accent-2); }
-  /* A whisker rather than a rule: same job, and it belongs to this page's own world. */
-  .event + .event { border-top: 1px solid var(--grid); padding-top: 12px; }
+  .event { display: grid; grid-template-columns: 118px 1fr; gap: calc(var(--u)*3);
+           margin: 0 0 calc(var(--u)*3); font-size: .82rem; }
+  .event + .event { border-top: 1px solid var(--line); padding-top: calc(var(--u)*3); }
+  .event .when { font-family: var(--f-mono); font-size: .72rem; color: var(--ink3);
+                 font-variant-numeric: tabular-nums; }
+  .rel { font-family: var(--f-mono); font-size: .72rem; text-transform: uppercase;
+         letter-spacing: .09em; color: var(--good); }
 </style>"""
 
 

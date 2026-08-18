@@ -1,0 +1,6 @@
+# Personal photographs do not belong in a public repo. The deck reads them from
+# here at open time; keeping them out of git costs nothing and leaks nothing.
+*.jpg
+*.jpeg
+*.png
+*.webp
