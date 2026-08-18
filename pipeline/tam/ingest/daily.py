@@ -76,7 +76,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--raw-dir", type=Path, default=DEFAULT_RAW_DIR, help=f"Per-channel exports live here (default {DEFAULT_RAW_DIR})")
     parser.add_argument("--records", type=Path, default=DEFAULT_RECORDS, help=f"Corpus to merge into (default {DEFAULT_RECORDS})")
     parser.add_argument("--max-messages", type=int, default=200, help="Cap per channel on a first, non-incremental pass")
-    parser.add_argument("--reindex-url", default=os.getenv("TAM_API_URL", "http://127.0.0.1:8899"), help="Dashboard to rebuild afterwards")
+    # `or` rather than getenv's fallback: a variable present but empty must mean
+    # "unset", which is how every other setting here behaves and what makes it safe to
+    # ship .env.example with the name visible and no value. getenv's default only
+    # applies when the key is absent, so `TAM_API_URL=` would have made this an empty
+    # string and broken the reindex with no message.
+    parser.add_argument(
+        "--reindex-url",
+        default=os.getenv("TAM_API_URL", "").strip() or "http://127.0.0.1:8899",
+        help="Dashboard to rebuild afterwards (default http://127.0.0.1:8899)",
+    )
     parser.add_argument("--no-reindex", action="store_true", help="Skip the rebuild; just refresh the corpus")
     parser.add_argument("--dry-run", action="store_true", help="Say what would happen without calling Slack")
     return parser.parse_args()
