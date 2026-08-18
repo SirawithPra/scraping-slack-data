@@ -100,13 +100,30 @@ python3 -m tam.ingest.meetings \
 > ผู้พูดในบทประชุมมาเป็น**ชื่อ** ไม่ใช่ Slack id ระบบจึง DM คนนั้นไม่ได้ และมันจะบอกตรง ๆ
 > ว่า DM ไม่ได้กี่คน แทนที่จะเดาว่าชื่อนี้คือใครแล้วส่งผิดคน
 
-**รีเฟรช Slack ทุกเช้า** (ถ้าเคย merge ประชุมเข้าไปแล้ว ต้องใช้ `--merge-into` ไม่ใช่ `--out`):
+**รีเฟรช Slack ทุกเช้า — คำสั่งเดียว**
 
 ```bash
-python3 -m tam.ingest.export_slack
-python3 -m tam.ingest.prepare_messages --merge-into data/processed/messages.json
-curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" localhost:8899/api/reindex
+python3 -m tam.ingest.daily
 ```
+
+ทำครบสามขั้นตามลำดับ: ดึงเฉพาะที่ใหม่จาก**ทุกช่องที่บอทถูกเชิญเข้า** → merge เข้า corpus →
+สั่ง dashboard rebuild · **วัดแล้ว 16 วินาที** สำหรับ 5 ช่อง / 37 ข้อความใหม่
+
+```bash
+python3 -m tam.ingest.daily --dry-run    # ดูว่าจะทำอะไร โดยไม่เรียก Slack เพิ่ม
+```
+
+`--dry-run` มีเพราะ rate limit ~1 request/นาที — คำถามว่า "มันจะทำอะไร" ต้องตอบได้
+โดยไม่ต้องจ่าย budget ไปหาคำตอบ
+
+สิ่งที่มันคิดเผื่อไว้:
+
+- **เช้าที่ไม่มีใครคุย = ไม่แตะ corpus** ไม่ใช่ error และไม่ re-embed ให้เปล่าประโยชน์
+- **ล้มขั้นไหนหยุดทันที** ดีกว่าได้ corpus ที่มีบางช่องใหม่บางช่องเก่าแล้ว digest ดูเหมือนครบ
+- **ไม่มี dashboard รันอยู่ก็ไม่ล้ม** แต่จะบอกว่าข้าม rebuild และบอกคำสั่งให้สั่งเอง
+- **ข้ามข้อความที่บอทโพสต์เอง** เพราะบอทโพสต์ digest ลงช่องที่ตัวเองอ่าน ถ้าไม่ข้าม
+  ข้อความ digest จะไปจับกลุ่มกับงานที่มันบรรยายอยู่ แล้วเสริมตัวเองทุกรอบ
+  (เจอจริง 5 โพสต์ก่อนจะจับได้ · บอทอื่นเก็บไว้ เพราะแจ้ง deploy คือเหตุการณ์จริง)
 
 ---
 
@@ -217,7 +234,7 @@ TAM_SCHEDULE_TZ=Asia/Bangkok
 | ครั้งเดียวตอนเริ่ม | `python3 -m tam.ingest.users --fetch` ให้ชื่ออ่านออก |
 | เช้า ก่อน standup | เปิด `/blockers` แล้ว `/` |
 | หลังประชุม | ลาก `.vtt` ใส่ `/upload` |
-| ทุกเช้า (ถ้าอยากสด) | `export_slack` → `prepare_messages --merge-into` → `POST /api/reindex` |
+| ทุกเช้า (ถ้าอยากสด) | **`python3 -m tam.ingest.daily`** — คำสั่งเดียว ทำครบทุกช่อง 16 วินาที |
 | ระหว่างวันใน Slack | `/meowtam recall …` |
 | ตอนมันผิด | คลิกขวา → **ผูกกับ ticket** |
 | ตอนตกลงกันได้ | คลิกขวา → **บันทึกเป็นการตัดสินใจ** |

@@ -94,14 +94,25 @@ def check_token_shape(token: str) -> None:
         log.warning("SLACK_TOKEN does not look like a bot or user token; trying it anyway.")
 
 
-def verify_auth(client: WebClient) -> None:
-    """Confirm the token works before paging, and log what it is connected to."""
+def verify_auth(client: WebClient) -> str:
+    """Confirm the token works before paging, and return this bot's own user id.
+
+    The id is what lets the export skip the bot's own messages. Without that, a bot
+    that posts a digest into a channel it also reads feeds its own output back in: the
+    digest text quotes item labels and evidence, so it clusters with the very items it
+    describes and the group reinforces itself on every refresh. Measured on the test
+    channel, four of the bot's own posts had entered the corpus this way.
+
+    Other bots are kept. A deploy notification is a real event worth clustering; the
+    bot reading its own summary of yesterday is not.
+    """
     response = call_slack(client.auth_test)
     log.info(
         "Authenticated as %s in workspace %s",
         response.get("user") or response.get("bot_id") or "unknown",
         response.get("team") or "unknown",
     )
+    return str(response.get("user_id") or "")
 
 
 def next_cursor(response: Any) -> str | None:
@@ -182,9 +193,14 @@ def has_thread(message: dict[str, Any]) -> bool:
 
 
 def export_channel(
-    client: WebClient, channel_id: str, max_messages: int, page_size: int, oldest: str = ""
+    client: WebClient, channel_id: str, max_messages: int, page_size: int, oldest: str = "", skip_user: str = ""
 ) -> list[dict[str, Any]]:
     parents = fetch_parent_messages(client, channel_id, max_messages, page_size, oldest)
+    if skip_user:
+        before = len(parents)
+        parents = [message for message in parents if str(message.get("user") or "") != skip_user]
+        if before != len(parents):
+            log.info("Skipped %d message(s) this bot posted itself", before - len(parents))
     log.info("Fetched %d parent message(s); collecting thread replies", len(parents))
 
     exported: list[dict[str, Any]] = []
@@ -337,7 +353,7 @@ def main() -> None:
     check_token_shape(token)
     client = WebClient(token=token)
     try:
-        verify_auth(client)
+        self_id = verify_auth(client)
         # One list of (channel, label, destination), so the single-channel and
         # all-channels paths share every line below rather than drifting apart.
         targets = (
@@ -353,7 +369,7 @@ def main() -> None:
                 log.info("#%s: only what is newer than %s", name, format_ts(oldest))
             else:
                 log.info("#%s: up to %d parent message(s)", name, max_messages)
-            fresh = export_channel(client, cid, max_messages, page_size, oldest)
+            fresh = export_channel(client, cid, max_messages, page_size, oldest, self_id)
             if oldest:
                 previous = json.loads(out.read_text(encoding="utf-8")) if out.exists() else []
                 combined = merge_exports(previous, fresh)
