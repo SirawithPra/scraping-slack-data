@@ -15,7 +15,7 @@
 | `data/sample/slack_messages.sample.json` | ตัวอย่างไทย/อังกฤษ สังเคราะห์ | 23 → 18 ข้อความ | ✅ ขึ้น |
 | `data/sample/synthetic_work_chat.json` | แชทงานสังเคราะห์ | 1000 → 927 ข้อความ, 77 thread | ✅ ขึ้น |
 | `data/processed/combined.json` | export จาก workspace ทดสอบ + บทประชุม | 42 record | ❌ gitignore |
-| `data/processed/real_all.json` | export จริง 4 private channel ของทีม | 1057 → 943 ข้อความ, 166 thread, 1102 record | ❌ gitignore |
+| `data/processed/real_all.json` | export จริง 4 private channel ของทีม | 1057 → 936 ข้อความ, 166 thread, 1102 record | ❌ gitignore |
 
 `real_all.json` เป็นข้อมูลจริงของบริษัท **ห้าม commit ห้ามใส่ในเอกสาร** ตัวเลขรวม (accuracy, cosine)
 เผยแพร่ได้ เนื้อหาข้อความไม่ได้
@@ -29,6 +29,11 @@ python3 -m tam.ingest.prepare_messages --raw data/raw/real_all.json --out data/p
 ---
 
 ## 2. เทรนไปสองรอบ ทั้งสองรอบไม่ผ่าน
+
+> **น้ำหนักของทั้งสองโมเดลถูกลบไปแล้ว** (18 ส.ค. 2569 · คืนพื้นที่ 932 MB)
+> เก็บไฟล์ 932 MB ที่เอกสารระบุเองว่าห้าม ship ไว้ ไม่คุ้ม ตัวเลขในหัวข้อนี้จึง
+> **ตรวจซ้ำได้แต่ต้องเทรนใหม่** — คำสั่งอยู่ใต้แต่ละหัวข้อย่อย ใช้เวลา ~3 นาทีต่อตัวบน CPU
+> (ถ้าจะทำ อ่าน "บทเรียน" ท้ายข้อ 2.2 ก่อน: ควรเปลี่ยนฐานเป็น bge-m3 ไม่ใช่เทรนบน MiniLM ซ้ำ)
 
 วิธีเทรนเหมือนกันทั้งคู่: `MultipleNegativesRankingLoss` บนคู่ข้อความที่อยู่ thread เดียวกัน
 แบ่ง held-out **ตาม thread ไม่ใช่ตามข้อความ** (แบ่งตามข้อความจะทำให้ครึ่งบทสนทนาไปอยู่ทั้งสองฝั่ง)
@@ -103,7 +108,7 @@ python3 -m tam.evaluation.compare_models --catalog
 
 **ทำไมเลือก `bge-m3`:** แม่นที่สุด (+4.3 จุดจากตัวเดิม), ขยะได้คะแนนต่ำสุดในกลุ่ม
 (0.731 เทียบ 0.918) และ context 8192 แก้ปัญหาข้อ 4 ได้เลย
-ข้อเสียคือใหญ่ 568MB และช้ากว่า MiniLM — รับได้เพราะมี embedding cache อยู่แล้ว
+ข้อเสียคือ 568M พารามิเตอร์ = น้ำหนัก 2.1 GB บนดิสก์ และช้ากว่า MiniLM — รับได้เพราะมี embedding cache อยู่แล้ว
 
 **ทำไมไม่เลือก `mpnet`:** accuracy ใกล้กัน (63.1 vs 63.7) แต่ขยะได้ **0.925** สูงสุดในตาราง
 และ label ต่ำสุดแค่ 0.367 → ช่องว่างกว้างที่สุด = gate แย่ที่สุด
