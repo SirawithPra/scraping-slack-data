@@ -232,7 +232,7 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template
 | `/blockers` | เฉพาะที่ติด พร้อมข้อความที่เป็นหลักฐาน |
 | `/item/{key}` | งานหนึ่งชิ้น — timeline ข้าม Slack และที่ประชุม · `{key}` ใช้ `item_id` ที่คงที่ (ticket key หรือ `c30a929`) ส่วนเลข cluster ยังเปิดได้แต่ rebuild แล้วเปลี่ยนความหมาย |
 | `/search` | วางประโยคที่สงสัย ระบบหาข้อความต้นทางให้ |
-| `/upload` | อัปโหลด `.vtt` / `.srt` รวมเข้า corpus |
+| `/upload` | **วางโน้ตที่จดเอง** (ที่ใช้จริงบ่อยสุด — ทีมส่วนใหญ่ไม่มีไฟล์ถอดเสียง) หรืออัปโหลด `.vtt` / `.srt` · วางหนึ่งครั้ง = หนึ่ง record · วางซ้ำในวันเดียวกันแทนที่ของเดิม · บรรทัดแบบ `• Pending …` จะขึ้นใน `/blockers` โดยอ้างบรรทัดนั้นเป็นหลักฐาน · CLI: `python3 -m tam.ingest.notes` |
 
 ### API
 
@@ -493,6 +493,9 @@ default มันไม่เปลี่ยนผลเลย (24 จาก 24 
 ได้ทุกอัน (แล้วเปลี่ยน `--days 3650` เป็น `--days 3` หรือ `7` ตามจริง)
 
 ```bash
+# วางโน้ตที่จดเอง (อ่าน stdin หรือ --file) — ใส่ --json ถ้าอยากดูก่อนว่าจะได้ record หน้าตาไหน
+pbpaste | python3 -m tam.ingest.notes --title "Sprint planning" --merge-into data/processed/real_all.json
+
 # ค้นหาแบบอธิบายว่าทำไมได้ผลนี้
 python3 -m tam.retrieval.retrieve --records data/processed/sample_combined.json \
         -q "BE sorting API พร้อมแล้วหรือยัง" --preset full --explain
