@@ -44,6 +44,7 @@ from tam.analysis.linker import Link, link_records, load_overrides
 from tam.analysis.relations import Relation, extract_relations
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
 from tam.ingest.quoted import for_analysis
+from tam.ingest.standup import declared_blockers
 from tam.ingest.users import Names
 from tam.retrieval.signals import SignalIndex, timestamp
 
@@ -197,6 +198,43 @@ class Digest:
         return [topic for topic in self.topics if topic.state == "resolved"]
 
 
+def apply_declarations(
+    topic_records: Sequence[dict[str, Any]],
+    declarations: dict[str, list[str]],
+    state: str,
+    evidence: str,
+    evidence_id: str,
+    state_since: float,
+) -> tuple[str, str, str, float]:
+    """Let a self-declared blocker override an inferred state.
+
+    `declarations` maps a record id to what its author wrote under the blockers
+    heading. If one of this topic's messages carries such a declaration and nothing
+    state-bearing happened after it, the item is blocked and the evidence is the
+    person's own words — no cue, no inference, and nothing to argue about.
+
+    A later `resolves` still wins, because somebody declaring a blocker on Monday and
+    reporting it fixed on Thursday is not blocked now. That is the same rule
+    `infer_state` uses, applied across the two kinds of evidence.
+    """
+    declared = [
+        (record, declarations[str(record["id"])])
+        for record in topic_records
+        if str(record["id"]) in declarations
+    ]
+    if not declared:
+        return state, evidence, evidence_id, state_since
+
+    record, answers = max(declared, key=lambda pair: timestamp(pair[0]))
+    when = timestamp(record)
+    if state == "resolved" and np.isfinite(state_since) and state_since > when:
+        return state, evidence, evidence_id, state_since
+
+    marker = format_timestamp(str(record.get("ts", "")))
+    answer = " / ".join(answers)[:120]
+    return "blocked", f'blocked since {marker} — คนกรอกเองว่า "{answer}"', str(record["id"]), when
+
+
 def infer_state(topic_records: Sequence[dict[str, Any]], relations: Sequence[Relation], records: Sequence[dict[str, Any]]) -> tuple[str, str, str, float]:
     """Decide whether a work item is blocked, resolved, or simply active.
 
@@ -348,6 +386,9 @@ def build_digest(
     graph = build_graph(records, matrix, signals, weights=EdgeWeights(), knn=knn)
     labels = detect_communities(graph, resolution=resolution)
     relations = extract_relations(records, [(int(a), int(b)) for a, b in graph.edges], method=method)
+    # Self-declared blockers, keyed by the message that carries them. Computed once per
+    # build: reading the form is a property of the corpus, not of a topic.
+    declarations = {str(record["id"]): answers for record, answers in declared_blockers(records)}
     # Same clustering the linker would compute, handed to it, so the work items
     # here and the links there cannot disagree about who is in which cluster.
     links = {
@@ -371,6 +412,15 @@ def build_digest(
             if str(records[relation.source]["id"]) in member_ids and str(records[relation.target]["id"]) in member_ids
         ]
         state, evidence, evidence_id, state_since = infer_state(member_records, relations, records)
+        # A person who typed an obstacle under "Are there any blockers?" has labelled it
+        # themselves, which outranks anything inferred from a cue. Applied after
+        # infer_state rather than inside it because it is evidence of a different kind:
+        # not a relation between two messages, but one message's own declaration. On the
+        # real export only one of the three such declarations contains any word from the
+        # blocked_by cue list, so this finds what no keyword list can.
+        state, evidence, evidence_id, state_since = apply_declarations(
+            member_records, declarations, state, evidence, evidence_id, state_since
+        )
         topics.append(
             Topic(
                 key=community,

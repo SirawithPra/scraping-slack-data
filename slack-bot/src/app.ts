@@ -16,6 +16,7 @@ import { standupDmBlocks } from './blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from './blocks/drift.js';
 import { recallBlocks } from './blocks/recall.js';
+import { formatBlocks } from './blocks/format.js';
 import { COMMANDS, CMD, context, section, esc, clamp } from './blocks/common.js';
 
 const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
@@ -141,6 +142,12 @@ app.command(new RegExp(`^/(${COMMANDS.join('|')})$`), async ({ command, ack, res
     // /meowtam digest
     if (lower === 'digest' || lower === 'standup') {
       await respond({ blocks: digestBlocks(), text: 'digest' });
+      return;
+    }
+
+    // /meowtam format    → the form the analysis can actually read
+    if (lower === 'format' || lower === 'help' || lower === 'template') {
+      await respond({ blocks: formatBlocks(), text: 'รูปแบบที่ระบบอ่านได้' });
       return;
     }
 
