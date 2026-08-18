@@ -44,6 +44,7 @@ from tam.analysis.linker import Link, link_records, load_overrides
 from tam.analysis.relations import Relation, extract_relations
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
 from tam.ingest.quoted import for_analysis
+from tam.ingest.blockers import blocker_lines
 from tam.ingest.standup import cleared_blockers, declared_blockers
 from tam.ingest.users import Names
 from tam.retrieval.signals import SignalIndex, timestamp
@@ -406,6 +407,14 @@ def build_digest(
     # Self-declared blockers, keyed by the message that carries them. Computed once per
     # build: reading the form is a property of the corpus, not of a topic.
     declarations = {str(record["id"]): answers for record, answers in declared_blockers(records)}
+    # The form's blockers field is one way this team declares an obstacle; a bullet inside
+    # a long daily post is the commoner one, and both are the person's own words about
+    # their own work. Fed through the same tier for that reason: `apply_declarations`
+    # already holds the two rules that matter — a declaration outranks anything inferred,
+    # and only its own author can withdraw it. Measured: 26 lines across 17 posts, against
+    # 3 messages the whole-message cue list can reach (docs/EXPERIMENTS.md §7.1).
+    for line in blocker_lines(records):
+        declarations.setdefault(line.record_id, []).append(line.line)
     # The latest "no blockers" per person. Only the declarer's own withdrawal retires
     # their declaration — see apply_declarations for the measurement that forced this.
     clearances: dict[str, float] = {}
