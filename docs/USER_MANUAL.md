@@ -231,6 +231,8 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template
 | `/` | Digest — งานที่ขยับ เรียงใหม่สุดก่อน |
 | `/blockers` | เฉพาะที่ติด พร้อมข้อความที่เป็นหลักฐาน |
 | `/item/{key}` | งานหนึ่งชิ้น — timeline ข้าม Slack และที่ประชุม · `{key}` ใช้ `item_id` ที่คงที่ (ticket key หรือ `c30a929`) ส่วนเลข cluster ยังเปิดได้แต่ rebuild แล้วเปลี่ยนความหมาย |
+| `/people` | ใครอยู่กับเรื่องไหน — 23 คน พร้อมจำนวนงานที่เกี่ยวข้อง งานที่ติด และข้อความที่พูด |
+| `/tracker` | เทียบกับทิกเก็ต — ที่ขัดกัน (drift) และที่เปิดค้างแต่ไม่มีใครแตะ (silent) |
 | `/search` | วางประโยคที่สงสัย ระบบหาข้อความต้นทางให้ |
 | `/upload` | **วางโน้ตที่จดเอง** (ที่ใช้จริงบ่อยสุด — ทีมส่วนใหญ่ไม่มีไฟล์ถอดเสียง) หรืออัปโหลด `.vtt` / `.srt` · วางหนึ่งครั้ง = หนึ่ง record · วางซ้ำในวันเดียวกันแทนที่ของเดิม · บรรทัดแบบ `• Pending …` จะขึ้นใน `/blockers` โดยอ้างบรรทัดนั้นเป็นหลักฐาน · CLI: `python3 -m tam.ingest.notes` |
 
@@ -244,6 +246,7 @@ curl localhost:8899/api/blockers
 curl localhost:8899/api/item/c30a929       # {key} คือ item_id ที่ /api/digest ส่งมา — คงที่ข้าม rebuild
 curl localhost:8899/api/item/1             # เลข cluster ก็ยังใช้ได้ แต่ rebuild แล้วมันจะชี้งานคนละชิ้น
 curl "localhost:8899/api/search?q=Android&k=10"
+curl localhost:8899/api/people             # ใครอยู่กับเรื่องไหน · งานที่ติดของแต่ละคน
 curl localhost:8899/api/tracker            # เทียบกับ ticket system — ดู §7.8
 curl localhost:8899/api/health
 
