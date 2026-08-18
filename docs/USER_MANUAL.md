@@ -98,6 +98,10 @@ cp .env.example .env          # อยู่ใน pipeline/
 | `SLACK_CHANNEL_ID` | เฉพาะเมื่อจะดึงข้อมูลจริง | รหัสช่อง `C...` ไม่ใช่ชื่อช่อง |
 | `EMBEDDING_MODEL` | ไม่ | `.env.example` ปล่อยว่างไว้ตั้งใจ ให้ใช้ default ในโค้ดคือ `BAAI/bge-m3` · ตัวเลือกอื่นและผลวัดเทียบกันอยู่ใน [EXPERIMENTS.md](EXPERIMENTS.md) · แต่ละโมเดลมี cache แยกไฟล์ สลับได้ไม่พัง |
 | `SUMMARIZER` | ไม่ | `template` (default, ออฟไลน์) หรือ `claude` |
+| `TAM_NAMES` | ไม่ | ว่างไว้ = ใช้ชื่อจริงถ้ามี cache · `pseudonym` เวลาเดโม/แคปหน้าจอ · ดึงชื่อครั้งเดียวด้วย `python3 -m tam.ingest.users --fetch` |
+| `HF_HUB_OFFLINE` | **ไม่ — และอย่าเปิดตอนรันครั้งแรก** | `.env.example` ปิดไว้ตั้งใจ เพราะครั้งแรกยังไม่มีโมเดลใน cache ถ้าเปิดจะดาวน์โหลดไม่ได้และขึ้น `We couldn't connect` ทั้งที่เน็ตปกติ · **เปิดหลังรันผ่านรอบแรกแล้ว** จะเร็วขึ้นทุกรอบ |
+| `TAM_OVERRIDES_PATH` | ไม่ | ไฟล์ที่บอทเขียนตอนคนแก้การผูก ticket และ linker อ่านเป็นชั้นสูงสุด · สองฝั่ง default ตรงกันอยู่แล้ว |
+| `YOUTRACK_URL` / `YOUTRACK_TOKEN` | เฉพาะถ้าจะใช้ drift detection | **อ่านอย่างเดียวพอ** สร้าง service account แยกแล้วให้แค่ `Read Issue` — ไม่มีอะไรในระบบเขียนกลับเข้า YouTrack |
 
 > **`pipeline/.env` ถูก gitignore ไว้แล้ว** อย่า commit และอย่าส่ง token ทางแชทหรืออีเมล
 > ถ้าเคยส่งไปแล้ว ให้ revoke แล้วออกใหม่ที่ <https://api.slack.com/apps>
