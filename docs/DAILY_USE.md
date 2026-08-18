@@ -146,6 +146,8 @@ TAM_API_URL=http://127.0.0.1:8899 npm start
 | `/meowtam recall <ข้อความ>` | ค้นด้วยความหมาย — วางประโยคที่จำไม่ได้ว่าใครพูดไว้ที่ไหน |
 | `/meowtam <TICKET-123>` | เปิดงานนั้นพร้อม timeline |
 | `/meowtam @someone` | งานของคนนั้น |
+| **`/meowtam silent`** | **ticket ที่เปิดค้างและไม่มีใครแตะเกิน 21 วัน** (`quiet` ก็ได้) |
+| `/meowtam drift` | ที่ Slack กับ ticket ไม่ตรงกัน (ปิด ticket แล้วยังคุย / คุยว่าติดแต่ ticket ยังเปิด) |
 | **`/meowtam format`** | **รูปแบบที่ระบบอ่านได้ — ส่งให้ทีมดูได้เลย** (`help` / `template` ก็ได้) |
 | `/meowtam reload` | อ่านข้อมูลใหม่โดยไม่ต้อง restart (ใช้ตอนเดโม) |
 | `/mt …` | ย่อของทุกอันข้างบน |
@@ -236,6 +238,7 @@ TAM_SCHEDULE_TZ=Asia/Bangkok
 | หลังประชุม | ลาก `.vtt` ใส่ `/upload` |
 | ทุกเช้า (ถ้าอยากสด) | **`python3 -m tam.ingest.daily`** — คำสั่งเดียว ทำครบทุกช่อง 16 วินาที |
 | ระหว่างวันใน Slack | `/meowtam recall …` |
+| สัปดาห์ละครั้ง | **`/meowtam silent`** — งานที่ค้างใน ticket โดยไม่มีใครพูดถึงใน Slack |
 | ตอนมันผิด | คลิกขวา → **ผูกกับ ticket** |
 | ตอนตกลงกันได้ | คลิกขวา → **บันทึกเป็นการตัดสินใจ** |
 | ก่อนแคปหน้าจอ | `TAM_NAMES=pseudonym` **และไล่ดูข้อมูลลูกค้าในเนื้อข้อความ** |
@@ -244,7 +247,8 @@ TAM_SCHEDULE_TZ=Asia/Bangkok
 
 | อยากให้ทำ | สถานะ |
 |---|---|
-| ต่อ YouTrack / Notion | **ยังไม่ได้ต่อ** จึงยังไม่มี drift detection (เทียบ Slack กับ ticket) |
+| ต่อ YouTrack | **ต่อแล้ว** อ่าน ticket จริง 195 ใบ (เปิดค้าง 61) → `/meowtam silent` · `/meowtam drift` · `GET /api/tracker` |
+| ต่อ Notion / Jira | ยังไม่ได้ต่อ — `youtrack.py` เป็นตัวอ่านเฉพาะ YouTrack |
 | เขียนกลับเข้า ticket | ยังไม่มี |
 | DM คนที่พูดในที่ประชุม | ทำไม่ได้เมื่อ transcript ให้มาเป็นชื่อ ไม่ใช่ id — และมันจะไม่เดา |
 | จับ blocker ได้ครบ | จับได้น้อยกว่าที่มีจริงมาก — วัดแล้วว่าคอขวดอยู่ที่การจัดกลุ่มงาน ไม่ใช่คำศัพท์ ดู [EXPERIMENTS.md](EXPERIMENTS.md) §7 |

@@ -272,7 +272,7 @@
         </table>
       </div>
       <p>แยกกันเป็นคนละ process โดยตั้งใจ — บอทล่มไม่ทำให้ dashboard ล่ม และกลับกัน</p>
-      <pre>tam/            แพ็กเกจ Python — 24 โมดูล (21 เป็น CLI), python3 -m tam.&lt;area&gt;.&lt;module&gt;
+      <pre>tam/            แพ็กเกจ Python — 28 โมดูล (24 เป็น CLI), python3 -m tam.&lt;area&gt;.&lt;module&gt;
 ├── ingest/     ดึง Slack · ทำความสะอาด · บันทึกการประชุม
 ├── retrieval/  embeddings · BM25 · signals · fusion · rerank
 ├── analysis/   graph · relations · linker · digest · summarize
@@ -291,11 +291,12 @@ slack-bot/   Slack bot — npm project แยก</pre>
     <div class="slide-body">
       <h2>รันบนข้อมูลจริงอยู่ตอนนี้ — และโมเดลถูกเปลี่ยนเพราะการวัด</h2>
       <pre>$ curl -s http://127.0.0.1:8899/api/health        # ตัดฟิลด์เวลาออกให้อ่านง่าย
-{"ok":true,"records_path":"data/processed/real_all.json","records":936,"topics":34,
- "model":"BAAI/bge-m3","summariser":"template","preset":"hybrid","window_days":3650.0}
+{"ok":true,"records_path":"data/processed/real_all.json","records":974,"topics":20,
+ "model":"BAAI/bge-m3","summariser":"template","preset":"hybrid","window_days":7.0}
 
-$ curl -s http://127.0.0.1:8899/api/blockers
-{"blocked":[]}</pre>
+$ curl -s http://127.0.0.1:8899/api/blockers        # ชื่อถูกแทนด้วยนามสมมุติ
+{"blocked":[{"key":19,"label":"uat","state":"blocked","participants":5,
+             "last_ts":"2026-08-18 14:33"}]}</pre>
       <div class="grid g3">
         <div class="stat"><div class="v">63.7%</div><div class="l">triplet accuracy ของ <code>bge-m3</code> บน corpus จริง · โมเดลเดิม (MiniLM) ได้ 59.4%</div></div>
         <div class="stat"><div class="v">0.731</div><div class="l">cosine สูงสุดที่ query ขยะทำได้ · เดิม 0.918 — ยิ่งต่ำยิ่งดี</div></div>
@@ -304,10 +305,10 @@ $ curl -s http://127.0.0.1:8899/api/blockers
       <p><strong>โมเดลที่เราเทรนเองสองตัวแพ้ของสำเร็จรูป</strong> — ได้ 61.4% และ 60.9% เทียบ 63.7% และทั้งคู่ดันให้ query ขยะได้ cosine <em>สูงขึ้น</em> (0.971 · 0.964) จึงไม่ได้ใช้ทั้งสองตัว นี่คือผลการวัด ไม่ใช่ความล้มเหลว: corpus ระดับนี้เล็กเกินกว่าจะชนะของสำเร็จรูป ตารางเต็มเจ็ดโมเดลอยู่ใน <a href="EXPERIMENTS.md">docs/EXPERIMENTS.md</a> ที่เดียว เพื่อไม่ให้ตัวเลขสองที่เพี้ยนกัน</p>
       <div class="grid g2">
         <div class="card"><span class="k">5 หน้าจอ</span><p><code>/</code> digest · <code>/blockers</code> · <code>/item/{key}</code> timeline · <code>/search</code> หาต้นทางของประโยค · <code>/upload</code> โยนไฟล์ประชุมเข้า corpus</p></div>
-        <div class="card"><span class="k">5 API + health</span><p>ข้อมูลชุดเดียวกันออกเป็น JSON — <code>/api/digest</code> · <code>/api/blockers</code> · <code>/api/item/{key}</code> · <code>/api/search</code> · <code>/api/health</code> และ <code>POST /api/reindex</code> ที่ต้องมี token</p></div>
+        <div class="card"><span class="k">6 API + health</span><p>ข้อมูลชุดเดียวกันออกเป็น JSON — <code>/api/digest</code> · <code>/api/blockers</code> · <code>/api/item/{key}</code> · <code>/api/search</code> · <code>/api/tracker</code> · <code>/api/health</code> และ <code>POST /api/reindex</code> ที่ต้องมี token</p></div>
       </div>
-      <p><span class="pill ok">✓ ทดสอบแล้ว</span> ยิงทั้ง 10 endpoint ที่อ่านข้อมูล (5 หน้า + 5 API) คืน <code>200</code> พร้อมเนื้อหาจริงทุกตัว · อีก 2 route ที่<em>เขียน</em>ข้อมูล (<code>POST /upload</code>, <code>POST /api/reindex</code>) ต้องแนบ token ที่ server พิมพ์ตอน start</p>
-      <p><span class="pill hold">⚠ อ่านตัวเลขนี้ให้ตรง</span> <code>blocked</code> เป็น <strong>0</strong> ไม่ได้แปลว่าไม่มีใครติด — คำ cue ที่ระบบใช้ไม่ตรงกับคำที่ทีมพิมพ์จริง ระบบรายงาน 0 ตรง ๆ แทนที่จะเดาให้ดูดี (ดูสไลด์ 10)</p>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> ยิงทั้ง 11 endpoint ที่อ่านข้อมูล (5 หน้า + 6 API) คืน <code>200</code> พร้อมเนื้อหาจริงทุกตัว · อีก 2 route ที่<em>เขียน</em>ข้อมูล (<code>POST /upload</code>, <code>POST /api/reindex</code>) ต้องแนบ token ที่ server พิมพ์ตอน start</p>
+      <p><span class="pill hold">⚠ อ่านตัวเลขนี้ให้ตรง</span> <code>blocked</code> ได้ <strong>1</strong> จาก 22 ข้อความที่เป็นการติดจริง — ตัวเลขนี้<em>ต่ำกว่าความจริง</em> เพราะข้อความติดหลายอันถูกยุบเข้า topic เดียวกัน ระบบรายงานเท่าที่ยืนยันหลักฐานได้ แทนที่จะเดาให้ดูดี (ดูสไลด์ 10)</p>
       <div class="rail"><span><b>ไม่มี build step</b> HTML สร้างจาก Python ตรง ๆ ไม่มี <code>node_modules</code></span><span><b>ไม่มี Slack ก็รันได้</b> <code>data/sample/</code> commit ไว้แล้ว</span><span><b>log สะอาด</b> warning เท็จจาก BLAS ปิดเฉพาะจุด — ตรวจกับ float64 แล้วว่าตรงกันถึง 5e-08</span></div>
     </div>
   </section>
@@ -336,7 +337,7 @@ $ curl -s http://127.0.0.1:8899/api/blockers
         <div class="stat"><div class="v">128</div><div class="l">ข้อความใน corpus ตัวอย่างที่ ledger นั้นสร้างมาจาก</div></div>
         <div class="stat"><div class="v">8</div><div class="l">หน้าจอเรนเดอร์ออฟไลน์ — ทุก payload ผ่าน Slack limits</div></div>
       </div>
-      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>npm run typecheck</code> ไม่มี error · <code>npm test</code> ผ่าน <strong>53/53</strong> (ในนั้นมี <code>tests/gate.test.ts</code> 6 ข้อ ที่คุมเกณฑ์ตัดความเกี่ยวข้องไว้ไม่ให้เพี้ยนเงียบ ๆ) · <code>npm run preview</code> เรนเดอร์ทั้ง 8 หน้าจอ<em>บวกเคสที่ยาวสุดของสี่หน้าที่มีลิสต์</em> ออฟไลน์ ผ่านทั้งหมด</p>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>npm run typecheck</code> ไม่มี error · <code>npm test</code> ผ่าน <strong>61/61</strong> (ในนั้นมี <code>tests/gate.test.ts</code> 6 ข้อ ที่คุมเกณฑ์ตัดความเกี่ยวข้อง และ <code>tests/postguard.test.ts</code> 8 ข้อ ที่คุมว่าโพสต์ออก Slack ได้เฉพาะปลายทางที่อนุญาต ไว้ไม่ให้เพี้ยนเงียบ ๆ) · <code>npm run preview</code> เรนเดอร์ทั้ง 8 หน้าจอ<em>บวกเคสที่ยาวสุดของสี่หน้าที่มีลิสต์</em> ออฟไลน์ ผ่านทั้งหมด</p>
       <div class="rail"><span><b>DM 08:45 · digest 09:25</b> ปิดไว้เป็น default เปิดด้วย ENABLE_SCHEDULE=1</span></div>
     </div>
   </section>
@@ -380,7 +381,7 @@ $ curl -s http://127.0.0.1:8899/api/blockers
         <table>
           <thead><tr><th>รายการ</th><th>สถานะ</th><th>หลักฐาน</th></tr></thead>
           <tbody>
-            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 10 endpoint ที่อ่านข้อมูลคืน 200 · bot typecheck สะอาด, <code>npm test</code> ผ่าน 53/53, ทุก payload ผ่าน Slack limits · 22 โมดูล Python ตอบ <code>--help</code> ครบทุกตัว และ <code>pytest</code> ผ่าน 19/19</td></tr>
+            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 11 endpoint ที่อ่านข้อมูลคืน 200 · bot typecheck สะอาด, <code>npm test</code> ผ่าน 61/61, ทุก payload ผ่าน Slack limits · 24 CLI Python ตอบ <code>--help</code> ครบทุกตัว และ <code>pytest</code> ผ่าน 52/52</td></tr>
             <tr><td><strong>User Manual</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><code>docs/USER_MANUAL.md</code> — ติดตั้ง ใช้งาน ต่อ Slack แก้ปัญหา ทุกคำสั่งรันผ่านจริง</td></tr>
             <tr><td><strong>Draft Presentation</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>สไลด์นี้ 10 แผ่น · ตัวเลขทุกตัวมีบันทึกการวัดอยู่ใน <a href="EXPERIMENTS.md">docs/EXPERIMENTS.md</a></td></tr>
             <tr><td><strong>Source Code</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a> — public</td></tr>
@@ -433,10 +434,18 @@ INFO Ready: 29 record(s), 4 topic(s), 2 blocked, summariser template</pre>
         <span class="k" style="color:var(--good)">ปิดไปแล้ว</span>
         <h3>บอทกับ pipeline นับ “งานหนึ่งชิ้น” เหมือนกันแล้ว</h3>
         <p style="color:var(--ink)">เดิมสองฝั่งอ่าน Slack เองและจับกลุ่มด้วยกฎต่างกัน ช่องเดียวกันจึงได้ work item ไม่เท่ากัน ตอนนี้ตั้ง <code>TAM_API_URL</code> แล้วบอทเลิกตัดสินเอง — work item, สถานะ, หลักฐาน, timeline และ recall มาจาก pipeline ทั้งหมด</p>
-        <p style="color:var(--ink)"><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm run check-api</code> บนข้อมูลจริง: <strong>34 work item</strong> · หลักฐาน, citation และ timeline ทุกอันชี้ข้อความที่มีจริงใน item นั้น · permalink สร้างได้ <strong>936/936</strong> · standup draft 17 อันคำนวณจาก item ที่ได้มา ส่วน decision 0 และ drift 0 เพราะยังไม่ได้ต่อของจริง — <strong>ไม่เติมให้ดูเต็ม</strong> · exit code ตอบแค่ว่า “รอยต่อนี้ถูกไหม” (ได้ 0) การ calibrate เกณฑ์รายงานให้เห็นแต่ไม่ทำให้ fail เว้นใส่ <code>--strict-gate</code> (แล้วได้ 1) เพราะ floor เป็นคุณสมบัติของ corpus คู่กับโมเดล ไม่ใช่ของรอยต่อ</p>
+        <p style="color:var(--ink)"><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm run check-api</code> บนข้อมูลจริง: <strong>20 work item</strong> · หลักฐาน, citation และ timeline ทุกอันชี้ข้อความที่มีจริงใน item นั้น · permalink สร้างได้ <strong>694/694</strong> ข้อความที่มาจาก Slack (ที่เหลือมาจากไฟล์ประชุม จึงไม่มี permalink ตามคาด) · standup draft 17 อันคำนวณจาก item ที่ได้มา ส่วน decision 0 เพราะยังไม่มีคนกดบันทึก — <strong>ไม่เติมให้ดูเต็ม</strong> · exit code ตอบแค่ว่า “รอยต่อนี้ถูกไหม” (ได้ 0) การ calibrate เกณฑ์รายงานให้เห็นแต่ไม่ทำให้ fail เว้นใส่ <code>--strict-gate</code> (แล้วได้ 1) เพราะ floor เป็นคุณสมบัติของ corpus คู่กับโมเดล ไม่ใช่ของรอยต่อ</p>
+      </div>
+      <div class="card" style="border-color:var(--good); background:var(--good-soft)">
+        <span class="k" style="color:var(--good)">ปิดไปแล้ว</span>
+        <h3>ต่อ ticket system จริงแล้ว — และแหล่งที่สองเจอสิ่งที่ Slack เงียบสนิท</h3>
+        <p style="color:var(--ink)">เดิม drift ไม่มีแหล่งเทียบ ตอนนี้อ่าน ticket จริง <strong>195 ใบ (เปิดค้าง 61)</strong> มาเทียบกับที่คุยใน Slack ผลที่ได้ไม่ใช่ลิสต์ ticket เก่า แต่เป็น<strong>รูปแบบ</strong>: <strong>24 ใบเงียบเกิน 21 วัน · 22 ใบอยู่สถานะ Ready for test</strong> และวันที่ถูกแตะครั้งสุดท้าย<em>กระจุกอยู่แค่ 2 วัน</em> — 11 ใบวันเดียวกัน (เงียบ 56 วัน) และ 10 ใบอีกวัน (เงียบ 22 วัน) แปลว่างานถูกดันเข้า QA เป็นก้อน ๆ แล้วไม่มีใครหยิบต่อ ก้อนเก่าค้างมา 8 สัปดาห์ <strong>โดยไม่มีข้อความใน Slack พูดถึงเลยแม้แต่คำเดียว</strong></p>
+        <p style="color:var(--ink)"><strong>เกณฑ์ 21 วันมาจากจังหวะของทีมเอง</strong> ไม่ใช่ความรู้สึก — วันที่ ticket เปิดอยู่ไม่ถูกแตะมี p25 = 5 · median = 8 · p75 = 22 และ 21 ตกใน<em>ช่องว่างธรรมชาติ</em> (ไม่มี ticket ใบไหนอยู่ระหว่าง 14–21 วัน) เกณฑ์จึงไม่ผ่ากลางกลุ่มหนาแน่นที่เลื่อนวันเดียวคำตอบเปลี่ยน</p>
+        <p style="color:var(--ink)"><span class="pill hold">⚠ รายงานให้ตรง</span> เงื่อนไข “ไม่มีใครพูดถึงใน Slack” <strong>ไม่ได้ใช้เป็นตัวกรอง</strong> เพราะวัดแล้วมันไม่เปลี่ยนอะไร (24 จาก 24 ที่เกณฑ์นี้) — ใส่เป็นตัวกรองจะทำให้ดูเหมือนต้องใช้สองแหล่งทั้งที่ไม่ใช่ · และ “ไม่มีใครพูดถึง” จำกัดอยู่ใน<strong>หน้าต่าง 74 วัน</strong>ที่ export มา ไม่ใช่ทั้งประวัติ · ถ้าอ่าน ticket ไม่ได้ <code>/api/tracker</code> ส่ง <code>error</code> มาคู่กับลิสต์ว่าง และหน้าจอเขียนว่า <strong>“เรายังไม่รู้” ไม่ใช่ “ไม่มีงานค้าง”</strong></p>
+        <p style="color:var(--ink)"><span class="pill ok">✓ ความครอบคลุม</span> ตัวนี้ครอบคลุม <strong>100% ของ ticket ที่เปิดค้าง</strong> เพราะไม่ต้องรอให้ Slack เอ่ยถึง ต่างจากการเทียบสถานะที่ทำได้แค่ <strong>7 จาก 20 work item</strong> ที่มีเลข ticket ติดมา</p>
       </div>
       <div class="grid g2">
-        <div class="card"><span class="k">ข้อจำกัดที่เหลือ</span><p><strong>คำ cue ไม่ตรงภาษาที่ทีมใช้</strong> จึงได้ <code>0 blocked</code> ทั้งที่ “อะไรติด” คือฟีเจอร์หลัก — และเติมคำมั่วไม่ได้ ภาษาไทยไม่เว้นวรรค คำว่า <code>รอ</code> ไปเจอใน “ร<strong>อบ</strong>” “ก<strong>รอก</strong>” ต้องตัดคำแล้วแมตช์ระดับ token · แปลง user id เป็นชื่อคนยังไม่มี (ต้องเพิ่ม scope <code>users:read</code>) · drift ยังไม่มีแหล่งจริง</p></div>
+        <div class="card"><span class="k">ข้อจำกัดที่เหลือ</span><p><strong><code>/blockers</code> ยังรายงานต่ำกว่าความจริง</strong> — 22 ข้อความที่เป็นการติดจริงยุบลงเหลือ <strong>1</strong> work item เพราะการจับกลุ่มรวมงานต่างเรื่องเข้าด้วยกัน วัดแล้วว่า <code>resolution 4.0</code> ดันเพดานจาก 2 เป็น 4 แต่<em>ยังไม่ได้ยืนยัน</em>ว่าไม่ผ่างานจริงออกเป็นเสี่ยง จึงไม่เปลี่ยนค่า default · <strong>reply ในเธรดยังไม่ถูกนับ</strong> corpus มี 1,144 record แต่ตัวโหลดตัด <code>slack_thread</code> ออก 170 อันตาม default (<code>include_threads=False</code>) เหลือ 974 — ในนั้น <strong>110 อันเป็นเนื้อหาใหม่จริง</strong> และมีข้อความขอความช่วยเหลือตรง ๆ อยู่ด้วย เปิดใช้เป็นการแก้ flag เดียว แต่<em>ยังไม่ได้วัด</em>ว่ากระทบการจับกลุ่มยังไง จึงไม่เปลี่ยนก่อนวัด · ภาษาไทยไม่เว้นวรรค คำว่า <code>รอ</code> ไปเจอใน “ร<strong>อบ</strong>” “ก<strong>รอก</strong>” จึงต้องตัดคำแล้วแมตช์ระดับ token</p></div>
         <div class="card"><span class="k">ขยายไม่ได้ถ้าโตมาก</span><p>ค้นหาแบบ brute-force ไหวระดับหลายพันข้อความ ไม่ไหวระดับล้าน — ต้องมี vector database · <code>bge-m3</code> ใหญ่และช้ากว่าตัวเดิม รับได้เพราะ embedding ถูก cache ไว้แล้ว</p></div>
       </div>
       <ul class="tight">

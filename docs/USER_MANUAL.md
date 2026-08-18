@@ -244,6 +244,7 @@ curl localhost:8899/api/blockers
 curl localhost:8899/api/item/c30a929       # {key} คือ item_id ที่ /api/digest ส่งมา — คงที่ข้าม rebuild
 curl localhost:8899/api/item/1             # เลข cluster ก็ยังใช้ได้ แต่ rebuild แล้วมันจะชี้งานคนละชิ้น
 curl "localhost:8899/api/search?q=Android&k=10"
+curl localhost:8899/api/tracker            # เทียบกับ ticket system — ดู §7.8
 curl localhost:8899/api/health
 
 # route เดียวที่เขียนข้อมูล ต้องแนบ token ที่ server พิมพ์ตอน start
@@ -297,6 +298,9 @@ firewall** บอทต่อออกไปหา Slack เอง รันจ�
 | `/meowtam recall <ข้อความ>` | ค้นหา (ไทยได้) พร้อมสายการตัดสินใจของเรื่องนั้น |
 | `/meowtam MOB-142` | งานชิ้นเดียวตาม key — `MOB-142` มีอยู่ใน ledger ตัวอย่าง ถ้าตั้ง `TAM_API_URL` key จะเป็น `TAM-0`…`TAM-4` |
 | `/meowtam @someone` | คนนั้นกำลังทำอะไร |
+| `/meowtam silent` (`quiet`) | ticket ที่เปิดค้างและไม่มีใครแตะเกิน `TAM_SILENT_DAYS` วัน — ดู §7.8 |
+| `/meowtam drift` | ที่ Slack กับ ticket ไม่ตรงกัน — ดู §7.8 |
+| `/meowtam format` (`help`) | สอนรูปแบบที่ระบบอ่านได้ ส่งให้ทีมดูได้เลย |
 | `/meowtam reload` | อ่าน ledger ใหม่ ไม่ต้อง restart |
 
 **Message shortcut** (คลิกขวาที่ข้อความ → More actions)
@@ -424,7 +428,7 @@ TAM_API_URL=http://127.0.0.1:8899 npm run check-api -- "Profile module bug บ�
 
 | มาจาก pipeline | บอทเติมเอง (ไม่มีตัวเทียบใน pipeline) |
 |---|---|
-| work item · สถานะ · หลักฐาน · timeline · ข้อความ · ประโยคสรุป · recall | decision — อ่านจากไฟล์ที่คนกดบันทึกไว้จริง (`data/decisions.json`) ว่างจนกว่าจะมีคนกด · standup draft — คำนวณจาก item ที่ได้มา · drift — **ไม่มีแหล่งจริงเลย** ว่างจนกว่าจะต่อ ticket system |
+| work item · สถานะ · หลักฐาน · timeline · ข้อความ · ประโยคสรุป · recall | decision — อ่านจากไฟล์ที่คนกดบันทึกไว้จริง (`data/decisions.json`) ว่างจนกว่าจะมีคนกด · standup draft — คำนวณจาก item ที่ได้มา · drift บนบอร์ด — มาจาก ledger จึงว่างอยู่ ตัวที่ใช้งานจริงคือ `/meowtam drift` ซึ่งอ่านจาก `/api/tracker` (§7.8) |
 
 ชื่อสถานะสองฝั่งไม่เหมือนกัน pipeline ใช้ `active` / `blocked` / `resolved`
 บอร์ดของบอทใช้ `blocked` / `stalled` / `moving` / `done` แปลงกันแบบนี้:
@@ -432,6 +436,53 @@ TAM_API_URL=http://127.0.0.1:8899 npm run check-api -- "Profile module bug บ�
 `TAM_STALE_DAYS` → `stalled` มีแค่ `stalled` ที่เป็นข้อมูลใหม่ อีกสองอันเป็นการเปลี่ยนชื่อ
 
 ดูภาพประกอบทั้งหมดได้ที่ [architecture.html](architecture.html)
+
+---
+
+### 7.8 ต่อ ticket system (YouTrack) — แหล่งที่สอง
+
+Slack บอกว่า *คนคุยอะไรกัน* ticket บอกว่า *งานอยู่สถานะไหน* ทั้งสองอย่างไม่ตรงกันเสมอ
+และ **ช่องว่างระหว่างสองอันนี้คือของที่มีค่าที่สุด** — งานที่ค้างอยู่โดยไม่มีใครพูดถึง
+
+ใส่สามค่านี้ใน `pipeline/.env`:
+
+```bash
+YOUTRACK_URL=https://<your-org>.youtrack.cloud   # ไม่ต้องมี /api ต่อท้าย
+YOUTRACK_TOKEN=perm-...                          # Profile → Account Security → Authentication → New token
+YOUTRACK_PROJECT=PROJ                            # ตัวย่อโปรเจกต์ ว่างไว้ = ทุกโปรเจกต์ที่มองเห็น
+```
+
+หา token ที่ **avatar มุมขวาบน → Profile → Account Security → Authentication → New token…**
+ให้ scope `YouTrack` พอ
+
+> **ใช้ service account ที่อ่านได้เท่านั้น** อย่าใช้ token ของ admin ตัวเอง
+> ถ้า token รั่ว มันมีสิทธิ์เท่าที่คุณมี ตั้ง user ใหม่แล้วให้ role `Observer` ปลอดภัยกว่ามาก
+
+ทดสอบว่าต่อได้:
+
+```bash
+cd pipeline
+python3 -m tam.ingest.youtrack --check           # ยืนยัน token และบอกว่ามันเห็นอะไร
+python3 -m tam.analysis.drift --records data/processed/real_all.json --json
+```
+
+**อ่านผลให้ตรง**
+
+| ได้อะไร | หมายความว่า |
+|---|---|
+| `silent` | ticket เปิดค้างและไม่ถูกแตะเกิน `TAM_SILENT_DAYS` วัน (default `21`) — ครอบคลุม **ทุกใบที่เปิดค้าง** ไม่ต้องรอให้ Slack เอ่ยถึง |
+| `drift` | ปิด ticket แล้วแต่ยังคุยกันต่อ / คุยว่าติดแต่ ticket ยังเปิด — ทำได้เฉพาะ work item ที่**มีเลข ticket อยู่ในข้อความ** จึงครอบคลุมน้อยกว่ามาก |
+| `coverage` | บอกตรง ๆ ว่าเทียบได้กี่ item จากทั้งหมด — ดูตัวเลขนี้ก่อนเชื่อ `drift` |
+| `error` ไม่ว่าง | **อ่าน ticket ไม่ได้** ลิสต์ที่ว่างจึงหมายถึง "ยังไม่รู้" ไม่ใช่ "ไม่มีงานค้าง" — หน้าจอกับการ์ดใน Slack เขียนแยกสองกรณีนี้ให้แล้ว |
+
+`mentioned_in_slack` ติดมากับแต่ละใบ แต่ **ไม่ได้ใช้เป็นตัวกรอง** เพราะวัดแล้วว่าที่เกณฑ์
+default มันไม่เปลี่ยนผลเลย (24 จาก 24 ใบไม่ถูกพูดถึง) ใส่เป็นตัวกรองจะทำให้ดูเหมือน
+ต้องใช้สองแหล่งทั้งที่ไม่จำเป็น — และ "ไม่มีใครพูดถึง" จำกัดอยู่แค่**ช่วงเวลาที่ export มา**
+ไม่ใช่ทั้งประวัติของ workspace
+
+จะเปลี่ยนเกณฑ์ก็ตั้ง `TAM_SILENT_DAYS` (หรือ `--silent-days` ตอนเรียก CLI) **แต่อย่าเดาเลข** — ดูการกระจายของทีมตัวเองก่อน
+(ของทีมนี้ p25 = 5 · median = 8 · p75 = 22 จึงเลือก 21 ซึ่งตกในช่องว่างที่ไม่มี ticket อยู่เลย
+เกณฑ์จะได้ไม่ผ่ากลางกลุ่มหนาแน่นที่ขยับวันเดียวคำตอบเปลี่ยน)
 
 ---
 
