@@ -933,7 +933,12 @@ console.log(`   ${describePolicy(postPolicy)}`);
 console.log(`   เขียนเอง: ${storeSummary()}`);
 console.log(
   `   standup draft ${l.standups.length} คน · drift ${l.drifts.length}` +
-    (l.drifts.length === 0 && !demoFixtures() ? ' (ยังไม่ได้ต่อ ticket system)' : '') +
+    // This counter is the ledger's drift, which is a different thing from the ticket
+    // comparison and stays empty until somebody records one. Saying "ticket system not
+    // connected" here was true when the ledger was the only source and became a lie the
+    // day /api/tracker landed — the board would report no ticket source while
+    // `/meowtam drift` was reading 195 of them.
+    (l.drifts.length === 0 && !demoFixtures() ? ' (จาก ledger — เทียบ ticket จริงที่ /meowtam silent|drift)' : '') +
     (demoFixtures() ? ' · DEMO_FIXTURES=1 เปิดอยู่ — drift เป็นตัวอย่าง' : ''),
 );
 console.log(`   ลอง: /meowtam demo   (beats: ${BEATS.join(' → ')})`);

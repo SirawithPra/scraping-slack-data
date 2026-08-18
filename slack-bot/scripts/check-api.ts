@@ -54,7 +54,7 @@ console.log(`  ${l.items.length} work item จาก pipeline`);
 console.log(
   `  ที่บอทเติมเอง: ${l.decisions.length} decision (คนกดบันทึก), ` +
     `${l.standups.length} standup draft (คำนวณจาก item), ` +
-    `${l.drifts.length} drift${l.drifts.length === 0 ? ' — ยังไม่ได้ต่อ ticket system' : ''}\n`,
+    `${l.drifts.length} drift${l.drifts.length === 0 ? ' จาก ledger — การเทียบ ticket จริงอยู่ที่ /api/tracker' : ''}\n`,
 );
 
 /**
