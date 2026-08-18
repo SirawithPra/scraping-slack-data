@@ -17,6 +17,7 @@ from typing import Any, Sequence
 import numpy as np
 from dotenv import load_dotenv
 
+from tam.ingest.quoted import for_analysis
 from tam.retrieval.embeddings import cosine_top_k, embed_texts, embed_with_cache, model_name, quiet_third_party_logs, set_model
 
 DEFAULT_RECORDS = Path("data/processed/messages.json")
@@ -108,7 +109,10 @@ def embed_records(records: list[dict[str, Any]], *, use_cache: bool = True, prun
     one would evict the other's vectors and re-embed them on the next run, trading
     disk space for a slower loop. Pass it when you are cleaning up on purpose.
     """
-    return embed_with_cache([str(record["text"]) for record in records], use_cache=use_cache, prune=prune)
+    # `analysis_text`, not `text`: one 6,191-character terms document is 5.5% of this
+    # corpus's characters, and embedding pasted bulk pulls unrelated messages together
+    # on shared boilerplate. See tam.ingest.quoted.
+    return embed_with_cache([for_analysis(record) or str(record["text"]) for record in records], use_cache=use_cache, prune=prune)
 
 
 def search(

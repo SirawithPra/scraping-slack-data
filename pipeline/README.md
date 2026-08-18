@@ -106,7 +106,9 @@ slack-app-manifest.json   read-only Slack app for the exporter — history scope
 ```
 
 Nothing sits at the repo root any more. Every module is reachable as
-`python3 -m tam.<area>.<module>`, `--help` works on all 22 of them, and
+`python3 -m tam.<area>.<module>`. Of the 24 module files, **21 are CLIs and answer
+`--help`**; the other three (`retrieval/embeddings.py`, `retrieval/fusion.py`,
+`ingest/quoted.py`) are libraries the rest import, and
 `python3 -m pytest` from `pipeline/` runs the Python tests.
 
 **Which model, and why not the fine-tune?** [../docs/EXPERIMENTS.md](../docs/EXPERIMENTS.md)

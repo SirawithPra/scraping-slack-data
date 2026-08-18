@@ -49,6 +49,7 @@ from tam.retrieval.fusion import jaccard_rerank, minmax, rrf_fuse, zscore_fuse
 from tam.retrieval.lexical import Bm25Index
 from tam.retrieval.signals import SignalIndex
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records, preview
+from tam.ingest.quoted import for_analysis
 
 log = logging.getLogger(__name__)
 
@@ -151,7 +152,10 @@ class Retriever:
         self.records = list(records)
         self.config = config or PRESETS[DEFAULT_PRESET]
         self.ids = [str(record["id"]) for record in self.records]
-        self.texts = [str(record["text"]) for record in self.records]
+        # What the authors asserted, not what they pasted. Both BM25 and the reranker
+        # read this, so a fenced stack trace or a quoted document cannot win a ranking
+        # its author never made a claim in. Display still uses `record["text"]`.
+        self.texts = [for_analysis(record) or str(record["text"]) for record in self.records]
         self.index_of = {record_id: index for index, record_id in enumerate(self.ids)}
 
         raw = embed_records(self.records, use_cache=use_cache) if matrix is None else matrix

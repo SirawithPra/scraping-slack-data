@@ -29,6 +29,7 @@ from pathlib import Path
 from typing import Any, Callable, Sequence
 
 import numpy as np
+from tam.ingest.quoted import for_analysis
 
 # Okapi BM25 defaults. k1 caps how much a repeated term keeps helping; b is how
 # hard long messages are penalised. 0.75 is standard; chat is short, so length
@@ -192,7 +193,9 @@ def main() -> None:
 
     args = parse_args()
     records: list[dict[str, Any]] = load_records(args.records)
-    index = Bm25Index([str(record["text"]) for record in records])
+    # Asserted text only, matching the dense side — otherwise a query would match a
+    # pasted terms document lexically and its own embedding nowhere. See tam.ingest.quoted.
+    index = Bm25Index([for_analysis(record) or str(record["text"]) for record in records])
     log.info("Indexed %d record(s), %d distinct term(s)", index.count, len(index.postings))
 
     for query in args.query:

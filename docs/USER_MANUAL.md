@@ -462,7 +462,8 @@ python3 -m tam.report.report_th  --records data/processed/sample_messages.json \
         --eval-file data/eval_queries.example.json
 ```
 
-ทุกโมดูลรับ `--help` — ทั้ง 22 ตัว
+โมดูลทั้งหมด 24 ไฟล์ · **21 ตัวเป็น CLI รับ `--help`** ส่วนที่เหลือสามตัว
+(`retrieval/embeddings.py` `retrieval/fusion.py` `ingest/quoted.py`) เป็น library ที่โมดูลอื่นเรียกใช้
 
 ---
 

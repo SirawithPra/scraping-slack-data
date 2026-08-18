@@ -30,6 +30,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from tam.core import TamDataError, validate_records, write_records
+from tam.ingest.quoted import annotate, bot_ids
+from tam.ingest.users import load_names
 
 DEFAULT_INPUT = Path("data/raw/slack_messages.json")
 DEFAULT_OUTPUT = Path("data/processed/messages.json")
@@ -403,6 +405,11 @@ def main() -> None:
 
     try:
         records = prepare(load_export(args.raw))
+        # Two derived fields, added here so every downstream stage gets them without
+        # each one re-deriving: `analysis_text` (the message minus what its author only
+        # pasted or quoted) and `is_bot`. See tam.ingest.quoted for why both matter —
+        # a cue matched inside a block of quoted reviews resolved a real work item.
+        records = annotate(records, bots=bot_ids(load_names()))
         if args.merge_into:
             existing = read_existing(args.merge_into)
             combined, replaced = merge_records(existing, records)
