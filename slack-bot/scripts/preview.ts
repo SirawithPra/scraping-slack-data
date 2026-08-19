@@ -24,6 +24,12 @@ import { standupDmBlocks } from '../src/blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from '../src/blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from '../src/blocks/drift.js';
 import { recallBlocks } from '../src/blocks/recall.js';
+import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, pendingEscalationBlocks } from '../src/blocks/daily.js';
+import { linkResultBlocks, pastePreviewBlocks, ticketOption } from '../src/blocks/link.js';
+import { staleBlocks } from '../src/blocks/stale.js';
+import { staleItems } from '../src/stale.js';
+import { todaysSimulatedAnswers } from '../src/demo.js';
+import type { PendingStreak } from '../src/daily.js';
 import { clamp } from '../src/blocks/common.js';
 import { hydrate, ledger, findItem, sortedItems } from '../src/data.js';
 import type { StandupDraft, WorkItem } from '../src/types.js';
@@ -71,6 +77,55 @@ function bigDraft(n: number): StandupDraft {
 
 const longHeadline = { ...(open[0] ?? sortedItems()[0]), headline: 'ก'.repeat(6000), key: 'TAM-LONGKEY-1234567890' };
 
+/**
+ * A pending streak, without a store behind it.
+ *
+ * The daily payloads render from records the bot writes at runtime, and a preview run
+ * has none — so they are built here from the same shapes `pendingStreaks` returns. The
+ * point of checking them is the same as everywhere else in this file: the busiest
+ * morning is the one whose post is a 400.
+ */
+function streak(n: number, over: Partial<PendingStreak> = {}): PendingStreak {
+  return {
+    user: 'U0DEMOUSER1',
+    text: 'Pending รอ requirement หน้า redemption จาก PO',
+    tag: 'PO',
+    days: n,
+    since: '2026-08-14',
+    ...over,
+  };
+}
+
+const manyStreaks = Array.from({ length: 30 }, (_, i) =>
+  streak(3 + (i % 5), { text: `Pending รอเรื่องที่ ${i + 1} ${'ก'.repeat(400)}` }),
+);
+
+const dailyRecord = {
+  date: '2026-08-20',
+  channel: 'C0DEMOCHAN1',
+  ts: '1787163026.001199',
+  posted_at: '2026-08-20 09:00',
+  answers: todaysSimulatedAnswers(['U0DEMOUSER1', 'U0DEMOUSER2', 'U0DEMOUSER3'], '2026-08-20'),
+  simulated: true,
+};
+
+/** Every silence count at once: whatever the fixture really has, plus a forced worst case. */
+const quiet = staleItems(open, { workdays: 0 });
+const quietWorst = staleItems(manyItems(40), { workdays: 0 });
+
+const linked = {
+  key: 'REVERAPP-140',
+  messages: 3,
+  overridesFile: 'link_overrides.json',
+  overridesTotal: 12,
+  commentId: '4-1234',
+  commentUrl: 'https://example.youtrack.cloud/issue/REVERAPP-140',
+  ticketUrl: 'https://example.youtrack.cloud/issue/REVERAPP-140',
+  itemKey: 'REVERAPP-140',
+  inItem: 3,
+  boardUrl: 'https://example.invalid/item/REVERAPP-140',
+};
+
 const payloads: Record<string, any[]> = {
   digest: digestBlocks(),
   standup: l.standups[0] ? standupDmBlocks(l.standups[0]) : [],
@@ -81,9 +136,65 @@ const payloads: Record<string, any[]> = {
   recall: await recallBlocks('ตอนนั้นเราสรุปเรื่อง export encoding ว่ายังไงนะ'),
   recallEmpty: await recallBlocks('qqqzzzxxx wvwvwv jjjkkk'),
   // ── worst case ───────────────────────────────────────────────────────────
+  dailyPost: dailyPostBlocks({ date: '2026-08-20', carried: [streak(3)], summaryAt: '10:45' }),
+  dailyForm: dailyTemplateBlocks(l.standups[0]),
+  dailySummary: dailySummaryBlocks({
+    record: dailyRecord as any,
+    expected: ['U0DEMOUSER1', 'U0DEMOUSER2'],
+    unfilled: ['U0DEMOUSER3'],
+    streaks: [streak(3)],
+    pendingDays: 3,
+  }),
+  pendingEscalation: pendingEscalationBlocks([streak(3)], 3),
+  stale: staleBlocks(quiet, 5),
+  staleEmpty: staleBlocks([], 5),
+  linkResult: linkResultBlocks(linked),
+  // The half-failed shape, which is what actually renders on a laptop with no write
+  // token — and the one a "success" template would render as a lie.
+  linkPartial: linkResultBlocks({
+    key: 'REVERAPP-140',
+    messages: 1,
+    overridesFile: 'link_overrides.json',
+    overridesTotal: 12,
+    commentError: 'YOUTRACK_WRITE ยังไม่ได้เปิด — บอทจะไม่เขียนคอมเมนต์ลง ticket จริง',
+    rebuildError: 'ยังไม่ได้ตั้ง TAM_API_URL',
+  }),
+  pastePreview: pastePreviewBlocks({
+    title: 'DM พี่ Natta เรื่อง redemption',
+    day: '2026-08-19',
+    key: 'REVERAPP-140',
+    records: Array.from({ length: 12 }, (_, i) => ({
+      user: 'Aim Sirawith',
+      when: '2026-08-19 14:21',
+      text: `ข้อความที่ ${i + 1} ${'ก'.repeat(300)}`,
+    })),
+    skipped: ['ก้อนที่อ่านไม่ออก'],
+    actionValue: 'pdemo1',
+  }),
+  // ── worst case ───────────────────────────────────────────────────────────
   boardWorst: boardBlocks('บอร์ดรวม', manyItems(60)),
   standupWorst: standupDmBlocks(bigDraft(40)),
   itemWorst: itemCardBlocks(longHeadline as WorkItem),
+  dailyPostWorst: dailyPostBlocks({ date: '2026-08-20', carried: manyStreaks, summaryAt: '10:45' }),
+  dailySummaryWorst: dailySummaryBlocks({
+    record: {
+      ...dailyRecord,
+      answers: Array.from({ length: 40 }, (_, i) => ({
+        user: `U0DEMOUSER${i}`,
+        ts: `sim.2026-08-20.${i}`,
+        done: ['ก'.repeat(400)],
+        focus: ['ก'.repeat(400)],
+        blockers: [{ text: 'ก'.repeat(400), tag: 'PO' }],
+        simulated: true,
+      })),
+    } as any,
+    expected: Array.from({ length: 40 }, (_, i) => `U0DEMOUSER${i}`),
+    unfilled: [],
+    streaks: manyStreaks,
+    pendingDays: 3,
+  }),
+  pendingEscalationWorst: pendingEscalationBlocks(manyStreaks, 3),
+  staleWorst: staleBlocks(quietWorst, 5),
 };
 
 // digestBlocks() reads the shared cache rather than taking items, so the only way
@@ -114,6 +225,23 @@ const LIMITS = {
 };
 
 let failures = 0;
+
+/**
+ * The ticket picker returns options, not blocks, so nothing above reaches it — and
+ * Slack rejects the *whole view* if one label is over 75 characters, which a real
+ * ticket summary crosses without trying.
+ */
+for (const option of [
+  { key: 'REVERAPP-140', summary: 'ก'.repeat(400), state: 'In Progress', resolved: false, url: '', updated: 0 },
+  { key: 'R-1', summary: '', state: '', resolved: true, url: '', updated: 0 },
+].map(ticketOption)) {
+  const label = option.text.text;
+  if (!label.length || label.length > LIMITS.optionText) {
+    console.log(`✗ ticketOption  label ${label.length} chars (limit ${LIMITS.optionText}, and 0 is also invalid)`);
+    failures += 1;
+  }
+}
+if (!failures) console.log('✓ ticketOption ทุกป้ายอยู่ในลิมิต 75 ตัวอักษร');
 
 for (const [name, blocks] of Object.entries(payloads)) {
   const problems: string[] = [];

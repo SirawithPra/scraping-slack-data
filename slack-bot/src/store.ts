@@ -20,7 +20,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Decision, Source } from './types.js';
+import type { Announcement, DailyRecord, Decision, Source } from './types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -226,5 +226,116 @@ export function saveDecision(input: NewDecision): Decision {
 
 /** Line the operator sees at boot, so the store is never a mystery. */
 export function storeSummary(): string {
-  return `${readDecisions().length} decision, ${readOverrides().length} link override`;
+  const dailies = readDailies();
+  const answers = dailies.reduce((n, d) => n + d.answers.length, 0);
+  return (
+    `${readDecisions().length} decision, ${readOverrides().length} link override, ` +
+    `${dailies.length} daily (${answers} คำตอบ), ${readAnnouncements().length} ที่ประกาศไปแล้ว`
+  );
+}
+
+// ---------------------------------------------------------------------------
+// the daily thread
+// ---------------------------------------------------------------------------
+
+export function dailiesPath(): string {
+  const configured = process.env.TAM_DAILIES_PATH?.trim();
+  if (configured) return resolve(configured);
+  return resolve(here, '../data/dailies.json');
+}
+
+export function readDailies(strict = false): DailyRecord[] {
+  const rows = readJson<DailyRecord[]>(dailiesPath(), [], strict);
+  // Oldest first, so "the day before" is the entry before this one and a streak
+  // walks backwards from the end. Callers should not have to know the file's order.
+  return [...rows].sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Write one day's record, replacing any earlier version of the same date.
+ *
+ * Keyed by date rather than appended because the record is edited twice in a
+ * morning — once when the post goes out, again when the 10:45 pass adds the
+ * answers — and two rows for one day would make "yesterday's blockers" depend on
+ * which row was read.
+ *
+ * Reads strictly, for the same reason `saveOverride` does: rewriting a file we
+ * could not parse is how the history disappears.
+ */
+export function saveDaily(record: DailyRecord): DailyRecord[] {
+  const kept = readDailies(true).filter((d) => d.date !== record.date);
+  kept.push(record);
+  kept.sort((a, b) => a.date.localeCompare(b.date));
+  writeJson(dailiesPath(), kept);
+  return kept;
+}
+
+// ---------------------------------------------------------------------------
+// what has already been said out loud
+// ---------------------------------------------------------------------------
+
+export function announcementsPath(): string {
+  const configured = process.env.TAM_ANNOUNCEMENTS_PATH?.trim();
+  if (configured) return resolve(configured);
+  return resolve(here, '../data/announcements.json');
+}
+
+export function readAnnouncements(strict = false): Announcement[] {
+  return readJson<Announcement[]>(announcementsPath(), [], strict);
+}
+
+/**
+ * Has this exact thing been announced to the channel before?
+ *
+ * The daily thread keeps its own equivalent inside the day's record, because a
+ * pending line belongs to the morning it was typed. A stale work item belongs to
+ * no particular morning, so it needs a store that outlives one — otherwise the
+ * only way not to repeat yesterday's escalation is to never restart the bot.
+ */
+export function wasAnnounced(kind: string, key: string): boolean {
+  return readAnnouncements().some((a) => a.kind === kind && a.key === key);
+}
+
+/**
+ * Record that something was said in the channel. Written *after* Slack accepted
+ * the post, for the same reason the daily path does it in that order: marking it
+ * announced before the post can fail is how the one message that mattered gets
+ * silently swallowed.
+ */
+export function markAnnounced(kind: string, keys: string[], at: string, note = ''): number {
+  if (!keys.length) return readAnnouncements().length;
+  const all = readAnnouncements(true);
+  const already = new Set(all.filter((a) => a.kind === kind).map((a) => a.key));
+  for (const key of keys) {
+    if (already.has(key)) continue;
+    all.push({ kind, key, at, note });
+    already.add(key);
+  }
+  writeJson(announcementsPath(), all);
+  return all.length;
+}
+
+/**
+ * Replace the whole file. The one operation `saveDaily` cannot express, because it
+ * merges by date and therefore cannot *remove* a morning.
+ *
+ * Only the demo cleanup needs it, and that is the point of naming it so plainly: a
+ * daily that disappears takes a streak's evidence with it, so this must never be
+ * the convenient way to write one record.
+ */
+export function replaceDailies(records: DailyRecord[]): DailyRecord[] {
+  const sorted = [...records].sort((a, b) => a.date.localeCompare(b.date));
+  writeJson(dailiesPath(), sorted);
+  return sorted;
+}
+
+/** Today's record, or undefined — the 10:45 pass has nothing to read without it. */
+export function dailyFor(date: string): DailyRecord | undefined {
+  return readDailies().find((d) => d.date === date);
+}
+
+/** The most recent record strictly before `date`. This is "yesterday's daily". */
+export function dailyBefore(date: string): DailyRecord | undefined {
+  const earlier = readDailies().filter((d) => d.date < date);
+  return earlier[earlier.length - 1];
 }

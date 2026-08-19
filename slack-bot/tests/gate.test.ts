@@ -21,6 +21,8 @@ const cfg: ApiConfig = {
   staleDays: 3,
   minCosine: 0.45,
   timeoutMs: 1000,
+  adminToken: '',
+  writeTimeoutMs: 1000,
 };
 
 test('both signals are required, and each one alone is not enough', () => {

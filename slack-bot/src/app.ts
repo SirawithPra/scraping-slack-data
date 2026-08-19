@@ -7,10 +7,16 @@ import {
   findMessage, itemKeyForMessage, itemsFor, standupFor, driftFor,
 } from './data.js';
 import { apiConfig, fetchTracker } from './tam-api.js';
-import { describePolicy, guardPosting, readPolicy } from './postguard.js';
+import { PostRefused, describePolicy, guardPosting, readPolicy } from './postguard.js';
 import {
-  decisionsPath, overridesPath, readDecisions, saveDecision, saveOverride, storeSummary,
+  dailyBefore, dailyFor, decisionsPath, markAnnounced, overridesPath, readDailies, readDecisions,
+  saveDaily, saveDecision, saveOverride, storeSummary, wasAnnounced,
 } from './store.js';
+import {
+  DailyParse, formatDailyDate, newEscalations, parseDailyReply, parseHhMm, pendingStreaks,
+  streakKey, zonedNow,
+} from './daily.js';
+import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, dailyTitle, pendingEscalationBlocks } from './blocks/daily.js';
 import { digestBlocks } from './blocks/digest.js';
 import { standupDmBlocks } from './blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
@@ -18,7 +24,16 @@ import { driftNudgeBlocks, driftModal } from './blocks/drift.js';
 import { recallBlocks } from './blocks/recall.js';
 import { formatBlocks } from './blocks/format.js';
 import { driftBlocks, silentBlocks } from './blocks/tracker.js';
-import { COMMANDS, CMD, context, section, esc, clamp } from './blocks/common.js';
+import { linkResultBlocks, pastePreviewBlocks, ticketOption, type LinkResult } from './blocks/link.js';
+import { staleBlocks } from './blocks/stale.js';
+import { staleItems, staleKey } from './stale.js';
+import { clearSimulated, seedPendingStreak, todaysSimulatedAnswers } from './demo.js';
+import { channelsOf, describeProjects, labelOf, projectMap, projectOf } from './projects.js';
+import { TrackerOff, addComment, describeTracker, searchTickets, trackerConfig } from './youtrack.js';
+import { COMMANDS, CMD, bodyText, context, section, esc, clamp, who } from './blocks/common.js';
+import { describeNames, mentionOf, resetNames } from './names.js';
+import type { DailyAnswer } from './types.js';
+import { pasteChat, reindex } from './tam-api.js';
 
 const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
 
@@ -101,6 +116,30 @@ const DIGEST_CHANNEL = env('DIGEST_CHANNEL');
 const STANDUP_USERS = env('STANDUP_USERS').split(',').map((s) => s.trim()).filter(Boolean);
 
 /* ------------------------------------------------------------------ *
+ * The daily thread. Defaults to the digest channel so a team that has
+ * configured one channel does not have to configure a second, and to
+ * 09:00 / 10:45 — the summary time the team asked for, and a post time
+ * far enough ahead of it to be worth answering.
+ * ------------------------------------------------------------------ */
+const DAILY_CHANNEL = env('DAILY_CHANNEL', DIGEST_CHANNEL);
+const DAILY_AT = parseHhMm(env('TAM_DAILY_AT'), '09:00', 'TAM_DAILY_AT');
+const DAILY_SUMMARY_AT = parseHhMm(env('TAM_DAILY_SUMMARY_AT'), '10:45', 'TAM_DAILY_SUMMARY_AT');
+/** A pending line repeated this many dailies running gets announced in the channel. */
+const PENDING_DAYS = Math.max(2, Number(env('TAM_DAILY_PENDING_DAYS', '3')) || 3);
+
+/**
+ * Working days of silence before a work item is raised in the channel.
+ *
+ * Working days, not days: five calendar days across a weekend is three days of
+ * silence, which is ordinary, and an escalation that cannot tell those apart fires
+ * every Monday about nothing. See `stale.ts` for why holidays are not modelled.
+ */
+const STALE_WORKDAYS = Math.max(1, Number(env('TAM_STALE_WORKDAYS', '5')) || 5);
+
+const hhmm = (t: { hour: number; minute: number }) =>
+  `${String(t.hour).padStart(2, '0')}:${String(t.minute).padStart(2, '0')}`;
+
+/* ------------------------------------------------------------------ *
  * /meowtam — one command, several shapes. Fewer commands to remember, and
  * Slack only makes you register one.
  * ------------------------------------------------------------------ */
@@ -124,7 +163,89 @@ app.command(new RegExp(`^/(${COMMANDS.join('|')})$`), async ({ command, ack, res
 
     // /meowtam demo …     → the demo driver (see below)
     if (lower.startsWith('demo')) {
-      await runDemo(arg.slice(4).trim(), { client, respond, channel: command.channel_id, user: command.user_id });
+      await runDemo(arg.slice(4).trim(), {
+        client, respond,
+        channel: command.channel_id,
+        channelName: command.channel_name,
+        user: command.user_id,
+        triggerId: (body as any).trigger_id,
+      });
+      return;
+    }
+
+    // /meowtam daily            → the form, and only the person who asked sees it.
+    //                              `respond` on a slash command is ephemeral by
+    //                              default, which is exactly what was asked for.
+    // /meowtam daily post        → post today's daily now (`post again` replaces it)
+    // /meowtam daily summary     → run the 10:45 collection now
+    if (lower === 'daily' || lower.startsWith('daily ')) {
+      const sub = lower.slice(5).trim();
+      if (!sub) {
+        await respond({
+          blocks: dailyTemplateBlocks(standupFor(command.user_id)) as any,
+          text: 'ฟอร์ม daily',
+        });
+        return;
+      }
+      if (sub === 'post' || sub === 'post again' || sub === 'again') {
+        await respond({ text: await postDaily(client, { force: sub !== 'post' }) });
+        return;
+      }
+      if (sub === 'summary' || sub === 'summarise' || sub === 'summarize' || sub === 'สรุป') {
+        await respond({ text: await summariseDaily(client) });
+        return;
+      }
+      await respond({
+        text:
+          `ใช้ได้: \`${CMD} daily\` (ฟอร์ม เห็นคนเดียว) · ` +
+          `\`${CMD} daily post\` (โพสต์ของวันนี้) · \`${CMD} daily summary\` (สรุปเธรดเดี๋ยวนี้)`,
+      });
+      return;
+    }
+
+    // /meowtam paste   → attach a DM or a private group to a ticket
+    if (lower === 'paste' || lower === 'แนบแชท' || lower.startsWith('paste ')) {
+      await openPasteModal(client, (body as any).trigger_id, {
+        channel: command.channel_id,
+        channelName: command.channel_name,
+      });
+      return;
+    }
+
+    // /meowtam stale [post]  → work nobody has touched for N working days
+    if (lower === 'stale' || lower.startsWith('stale ')) {
+      const sub = lower.slice(5).trim();
+      if (sub === 'post' || sub === 'announce' || sub === 'ประกาศ') {
+        await respond({ text: await announceStale(client, { channel: DIGEST_CHANNEL || command.channel_id, force: true }) });
+        return;
+      }
+      const entries = staleItems(sortedItems(), { workdays: STALE_WORKDAYS });
+      await respond({
+        blocks: staleBlocks(entries, STALE_WORKDAYS) as any,
+        text: `เงียบเกิน ${STALE_WORKDAYS} วันทำการ`,
+      });
+      return;
+    }
+
+    // /meowtam projects  → what the channel→project map says, from inside Slack
+    if (lower === 'projects' || lower === 'project' || lower === 'โปรเจกต์') {
+      const map = projectMap();
+      const here = projectOf({ id: command.channel_id, name: command.channel_name });
+      const lines = map.projects.length
+        ? map.projects.map((key) => `• *${esc(labelOf(key))}* \`${esc(key)}\` — ${channelsOf(key).map((c) => (c.startsWith('#') ? esc(c) : `<#${c}>`)).join(', ')}`)
+        : ['_ยังไม่ได้ตั้ง_ — ตัวเลือก ticket จะค้นทุกโปรเจกต์ใน YOUTRACK_PROJECTS'];
+      await respond({
+        text: 'channel → project',
+        blocks: [
+          section(`*แต่ละห้องคือโปรเจกต์อะไร*\n${lines.join('\n')}`),
+          context(
+            (here
+              ? `ห้องนี้ = *${esc(labelOf(here))}* — เมนูผูก ticket จะค้นเฉพาะโปรเจกต์นี้`
+              : 'ห้องนี้ยังไม่ได้แม็ป — เมนูผูก ticket จะค้นทุกโปรเจกต์') +
+              ' · ตั้งที่ `TAM_CHANNEL_PROJECTS` ทั้งใน slack-bot/.env และ pipeline/.env (ค่าเดียวกัน)',
+          ),
+        ] as any,
+      });
       return;
     }
 
@@ -167,9 +288,14 @@ app.command(new RegExp(`^/(${COMMANDS.join('|')})$`), async ({ command, ack, res
 
     // /meowtam reload     → re-read ledger.json without restarting mid-demo
     if (lower === 'reload') {
+      // Names too: somebody who just ran `tam.ingest.users --fetch` expects the
+      // next command to show the real names without restarting the bot.
+      resetNames();
       const l = await reload();
       const from = ledgerOrigin() === 'pipeline' ? 'pipeline' : 'fixture';
-      await respond({ text: `โหลดใหม่แล้ว (${from}): ${l.items.length} items, ${l.corpus_size} ข้อความ` });
+      await respond({
+        text: `โหลดใหม่แล้ว (${from}): ${l.items.length} items, ${l.corpus_size} ข้อความ · ${describeNames()}`,
+      });
       return;
     }
 
@@ -246,8 +372,8 @@ app.action('show_evidence', async ({ ack, body, client, action }) => {
     title: { type: 'plain_text', text: 'หลักฐาน' },
     close: { type: 'plain_text', text: 'ปิด' },
     blocks: [
-      section(`*${esc(m.user)}* · ${m.when} · ${m.source}`),
-      section(esc(m.text)),
+      section(`*${who(m.user)}* · ${m.when} · ${m.source}`),
+      section(bodyText(m.text)),
       context(m.permalink ? `<${m.permalink}|เปิดใน Slack>` : `id: \`${m.id}\``),
     ] as any,
   });
@@ -282,23 +408,49 @@ app.view('drift_save', async ({ ack, view, client, body }) => {
   const key = view.private_metadata;
   const desc = view.state.values['description']?.['value']?.value ?? '';
   const comment = view.state.values['comment']?.['value']?.value ?? '';
+  const who = (body as any).user.id as string;
 
-  // ── Real implementation ───────────────────────────────────────────
-  // POST /api/issues/{key} { description: desc }
-  // POST /api/issues/{key}/comments { text: comment }
-  // Auth: Bearer <YouTrack permanent token>
-  // Left mocked for the hackathon so the demo never depends on YouTrack
-  // being reachable from the venue wifi.
-  console.log('[mock youtrack write]', key, { desc: desc.slice(0, 120), comment });
+  // This used to be `console.log('[mock youtrack write]')` under a message that said
+  // "description ใหม่ถูกเขียนลง YouTrack". It now writes, or it says it did not and
+  // why — the two things it must never do again are write silently and claim falsely.
+  //
+  // A comment, not a description edit. Overwriting a ticket's description from a
+  // Slack modal destroys whatever a PO wrote there, with no undo and no record of
+  // what was lost; the proposed text goes in as a comment where the ticket's owner
+  // can read it beside the original and apply it themselves.
+  const proposal = [
+    comment.trim() || 'สโคปในเธรดกับ ticket ไม่ตรงกัน',
+    '',
+    'สโคปที่คุยกันใน Slack (ข้อเสนอ ยังไม่ได้แก้ description ให้):',
+    desc.trim(),
+    '',
+    `— เสนอจาก Slack โดย ${who} เมื่อ ${stamp()}`,
+  ].join('\n');
 
-  await client.chat.postMessage({
-    channel: (body as any).user.id,
-    text: `อัปเดต ${key} แล้ว`,
-    blocks: [
-      section(`*✅ อัปเดต ${key} แล้ว*\ndescription ใหม่ถูกเขียนลง YouTrack พร้อมลิงก์กลับมาที่เธรดใน Slack`),
-      context('เดโมนี้ยังไม่ได้ต่อ YouTrack จริง — จุดที่จะเขียนอยู่ใน `src/app.ts` เห็นชัดเจน'),
-    ] as any,
-  });
+  let blocks;
+  try {
+    const written = await addComment(key, proposal);
+    blocks = [
+      section(`*✅ เขียนลง ${esc(key)} แล้ว*`),
+      section(
+        `เขียนเป็น *คอมเมนต์* ไม่ได้ทับ description เดิม — comment id \`${esc(written.id)}\`\n` +
+          'เจ้าของ ticket อ่านเทียบกับของเดิมแล้วค่อยแก้เองได้',
+      ),
+      { type: 'actions', elements: [
+        { type: 'button', text: { type: 'plain_text', text: 'เปิด ticket' }, url: written.url },
+      ] },
+    ];
+  } catch (err) {
+    const why = err instanceof TrackerOff ? err.message : (err as Error).message;
+    console.error('drift_save — เขียน YouTrack ไม่ได้:', err);
+    blocks = [
+      section(`*ยังไม่ได้เขียนลง ${esc(key)}*`),
+      context(esc(why)),
+      section(`ข้อความที่จะเขียน (ก๊อปไปวางเองได้):\n\`\`\`${esc(clamp(proposal, 1500))}\`\`\``),
+    ];
+  }
+
+  await replyTo(client, who, { text: `อัปเดต ${key}`, blocks: blocks as any });
 });
 
 app.action('standup_submit', async ({ ack, body, client, respond }) => {
@@ -322,8 +474,11 @@ app.action('standup_submit', async ({ ack, body, client, respond }) => {
   if (blocker && DIGEST_CHANNEL) {
     await client.chat.postMessage({
       channel: DIGEST_CHANNEL,
-      text: `blocker ใหม่จาก <@${user}>`,
-      blocks: [section(`*⛔ blocker ใหม่* จาก <@${user}>\n${esc(blocker)}`)] as any,
+      // `mentionOf`, not `<@id>` written by hand: a real mention renders the
+      // person's real name client-side, which would put a real name back on the
+      // screen in exactly the mode (TAM_NAMES=pseudonym) that exists to keep it off.
+      text: `blocker ใหม่จาก ${mentionOf(user)}`,
+      blocks: [section(`*⛔ blocker ใหม่* จาก ${mentionOf(user)}\n${esc(blocker)}`)] as any,
     });
   }
 });
@@ -343,111 +498,570 @@ app.action('standup_skip', async ({ ack, respond }) => {
  * original problem with extra steps.
  * ------------------------------------------------------------------ */
 
+/**
+ * Reply to the person who just pressed something, and never fail silently.
+ *
+ * Every one of these paths ends in a DM to the person who invoked it, and `postguard`
+ * refuses a DM to anybody outside the allowlist — correctly, since that allowlist is
+ * what stops a misconfigured bot DMing a workspace. But the refusal surfaces as a
+ * thrown error inside a Bolt listener, which Bolt logs and swallows: the person
+ * presses ผูก, everything works, the correction is written, and *nothing appears*.
+ * On a laptop that has not set STANDUP_USERS that is the entire experience of the
+ * feature, and it looks exactly like a bug in the feature rather than in one line of
+ * `.env`.
+ *
+ * So the refusal is caught here and printed as the fix, with the id to add. The work
+ * itself has already happened by the time this runs — this is the report, and losing
+ * the report must not look like losing the work.
+ */
+async function replyTo(client: any, user: string, message: { text: string; blocks?: any }): Promise<boolean> {
+  try {
+    await client.chat.postMessage({ channel: user, ...message });
+    return true;
+  } catch (err) {
+    if (err instanceof PostRefused) {
+      console.error(
+        `✕ ทำงานเสร็จแล้วแต่ตอบกลับ ${user} ไม่ได้ — ${err.message}\n` +
+          `  แก้: เพิ่ม ${user} ลง SLACK_POST_ALLOWLIST (หรือ STANDUP_USERS) ใน slack-bot/.env แล้ว restart`,
+      );
+      return false;
+    }
+    throw err;
+  }
+}
+
 /** Why a message could not be linked. Same wording wherever the reason differs. */
 function cannotLinkBlocks(reason: string) {
   return [section('*ผูกไม่ได้*'), context(reason)] as any;
 }
 
-// Slack's own ceiling for a static_select. The old cap of 20 was self-imposed and
-// silently made items 21+ unlinkable, which is the same class of bug as a
-// truncated board with no notice.
+/**
+ * Slack's ceiling on options in one response. Not a self-imposed cap this time: an
+ * `external_select` may return at most 100, and unlike the old static list this is
+ * the top 100 *of a query* rather than the first 100 of everything, so the ticket
+ * somebody is looking for is reachable by typing more of it.
+ */
 const MAX_TICKET_OPTIONS = 100;
+
+/**
+ * The ticket picker's options, per keystroke.
+ *
+ * This used to be a fixed list of work items — the things the pipeline built out of
+ * Slack. That is exactly the wrong set to offer: a ticket already named in Slack is
+ * already linked, and the one a person is reaching for is the one nobody has typed
+ * yet. It was also capped at 100 with no search box, so past the hundredth work item
+ * a ticket was simply unreachable.
+ *
+ * So it asks the tracker, scoped to whatever project this channel is. The fallback
+ * to work items stays for the case where no tracker is configured at all, and it
+ * says which of the two the reader is looking at — a picker that silently degrades
+ * to a different source is a picker that quietly cannot find things.
+ *
+ * `private_metadata` carries the channel, because the options request does not: Slack
+ * sends the view, not the conversation it was opened from, and without it the scoping
+ * this whole feature is for would be lost at exactly the moment it is needed.
+ */
+app.options('ticket_lookup', async ({ options, ack, body }) => {
+  const typed = String((options as any).value ?? '');
+  let meta: LinkMeta;
+  try {
+    meta = JSON.parse(String((body as any).view?.private_metadata || '{}'));
+  } catch {
+    meta = {};
+  }
+  const project = meta.project ?? '';
+
+  try {
+    const tickets = await searchTickets(typed, { projects: project ? [project] : undefined, limit: MAX_TICKET_OPTIONS });
+    if (tickets.length) {
+      await ack({ options: tickets.map(ticketOption) as any });
+      return;
+    }
+    // An empty result from a working tracker is a real answer, and an empty options
+    // list renders as "No results" with no explanation. One disabled-looking row says
+    // which project was searched, which is usually the thing that is wrong.
+    await ack({
+      options: [
+        {
+          text: { type: 'plain_text', text: clamp(`ไม่เจอ “${typed}” ใน ${project || 'ทุกโปรเจกต์ที่ตั้งไว้'}`, 75) },
+          value: '__none__',
+        },
+      ] as any,
+    });
+  } catch (err) {
+    const why = err instanceof TrackerOff ? err.message : `ค้น ticket ไม่ได้: ${(err as Error).message}`;
+    console.error('ticket_lookup —', err);
+    // Falling back to work items rather than showing nothing: the corpus does hold
+    // some ticket keys, and half a picker beats an empty one. The first row says
+    // which source these came from so nobody reads a short list as the whole tracker.
+    const items = sortedItems().filter((i) => /^[A-Z][A-Z0-9]{1,9}-\d+$/.test(i.key));
+    const matched = typed
+      ? items.filter((i) => `${i.key} ${i.headline}`.toLowerCase().includes(typed.toLowerCase()))
+      : items;
+    await ack({
+      options: [
+        { text: { type: 'plain_text', text: clamp(`⚠ ${why}`, 75) }, value: '__none__' },
+        ...matched.slice(0, MAX_TICKET_OPTIONS - 1).map((i) => ({
+          text: { type: 'plain_text', text: clamp(`${i.key} · ${i.headline}`, 75) },
+          value: i.key,
+        })),
+      ] as any,
+    });
+  }
+});
+
+/** What a link modal has to remember between opening and being submitted. */
+interface LinkMeta {
+  /** The corpus id of the message being linked. Absent for the paste flow. */
+  record?: string;
+  channel?: string;
+  project?: string;
+  /** The paste flow's own fields, carried the same way. */
+  paste?: boolean;
+}
+
+/** The picker block, shared by "ผูกกับ ticket" and the paste modal. */
+function ticketPicker(project: string) {
+  return {
+    type: 'input',
+    block_id: 'key',
+    label: { type: 'plain_text', text: 'Ticket' },
+    element: {
+      type: 'external_select',
+      action_id: 'ticket_lookup',
+      // Zero, so the list is already populated when the modal opens: the project's
+      // most recently touched tickets are usually the answer, and making somebody
+      // type before seeing anything hides that.
+      min_query_length: 0,
+      placeholder: {
+        type: 'plain_text',
+        text: clamp(project ? `ค้นใน ${labelOf(project)} — พิมพ์เลขหรือคำในชื่อ` : 'พิมพ์ ticket key หรือคำในชื่อ', 150),
+      },
+    },
+  };
+}
+
+/** The scope line under the picker, so nobody has to guess what is being searched. */
+function scopeContext(channelProject: string) {
+  const cfg = trackerConfig();
+  if (cfg.backend === 'none') {
+    return context('⚠ ยังไม่ได้ต่อ YouTrack — รายการที่เห็นมาจาก work item ที่ pipeline สร้าง ไม่ใช่ ticket ทั้งหมด');
+  }
+  return context(
+    channelProject
+      ? `ค้นเฉพาะโปรเจกต์ *${esc(labelOf(channelProject))}* เพราะห้องนี้ถูกตั้งไว้ว่าเป็นโปรเจกต์นี้ (TAM_CHANNEL_PROJECTS)`
+      : 'ค้นทุกโปรเจกต์ที่ตั้งไว้ใน YOUTRACK_PROJECTS · ตั้ง TAM_CHANNEL_PROJECTS ให้ห้องนี้แล้วจะแคบลงและตรงขึ้น',
+  );
+}
 
 app.shortcut('link_to_ticket', async ({ ack, shortcut, client }) => {
   await ack();
-  const items = sortedItems();
+  const s = shortcut as any;
+  const recordId = recordIdFor(s);
 
-  // A static_select with zero options is an invalid view: Slack rejects it and the
-  // user sees nothing happen at all. Say why instead.
-  if (!items.length) {
-    await client.chat.postMessage({
-      channel: (shortcut as any).user.id,
+  if (!recordId) {
+    await replyTo(client, s.user.id, {
       text: 'ผูกไม่ได้',
-      blocks: cannotLinkBlocks(
-        'ยังไม่มี work item ให้ผูกเลย — pipeline ยังไม่ได้จัดกลุ่มอะไร ลองรัน prepare/digest ก่อน',
-      ),
+      blocks: cannotLinkBlocks('อ่านไม่ออกว่าเป็นข้อความไหน (payload ไม่มี channel/ts) — ลองใหม่จากเมนู ⋯ ที่ข้อความ'),
     });
     return;
   }
 
+  const project = projectOf({ id: s.channel?.id, name: s.channel?.name });
+  const meta: LinkMeta = { record: recordId, channel: s.channel?.id, project };
+
   await client.views.open({
-    trigger_id: (shortcut as any).trigger_id,
+    trigger_id: s.trigger_id,
     view: {
       type: 'modal',
       callback_id: 'link_save',
-      private_metadata: recordIdFor(shortcut as any),
+      private_metadata: JSON.stringify(meta),
       title: { type: 'plain_text', text: 'ผูกกับ ticket' },
       submit: { type: 'plain_text', text: 'ผูก' },
       close: { type: 'plain_text', text: 'ยกเลิก' },
       blocks: [
-        section(`>${esc(clamp((shortcut as any).message?.text ?? '', 300))}`),
+        section(`>${esc(clamp(s.message?.text ?? '', 300))}`),
+        ticketPicker(project),
+        scopeContext(project),
         {
           type: 'input',
-          block_id: 'key',
-          label: { type: 'plain_text', text: 'Ticket key' },
+          block_id: 'comment',
+          optional: true,
+          label: { type: 'plain_text', text: 'คอมเมนต์ที่จะเขียนลง ticket' },
           element: {
-            type: 'static_select',
+            type: 'plain_text_input',
             action_id: 'value',
-            options: items
-              .slice(0, MAX_TICKET_OPTIONS)
-              .map((i) => ({
-                text: { type: 'plain_text', text: clamp(`${i.key} · ${i.headline}`, 70) },
-                value: i.key,
-              })),
+            multiline: true,
+            initial_value: 'ผูกกับบทสนทนาใน Slack',
           },
         },
+        context(
+          trackerConfig().canWrite
+            ? 'ข้อความนี้จะถูกเขียนเป็นคอมเมนต์ใน YouTrack จริง พร้อมลิงก์กลับมาที่ข้อความนี้ — ลบทิ้งถ้าไม่อยากให้เขียน'
+            : '⚠ ตอนนี้ยังเขียนคอมเมนต์ลง YouTrack ไม่ได้ (ยังไม่ได้เปิด YOUTRACK_WRITE) — การผูกจะถูกเก็บฝั่งเราอย่างเดียว',
+        ),
       ] as any,
     },
   });
 });
 
+/**
+ * Everything one link attempt does, in the order that keeps the report honest.
+ *
+ * Local write, then tracker write, then rebuild. Each step records its own outcome
+ * on the result instead of throwing, because they fail independently: the corrections
+ * file can be written while YouTrack refuses the token, and reporting only the first
+ * exception would hide the half that succeeded — the half that changes what tomorrow's
+ * digest says.
+ *
+ * The rebuild is not an optimisation. The linker reads the corrections file when it
+ * runs, so without this the person is told their message is attached to a ticket while
+ * every screen that could show it still says otherwise, until some later reindex.
+ */
+async function performLink(input: {
+  recordIds: string[];
+  key: string;
+  by: string;
+  comment: string;
+  permalink?: string;
+}): Promise<LinkResult> {
+  const { recordIds, key, by, comment } = input;
+  const result: LinkResult = { key, messages: recordIds.length };
+
+  try {
+    let total = 0;
+    for (const id of recordIds) total = saveOverride(id, key, by, stamp());
+    result.overridesFile = shortPath(overridesPath());
+    result.overridesTotal = total;
+  } catch (err) {
+    console.error('saveOverride failed', err);
+    result.overridesError = (err as Error).message;
+  }
+
+  if (comment.trim()) {
+    try {
+      const written = await addComment(
+        key,
+        // The permalink is the whole point of writing to the tracker: it makes the
+        // link two-way, so somebody reading the ticket can reach the conversation.
+        `${comment.trim()}${input.permalink ? `\n\n${input.permalink}` : ''}\n\n— ผูกจาก Slack โดย ${by} เมื่อ ${stamp()}`,
+      );
+      result.commentId = written.id;
+      result.commentUrl = written.url;
+      result.ticketUrl = written.url;
+    } catch (err) {
+      result.commentError = err instanceof TrackerOff ? err.message : (err as Error).message;
+    }
+  }
+
+  const cfg = apiConfig();
+  if (cfg) {
+    try {
+      await reindex(cfg);
+      await reload();
+      const item = findItem(key);
+      if (item) {
+        result.itemKey = item.key;
+        result.inItem = item.messages.filter((m) => recordIds.includes(m.id)).length;
+      } else {
+        result.inItem = 0;
+      }
+      // Asked of the pipeline, not inferred here. "Not in the item" and "not in the
+      // corpus" look identical from this side and need opposite things done about
+      // them, and only the pipeline knows which of the two just happened.
+      const report = await fetchTracker(cfg);
+      const mine = new Set(recordIds);
+      result.unresolved = report.unresolved_links
+        .filter((bad) => mine.has(bad.record_id))
+        .map((bad) => ({ record_id: bad.record_id, why: bad.why }));
+    } catch (err) {
+      result.rebuildError = (err as Error).message;
+    }
+  } else {
+    result.rebuildError = 'ยังไม่ได้ตั้ง TAM_API_URL — บอทอ่านจาก fixture อยู่ จึง build ใหม่ให้ไม่ได้';
+  }
+
+  if (!result.ticketUrl) {
+    const item = findItem(key);
+    if (item?.youtrack_url) result.ticketUrl = item.youtrack_url;
+  }
+  if (cfg && result.itemKey) result.boardUrl = `${cfg.baseUrl}/item/${encodeURIComponent(result.itemKey)}`;
+  return result;
+}
+
 app.view('link_save', async ({ ack, view, client, body }) => {
   await ack();
-  const key = view.state.values['key']?.['value']?.selected_option?.value;
-  const recordId = (view.private_metadata || '').trim();
+  const key = view.state.values['key']?.['ticket_lookup']?.selected_option?.value;
+  const comment = view.state.values['comment']?.['value']?.value ?? '';
   const who = (body as any).user.id as string;
+  let meta: LinkMeta = {};
+  try {
+    meta = JSON.parse(view.private_metadata || '{}');
+  } catch {
+    meta = {};
+  }
 
-  if (!key || !recordId) {
-    await client.chat.postMessage({
-      channel: who,
+  if (!key || key === '__none__' || !meta.record) {
+    await replyTo(client, who, {
       text: 'ผูกไม่ได้',
       blocks: cannotLinkBlocks(
-        'ไม่รู้ว่าเป็นข้อความไหน — เกิดขึ้นเมื่อข้อความไม่ได้อยู่ใน corpus ที่ประมวลผลแล้ว ลองรัน export/prepare ใหม่',
+        !meta.record
+          ? 'ไม่รู้ว่าเป็นข้อความไหน — เกิดขึ้นเมื่อข้อความไม่ได้อยู่ใน corpus ที่ประมวลผลแล้ว ลองรัน export/prepare ใหม่'
+          : 'ยังไม่ได้เลือก ticket (แถวที่ขึ้นว่า “ไม่เจอ” เลือกไม่ได้ — พิมพ์คำอื่นหรือเลข ticket ดูครับ)',
       ),
     });
     return;
   }
 
-  // A real write, to the file the pipeline's linker reads as its top tier.
-  let total: number;
-  try {
-    total = saveOverride(recordId, key, who, stamp());
-  } catch (err) {
-    // The errno and the absolute path go to the log; Slack gets the file name.
-    console.error('saveOverride failed', err);
-    await client.chat.postMessage({
-      channel: who,
-      text: 'บันทึกไม่สำเร็จ',
+  const permalink = meta.channel
+    ? await permalinkFor(client, meta.channel, meta.record.replace(/^msg_[A-Z0-9]+_/, ''))
+    : undefined;
+  const result = await performLink({ recordIds: [meta.record], key, by: who, comment, permalink });
+
+  await replyTo(client, who, { text: `ผูกกับ ${key} แล้ว`, blocks: linkResultBlocks(result) as any });
+});
+
+/* ------------------------------------------------------------------ *
+ * Attaching a private conversation.
+ *
+ * The single biggest hole in reading only public channels: the conversation
+ * that decides something often happens in a DM, a private group, or another
+ * workspace, and no token the team can grant will reach it. What a person can
+ * always do is select those messages, press ⌘C, and paste them — so that is
+ * the affordance, and the pipeline already has the parser for Slack's
+ * clipboard format.
+ *
+ * Two presses, not one. The parser is a heuristic over a format nobody
+ * documents, and a misread paste looks exactly like a short conversation, so
+ * nothing is stored until somebody has seen what it made of the text.
+ * ------------------------------------------------------------------ */
+
+/** Pastes waiting for their second press, keyed by the id in the button's value. */
+const pendingPastes = new Map<string, { chat: string; title: string; day: string; key: string; user: string; at: number }>();
+
+/** Long enough to read a preview, short enough that a forgotten paste does not linger. */
+const PASTE_TTL_MS = 30 * 60_000;
+
+function rememberPaste(entry: { chat: string; title: string; day: string; key: string; user: string }): string {
+  const now = Date.now();
+  for (const [id, held] of pendingPastes) {
+    if (now - held.at > PASTE_TTL_MS) pendingPastes.delete(id);
+  }
+  const id = `p${now.toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+  pendingPastes.set(id, { ...entry, at: now });
+  return id;
+}
+
+async function openPasteModal(
+  client: any,
+  triggerId: string,
+  ctx: { channel?: string; channelName?: string; sample?: string },
+) {
+  const project = projectOf({ id: ctx.channel, name: ctx.channelName });
+  const meta: LinkMeta = { channel: ctx.channel, project, paste: true };
+  const today = localNow().date;
+  await client.views.open({
+    trigger_id: triggerId,
+    view: {
+      type: 'modal',
+      callback_id: 'paste_save',
+      private_metadata: JSON.stringify(meta),
+      title: { type: 'plain_text', text: 'แนบแชทเข้ากับ ticket' },
+      submit: { type: 'plain_text', text: 'อ่านให้ดูก่อน' },
+      close: { type: 'plain_text', text: 'ยกเลิก' },
       blocks: [
-        section('*บันทึกไม่สำเร็จ*'),
-        context(`เขียนไฟล์ ${esc(shortPath(overridesPath()))} ไม่ได้ — รายละเอียดอยู่ใน log ฝั่งเซิร์ฟเวอร์`),
+        section(
+          '*วางแชทจาก DM หรือห้องที่บอทเข้าไม่ถึง*\n' +
+            'เลือกข้อความใน Slack แล้ว ⌘C มาวางตรงนี้ได้เลย — ผมอ่านชื่อคนกับเวลาออกเอง',
+        ),
+        ticketPicker(project),
+        scopeContext(project),
+        {
+          type: 'input',
+          block_id: 'title',
+          label: { type: 'plain_text', text: 'แชทนี้คือแชทอะไร' },
+          element: {
+            type: 'plain_text_input',
+            action_id: 'value',
+            placeholder: { type: 'plain_text', text: 'เช่น DM พี่ Natta เรื่อง redemption' },
+          },
+        },
+        {
+          type: 'input',
+          block_id: 'day',
+          label: { type: 'plain_text', text: 'วันที่แชทนี้เริ่ม' },
+          element: { type: 'datepicker', action_id: 'value', initial_date: today },
+        },
+        context(
+          'ต้องบอกวัน เพราะคลิปบอร์ดของ Slack มีแต่เวลา ไม่มีวันที่ — ' +
+            'ถ้าไม่บอก แชทเมื่อวันศุกร์จะไปนั่งอยู่คนละสัปดาห์กับข้อความที่มันเกี่ยวข้องด้วย',
+        ),
+        {
+          type: 'input',
+          block_id: 'chat',
+          label: { type: 'plain_text', text: 'แชทที่ก๊อปมา' },
+          element: {
+            type: 'plain_text_input',
+            action_id: 'value',
+            multiline: true,
+            ...(ctx.sample ? { initial_value: ctx.sample } : {}),
+            // One line: a placeholder is capped at 150 characters and a newline inside
+            // one is not worth finding out about from a 400 on stage.
+            placeholder: { type: 'plain_text', text: 'ชื่อคนพูด  [2:21 PM] แล้วขึ้นบรรทัดใหม่เป็นเนื้อความ' },
+          },
+        },
+      ] as any,
+    },
+  });
+}
+
+app.view('paste_save', async ({ ack, view, client, body }) => {
+  const who = (body as any).user.id as string;
+  const key = view.state.values['key']?.['ticket_lookup']?.selected_option?.value ?? '';
+  const chat = view.state.values['chat']?.['value']?.value ?? '';
+  const title = view.state.values['title']?.['value']?.value ?? '';
+  const day = view.state.values['day']?.['value']?.selected_date ?? localNow().date;
+
+  if (!key || key === '__none__') {
+    // Answering inside the modal rather than closing it and DMing: the person still
+    // has their paste in the box, and losing it to a validation error would be the
+    // kind of thing nobody tries twice.
+    await ack({
+      response_action: 'errors',
+      errors: { key: 'เลือก ticket ก่อนครับ (แถวที่ขึ้นว่า “ไม่เจอ” เลือกไม่ได้)' },
+    } as any);
+    return;
+  }
+  const cfg = apiConfig();
+  if (!cfg) {
+    await ack({
+      response_action: 'errors',
+      errors: { chat: 'ยังไม่ได้ตั้ง TAM_API_URL — บอทเก็บแชทเข้า corpus เองไม่ได้ ต้องมี pipeline' },
+    } as any);
+    return;
+  }
+  await ack();
+
+  try {
+    const preview = await pasteChat(cfg, { chat, title, day, dryRun: true });
+    const id = rememberPaste({ chat, title, day, key, user: who });
+    await replyTo(client, who, {
+      text: `อ่านแชทได้ ${preview.records.length} ข้อความ`,
+      blocks: pastePreviewBlocks({
+        title: preview.title,
+        day: preview.day,
+        key,
+        records: preview.records,
+        skipped: preview.skipped ?? [],
+        actionValue: id,
+      }) as any,
+    });
+  } catch (err) {
+    console.error('paste preview failed', err);
+    await replyTo(client, who, {
+      text: 'อ่านแชทไม่ได้',
+      blocks: [
+        section('*อ่านแชทที่วางมาไม่ได้*'),
+        context(esc((err as Error).message)),
+        context('รูปแบบที่อ่านออกคือ `ชื่อคน  [2:21 PM]` แล้วขึ้นบรรทัดใหม่เป็นเนื้อความ — ก๊อปให้เริ่มที่ชื่อคนพูด'),
       ] as any,
     });
+  }
+});
+
+app.action('paste_cancel', async ({ ack, respond, action }) => {
+  await ack();
+  pendingPastes.delete(String((action as any).value ?? ''));
+  await respond({ replace_original: true, text: 'ยกเลิกแล้ว — ยังไม่ได้เก็บอะไรลง corpus' });
+});
+
+app.action('paste_confirm', async ({ ack, respond, action, body }) => {
+  await ack();
+  const id = String((action as any).value ?? '');
+  const held = pendingPastes.get(id);
+  const who = (body as any).user.id as string;
+  if (!held) {
+    await respond({
+      replace_original: false,
+      text: 'แชทก้อนนี้หมดอายุแล้ว (เก็บไว้ 30 นาที) — วางใหม่อีกครั้งด้วย `' + CMD + ' paste`',
+    });
+    return;
+  }
+  pendingPastes.delete(id);
+  const cfg = apiConfig();
+  if (!cfg) {
+    await respond({ replace_original: false, text: 'ยังไม่ได้ตั้ง TAM_API_URL — เก็บให้ไม่ได้' });
     return;
   }
 
-  await client.chat.postMessage({
-    channel: who,
-    text: `ผูกกับ ${key} แล้ว`,
-    blocks: [
-      section(`*🔗 ผูกกับ ${key} แล้ว*`),
-      context(
-        `เขียนลง \`${esc(shortPath(overridesPath()))}\` แล้ว (${total} รายการ) · ` +
-          'linker จะถือเป็น tier สูงสุดในรอบถัดไป ไม่เดาทับ',
-      ),
-    ] as any,
-  });
+  await respond({ replace_original: true, text: 'กำลังเก็บเข้า corpus แล้ว build ใหม่ — สักครู่ครับ' });
+
+  const result: LinkResult = { key: held.key, messages: 0 };
+  try {
+    // One call does the corpus write, the link overrides and the rebuild, in that
+    // order and under one lock. Doing it from here in three calls would leave a
+    // window where the corpus holds the messages and the linker has not been told
+    // where they belong — which the digest would render as an unassigned thread.
+    const stored = await pasteChat(cfg, { chat: held.chat, title: held.title, day: held.day, linkKey: held.key, by: who });
+    result.messages = stored.records.length;
+    result.overridesFile = shortPath(overridesPath());
+    result.overridesTotal = stored.linked;
+    result.itemKey = stored.item_key || undefined;
+    result.inItem = stored.in_item ?? 0;
+    await reload();
+  } catch (err) {
+    console.error('paste ingest failed', err);
+    await respond({
+      replace_original: false,
+      text: 'เก็บไม่สำเร็จ',
+      blocks: [section('*เก็บแชทไม่สำเร็จ*'), context(esc((err as Error).message))] as any,
+    });
+    return;
+  }
+
+  if (held.key) {
+    try {
+      const written = await addComment(
+        held.key,
+        `แนบบทสนทนาจาก Slack: “${held.title}” (${held.day}) — ${result.messages} ข้อความ\n` +
+          `เก็บเข้า corpus ของ Meowtam แล้ว โดย ${who} เมื่อ ${stamp()}`,
+      );
+      result.commentId = written.id;
+      result.ticketUrl = written.url;
+    } catch (err) {
+      result.commentError = err instanceof TrackerOff ? err.message : (err as Error).message;
+    }
+  }
+  if (result.itemKey) result.boardUrl = `${cfg.baseUrl}/item/${encodeURIComponent(result.itemKey)}`;
+
+  await respond({ replace_original: false, text: `แนบเข้า ${held.key} แล้ว`, blocks: linkResultBlocks(result) as any });
 });
+
+/* ------------------------------------------------------------------ *
+ * Work that has gone quiet. See stale.ts for why it is counted in
+ * working days and why nobody gets tagged.
+ * ------------------------------------------------------------------ */
+
+async function announceStale(client: any, opts: { channel: string; force?: boolean }): Promise<string> {
+  const entries = staleItems(sortedItems(), { workdays: STALE_WORKDAYS });
+  if (!entries.length) return `ไม่มีงานที่เงียบเกิน ${STALE_WORKDAYS} วันทำการ`;
+
+  const fresh = opts.force ? entries : entries.filter((e) => !wasAnnounced('stale', staleKey(e, STALE_WORKDAYS)));
+  if (!fresh.length) {
+    return `มี ${entries.length} งานที่เงียบเกิน ${STALE_WORKDAYS} วันทำการ แต่ประกาศไปหมดแล้ว (\`${CMD} stale\` ดูได้)`;
+  }
+  if (!opts.channel) return 'ยังไม่ได้ตั้งช่องให้ประกาศ (DIGEST_CHANNEL)';
+
+  await client.chat.postMessage({
+    channel: opts.channel,
+    text: `งานที่เงียบเกิน ${STALE_WORKDAYS} วันทำการ`,
+    blocks: staleBlocks(fresh, STALE_WORKDAYS) as any,
+  });
+  // After Slack accepted it, never before: marking it announced up front is how the
+  // one message that mattered gets swallowed by a failed post.
+  markAnnounced('stale', fresh.map((e) => staleKey(e, STALE_WORKDAYS)), stamp(), `${STALE_WORKDAYS} วันทำการ`);
+  return `ประกาศ ${fresh.length} งานที่เงียบเกิน ${STALE_WORKDAYS} วันทำการแล้ว`;
+}
 
 app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
   await ack();
@@ -662,82 +1276,341 @@ app.event('reaction_added', async ({ event, client }) => {
  * in order, so the narrative is a button press rather than a memory test.
  *
  *   /meowtam demo         → what beat is next
- *   /meowtam demo 1..5    → fire that beat
+ *   /meowtam demo 1..N    → fire that beat
  *   /meowtam demo next    → fire the next one
- *   /meowtam demo reset
+ *   /meowtam demo reset   → back to beat 1 (does not touch data)
+ *   /meowtam demo clear   → remove every simulated morning this wrote
+ *
+ * The beats run on the clock the real jobs run on, and in that exact
+ * order: 08:45 the DM, 09:00 the daily post, the thread fills up, 09:25
+ * the digest, 09:30 the silence check, 10:45 the summary. Read the
+ * `scheduleDaily` calls at the bottom of this file and you are reading
+ * this list again. That is the point — nothing on stage happens before
+ * the thing it reads from, and nobody has to explain a jump backwards.
+ *
+ * The previous order put the 08:45 DM at beat 7, after two channel posts
+ * it precedes in real life. It demonstrated the same features and told a
+ * story of a morning that cannot happen.
+ *
+ * The first seven beats are that morning, in sequence, because the three
+ * claims worth showing are all *about elapsed time*: a morning happens,
+ * the same blocker survives it, and a work item nobody has mentioned all
+ * week surfaces on its own. Beats 8–11 are the rest of the day, which has
+ * no clock — they are the things a person reaches for when something
+ * happens, in the order of how often that is.
+ *
+ * Beats 1 and 4 write simulated data, flagged as such everywhere it is
+ * rendered and removable with `demo clear`. Everything else runs the real
+ * code path against whatever data is actually there — beat 8 really does
+ * ingest a chat, and beat 9 writes a real comment into YouTrack.
  * ------------------------------------------------------------------ */
 
 let beat = 0;
 
-const BEATS = ['standup DM (08:45)', 'digest (09:25)', 'drift nudge', 'recall', 'my board'];
+/**
+ * A beat, and the thing it stands in for on an ordinary morning.
+ *
+ * `real` is not a caption. It is what somebody types — or what fires on its
+ * own with `ENABLE_SCHEDULE=1` — to get exactly what the beat just produced,
+ * and `demo status` prints it beside every beat. Anyone who watches the demo
+ * has therefore also read the command list, and the first question after a
+ * demo ("so how do I actually do that?") is answered on the screen they are
+ * already looking at.
+ */
+interface Beat {
+  title: string;
+  real: string;
+}
+
+const BEATS: Beat[] = [
+  { title: 'เตรียมเช้าที่ผ่านมา — เขียนประวัติ daily ย้อนหลัง (จำลอง)', real: 'ไม่มี — ของจริงคือเช้าที่ผ่านไปเองจริง ๆ' },
+  { title: '08:45 · standup DM — ผมร่างของเมื่อวานให้ ไม่ได้ถาม', real: 'ยิงเอง 08:45 (ENABLE_SCHEDULE=1) · ในการ์ดกดปุ่ม “ส่ง” หรือ “ข้ามวันนี้”' },
+  // The two configurable times are read, not typed: `TAM_DAILY_AT` moves the post
+  // and the beat list has to move with it, or the demo announces a time the bot
+  // does not keep.
+  { title: `${hhmm(DAILY_AT)} · โพสต์ daily ในห้อง — ยกยอดที่ค้างขึ้นหัว`, real: `${CMD} daily post` },
+  { title: 'ทีมตอบในเธรด daily (จำลอง)', real: `${CMD} daily → ได้ฟอร์มเห็นคนเดียว แล้วตอบในเธรด` },
+  { title: '09:25 · digest ลงห้อง — ที่ติดขึ้นก่อน', real: `${CMD} digest` },
+  { title: `09:30 · งานที่ไม่มีใครแตะเกิน ${STALE_WORKDAYS} วันทำการ → ประกาศในห้อง`, real: `${CMD} stale post (ดูเงียบ ๆ ก่อน: ${CMD} stale)` },
+  { title: `${hhmm(DAILY_SUMMARY_AT)} · สรุปเธรด + ประกาศเรื่องที่ค้างติดกัน ${PENDING_DAYS} เช้า`, real: `${CMD} daily summary` },
+  { title: 'แชทจาก DM → ผูกเข้า ticket → build ใหม่', real: `${CMD} paste (หรือเมนู ⋯ ที่ข้อความ → ผูกกับ ticket)` },
+  { title: 'สโคปเปลี่ยนแต่ ticket ไม่เปลี่ยน → เขียนคอมเมนต์ลง ticket', real: `${CMD} drift แล้วกด “ดูร่างที่เสนอ” ในการ์ด` },
+  { title: 'recall — ค้นด้วยความหมาย พร้อมสายการตัดสินใจ', real: `${CMD} recall <คำถาม> (พิมพ์อะไรที่ไม่ใช่คำสั่งก็ถือเป็น recall)` },
+  { title: 'บอร์ดรวม', real: `${CMD} (ของตัวเอง) · ${CMD} @ชื่อ · ${CMD} <TICKET-123> · ${CMD} blocked` },
+];
+
+/**
+ * A chat as Slack's clipboard really produces it, for the paste beat.
+ *
+ * Copied from the format `tam.ingest.slack_paste` was written against, furniture
+ * and all — the `6 replies` marker, the clock glued to the body, the bare clock
+ * for a second message from the same person. A tidy sample would demonstrate a
+ * parser nobody needs.
+ */
+const SAMPLE_PASTE = [
+  'Aim Sirawith  [2:21 PM]',
+  'พี่ครับ หน้า redemption ที่คุยกันเมื่อวาน สรุปว่าใช้ voucher code เดิมใช่ไหมครับ',
+  '[2:22 PM]',
+  'คือถ้าเปลี่ยน format ผมต้องแก้ทั้ง BE ด้วย',
+  'jah natta  [2:24 PM]',
+  'ใช้เดิมไปก่อนนะ PO ยังไม่ยืนยัน format ใหม่',
+  '[2:25 PM]',
+  'ถ้าจะเปลี่ยนจริงเดี๋ยวเปิด ticket ใหม่ให้ ไม่ต้องแก้ของเดิม',
+  'Aim Sirawith  [2:26 PM]',
+  'โอเคครับ งั้นผมทำ REVERAPP-140 ต่อด้วยของเดิม',
+].join('\n');
 
 async function runDemo(
   arg: string,
-  ctx: { client: any; respond: any; channel: string; user: string },
+  ctx: { client: any; respond: any; channel: string; channelName?: string; user: string; triggerId?: string },
 ) {
   const { client, respond, channel, user } = ctx;
+  const roster = STANDUP_USERS.length ? STANDUP_USERS : [user];
 
   if (arg === 'reset') {
     beat = 0;
-    await respond({ text: 'รีเซ็ตเดโมแล้ว — beat ถัดไปคือ 1. ' + BEATS[0] });
+    await respond({ text: 'รีเซ็ตเดโมแล้ว — beat ถัดไปคือ 1. ' + BEATS[0]?.title + ' (ข้อมูลจำลองยังอยู่ ลบด้วย `' + CMD + ' demo clear`)' });
+    return;
+  }
+  if (arg === 'clear') {
+    const removed = clearSimulated();
+    beat = 0;
+    await respond({
+      text:
+        `ลบข้อมูลจำลองแล้ว: ${removed.days} เช้า, ${removed.answers} คำตอบ · ` +
+        'ที่เหลือในไฟล์คือของจริงล้วน',
+    });
     return;
   }
   if (!arg || arg === 'status') {
     await respond({
       text:
-        `beat ถัดไป: *${beat + 1}. ${BEATS[beat] ?? 'จบแล้ว'}*\n` +
-        BEATS.map((b, i) => `${i + 1}. ${b}${i < beat ? ' ✓' : ''}`).join('\n'),
+        `beat ถัดไป: *${beat + 1}. ${BEATS[beat]?.title ?? 'จบแล้ว'}*\n` +
+        // The morning is beats 1–7 in clock order; the rest of the day has no
+        // clock. Saying so in the list is cheaper than saying it out loud, and it
+        // stops "why is stale before the summary?" from being asked on stage.
+        '_1–7 คือเช้าหนึ่งเช้าเรียงตามนาฬิกา · 8–11 คือของที่หยิบใช้ตอนไหนก็ได้_\n' +
+        BEATS.map(
+          (b, i) => `${i + 1}. ${b.title}${i < beat ? ' ✓' : ''}\n    ↳ ของจริง: ${b.real}`,
+        ).join('\n'),
     });
     return;
   }
 
   const n = arg === 'next' ? beat + 1 : parseInt(arg, 10);
   if (!n || n < 1 || n > BEATS.length) {
-    await respond({ text: `beat 1–${BEATS.length} เท่านั้น` });
+    await respond({ text: `beat 1–${BEATS.length} เท่านั้น (หรือ \`next\` / \`reset\` / \`clear\`)` });
     return;
   }
   beat = n;
 
   switch (n) {
     case 1: {
-      // The 08:45 DM. Goes to whoever ran the command so it always lands.
-      // Drafts are derived from the live items, so this is your real standup
-      // when you are a participant. Another person's draft is not substituted.
-      const draft = standupFor(user);
-      if (!draft) {
-        return respond({
-          text:
-            'ยังไม่มี standup draft ให้คุณ — draft สร้างจาก work item ที่คุณเป็น participant\n' +
-            `ตอนนี้มี draft ${ledger().standups.length} คน (${ledger().standups.map((s) => s.slack_user_id).join(', ') || 'ไม่มีเลย'})\n` +
-            'ถ้า pipeline ยังไม่แปลง user id เป็นชื่อ draft จะมีเฉพาะคนที่ถูกบันทึกเป็น U… ในข้อความ',
-        });
-      }
-      await client.chat.postMessage({
-        channel: user,
-        text: 'สรุปของคุณเมื่อวาน',
-        blocks: standupDmBlocks({ ...draft, slack_user_id: user }) as any,
+      // The mornings before this one. `PENDING_DAYS - 1` of them, so today's post is
+      // exactly the Nth in the run and the threshold is crossed by the demo rather
+      // than already sitting past it — the point is watching it tip over.
+      const dates = seedPendingStreak({
+        today: localNow().date,
+        channel: DAILY_CHANNEL || channel,
+        users: roster,
+        mornings: PENDING_DAYS - 1,
       });
-      await respond({ text: '▶ beat 1 — ส่ง standup DM แล้ว ดูใน DM ของคุณ' });
+      if (!dates.length) {
+        await respond({ text: 'ไม่มีคนให้จำลอง — ตั้ง STANDUP_USERS ก่อน' });
+        return;
+      }
+      await respond({
+        text:
+          `▶ beat 1 — เขียนประวัติ daily ${dates.length} เช้าไว้แล้ว (${dates.join(', ')})\n` +
+          `ทุกเช้ามีบรรทัดเดิมจาก ${mentionOf(roster[0] ?? '')} ว่ารอ requirement หน้า redemption จาก PO ` +
+          'เขียนคนละแบบทุกวัน เพื่อให้เห็นว่าตัวนับจับได้ว่าเป็นเรื่องเดียวกัน\n' +
+          '⚠️ ข้อมูลจำลอง ติดป้ายไว้ทุกที่ที่แสดง · ลบด้วย `' + CMD + ' demo clear`',
+      });
       return;
     }
     case 2: {
+      // The real 08:45 job, fired now: everybody in STANDUP_USERS, not just whoever
+      // typed the command. Showing one person their own DM demonstrates the block;
+      // it does not demonstrate the morning, which is the thing being demoed.
+      // Falls back to the caller when no roster is configured, so the beat still
+      // does something on a fresh machine.
+      const targets = STANDUP_USERS.length ? STANDUP_USERS : [user];
+      const sent: string[] = [];
+      const noDraft: string[] = [];
+      const failed: string[] = [];
+      for (const uid of targets) {
+        const draft = standupFor(uid);
+        if (!draft) {
+          noDraft.push(uid);
+          continue;
+        }
+        // One bad id must not cost the others their standup — same reason the real
+        // schedule catches per user rather than around the loop.
+        try {
+          await client.chat.postMessage({
+            channel: uid,
+            text: 'สรุปของคุณเมื่อวาน',
+            blocks: standupDmBlocks({ ...draft, slack_user_id: uid }) as any,
+          });
+          sent.push(uid);
+        } catch (err) {
+          console.error(`demo 2 — DM ${uid} ไม่ได้:`, err);
+          failed.push(uid);
+        }
+      }
+      const lines = [`▶ beat 2 — ส่ง standup DM แล้ว ${sent.length}/${targets.length} คน`];
+      if (sent.length) lines.push(`ส่งแล้ว: ${sent.map((u) => mentionOf(u)).join(', ')}`);
+      if (noDraft.length) {
+        lines.push(
+          `ไม่มี draft: ${noDraft.map((u) => mentionOf(u)).join(', ')} — draft สร้างจาก work item ` +
+            'ที่คนนั้นเป็น participant แบบ Slack id (ตอนนี้มี draft ' +
+            `${ledger().standups.length} คน)`,
+        );
+      }
+      if (failed.length) {
+        lines.push(
+          `ส่งไม่ได้: ${failed.map((u) => mentionOf(u)).join(', ')} — ดู log ` +
+            '(ปลายทางต้องอยู่ใน allowlist ที่ขึ้นตอนบูตด้วย)',
+        );
+      }
+      await respond({ text: lines.join('\n') });
+      return;
+    }
+    case 3: {
+      await respond({ text: `▶ beat 3 — ${await postDaily(client)}` });
+      return;
+    }
+    case 4: {
+      const today = localNow().date;
+      const record = dailyFor(today);
+      if (!record) {
+        await respond({ text: 'ยังไม่มีโพสต์ daily ของวันนี้ — สั่ง beat 3 ก่อน' });
+        return;
+      }
+      const answers = todaysSimulatedAnswers(roster, today);
+      // Stored, not posted as somebody else. The bot cannot post as a colleague and
+      // must not try: a message that looks like it came from a real person is a
+      // forgery whatever the intent. It goes in the record, labelled, and the
+      // summary at beat 7 reads it from there.
+      saveDaily({
+        ...record,
+        answers: [...record.answers.filter((a) => !answers.some((sim) => sim.user === a.user)), ...answers],
+      });
+      if (record.ts) {
+        await client.chat.postMessage({
+          channel: record.channel,
+          thread_ts: record.ts,
+          text: 'คำตอบจำลองของเดโม',
+          blocks: [
+            section(
+              '*⚠️ คำตอบจำลองสำหรับเดโม* — ไม่ใช่ข้อความของใครจริง ๆ\n' +
+                answers
+                  .map((a) => `*${mentionOf(a.user)}*: ${esc(a.focus[0] ?? '-')}${a.blockers.length ? `\n⛔ ${esc(a.blockers[0]?.text ?? '')}` : ''}`)
+                  .join('\n'),
+            ),
+            context('ใครอยากตอบจริงพิมพ์ในเธรดนี้ได้เลย — ของจริงจะทับของจำลองของคนคนนั้นตอนสรุป'),
+          ] as any,
+        });
+      }
+      await respond({
+        text:
+          `▶ beat 4 — ใส่คำตอบจำลอง ${answers.length} คนเข้า daily ของวันนี้แล้ว · ` +
+          `${mentionOf(roster[0] ?? '')} ยังติดเรื่องเดิมเป็นเช้าที่ ${PENDING_DAYS}`,
+      });
+      return;
+    }
+    case 5: {
       await client.chat.postMessage({
         channel: DIGEST_CHANNEL || channel,
         text: 'Standup digest',
         blocks: digestBlocks() as any,
       });
-      await respond({ text: '▶ beat 2 — โพสต์ digest แล้ว' });
+      await respond({ text: '▶ beat 5 — โพสต์ digest แล้ว' });
       return;
     }
-    case 3: {
+    case 6: {
+      const entries = staleItems(sortedItems(), { workdays: STALE_WORKDAYS });
+      if (!entries.length) {
+        // No invention. If nothing is that quiet, say so and show the quietest thing
+        // there is with its real number — a fabricated stale item would be the one
+        // claim on stage that nobody could check.
+        const quietest = sortedItems()
+          .filter((i) => i.state !== 'done')
+          .sort((a, b) => (a.last < b.last ? -1 : 1))[0];
+        await respond({
+          text:
+            `▶ beat 6 — ไม่มีงานไหนเงียบถึง ${STALE_WORKDAYS} วันทำการ จึงไม่ประกาศ (ไม่ได้ปั้นขึ้นมา)\n` +
+            (quietest
+              ? `งานที่เงียบที่สุดตอนนี้คือ ${quietest.key} ข้อความล่าสุด ${quietest.last}`
+              : 'ยังไม่มีงานที่ยังไม่ปิดเลย') +
+            `\nปรับเกณฑ์ได้ที่ TAM_STALE_WORKDAYS (ตอนนี้ ${STALE_WORKDAYS})`,
+        });
+        return;
+      }
+      await respond({ text: `▶ beat 6 — ${await announceStale(client, { channel: DIGEST_CHANNEL || channel, force: true })}` });
+      return;
+    }
+    case 7: {
+      await respond({ text: `▶ beat 7 — ${await summariseDaily(client)}` });
+      return;
+    }
+    case 8: {
+      if (!ctx.triggerId) {
+        await respond({ text: 'beat 8 ต้องเปิด modal — สั่งจาก slash command เท่านั้น' });
+        return;
+      }
+      await openPasteModal(client, ctx.triggerId, {
+        channel,
+        channelName: ctx.channelName,
+        sample: SAMPLE_PASTE,
+      });
+      await respond({
+        text:
+          '▶ beat 8 — เปิดฟอร์มแนบแชทให้แล้ว (ใส่ตัวอย่างแชทจาก DM ไว้ให้ ลบทิ้งแล้ววางของจริงได้)\n' +
+          'เลือก ticket → กด “อ่านให้ดูก่อน” → ผมจะอ่านให้ดูก่อนว่าแยกคนพูดถูกไหม แล้วค่อยกดเก็บ\n' +
+          'ตอนเก็บ: เข้า corpus → เขียน link override → build ใหม่ → บอกว่าตอนนี้อยู่ใต้ ticket ไหนจริง ๆ',
+      });
+      return;
+    }
+    case 9: {
       const drift = ledger().drifts[0];
       const item = drift ? findItem(drift.item_key) : undefined;
       if (!drift || !item) {
+        // There are two drift sources and they are not interchangeable. The ledger's
+        // drift powers the threaded nudge below and only ever exists in fixture mode;
+        // the tracker comparison reads real tickets and exists whenever YouTrack is
+        // configured. Telling somebody to set DEMO_FIXTURES=1 while TAM_API_URL is
+        // set was advice that cannot work — fixture drifts name fixture messages, so
+        // `resolvableDrifts` drops every one of them against pipeline items. So use
+        // the source that is actually populated, and say which one that was.
+        const cfg = apiConfig();
+        const report = cfg ? await fetchTracker(cfg) : undefined;
+        if (report?.drift?.length) {
+          await client.chat.postMessage({
+            channel: DIGEST_CHANNEL || channel,
+            text: 'Slack กับ ticket ไม่ตรงกัน',
+            blocks: driftBlocks(report) as any,
+          });
+          return respond({
+            text:
+              `▶ beat 9 — โพสต์ drift จริงจาก ticket แล้ว (${report.drift.length} เรื่อง)\n` +
+              'อันนี้มาจากการเทียบ Slack กับ YouTrack ไม่ใช่ fixture — แต่เป็นการ์ดรวม ไม่ใช่ nudge ในเธรด ' +
+              'เพราะ nudge ต้องรู้ว่าข้อความไหนทำให้สโคปเปลี่ยน ซึ่งมีแค่ใน ledger',
+          });
+        }
         return respond({
-          text: demoFixtures()
-            ? 'ไม่มี drift ใน fixture'
-            : 'ยังไม่มี drift — การตรวจ drift ต้องเทียบ Slack กับ ticket system ซึ่งยังไม่ได้ต่อ\n' +
-              'ถ้าจะโชว์ตัวอย่างในเดโม ตั้ง DEMO_FIXTURES=1 แล้ว block จะติดป้ายว่าเป็นตัวอย่าง',
+          text: [
+            'ยังไม่มี drift ให้โชว์ — มีสองแหล่ง และตอนนี้ว่างทั้งคู่:',
+            `• drift ใน ledger (ตัวที่ทำ nudge ในเธรดได้): ${ledger().drifts.length} รายการ` +
+              (ledgerOrigin() === 'pipeline'
+                ? ' — อ่านจาก pipeline อยู่ ซึ่งไม่มี drift ให้ และ `DEMO_FIXTURES=1` ช่วยไม่ได้ที่นี่ ' +
+                  '(drift ใน fixture อ้างข้อความของ fixture กดตามไม่ได้ จึงถูกตัดออก) ' +
+                  'จะใช้ต้องเอา TAM_API_URL ออกให้บอทกลับไปใช้ ledger ของตัวเอง'
+                : ' — ตั้ง `DEMO_FIXTURES=1` แล้ว restart'),
+            `• การเทียบกับ ticket (\`${CMD} drift\`): ${
+              cfg ? `ต่อ pipeline อยู่ แต่ไม่พบเรื่องที่ไม่ตรงกัน` : 'ยังไม่ได้ตั้ง TAM_API_URL'
+            }`,
+          ].join('\n'),
         });
       }
       // Post the "requirement changed" message first, then the nudge as a
@@ -747,7 +1620,7 @@ async function runDemo(
         channel: DIGEST_CHANNEL || channel,
         text: trigger?.text ?? 'scope change',
         blocks: [
-          section(`*${esc(trigger?.user ?? 'dev')}*\n${esc(trigger?.text ?? '')}`),
+          section(`*${who(trigger?.user ?? 'dev')}*\n${bodyText(trigger?.text ?? '')}`),
         ] as any,
       });
       await new Promise((r) => setTimeout(r, 1200));
@@ -757,20 +1630,20 @@ async function runDemo(
         text: 'สโคปเปลี่ยนแต่ ticket ยังไม่อัปเดต',
         blocks: driftNudgeBlocks(drift, item) as any,
       });
-      await respond({ text: '▶ beat 3 — drift nudge อยู่ในเธรดแล้ว' });
+      await respond({ text: '▶ beat 9 — drift nudge อยู่ในเธรดแล้ว' });
       return;
     }
-    case 4: {
+    case 10: {
       const q = 'ตอนนั้นเราสรุปเรื่อง export encoding ว่ายังไงนะ';
       await client.chat.postMessage({
         channel: DIGEST_CHANNEL || channel,
         text: 'recall',
         blocks: (await recallBlocks(q)) as any,
       });
-      await respond({ text: `▶ beat 4 — recall: “${q}”` });
+      await respond({ text: `▶ beat 10 — recall: “${q}”` });
       return;
     }
-    case 5: {
+    case 11: {
       const items = sortedItems().filter((i) => i.state !== 'done').slice(0, 6);
       await respond({ blocks: boardBlocks('บอร์ดรวม', items), text: 'board' });
       return;
@@ -787,29 +1660,7 @@ async function runDemo(
 /** 'YYYY-MM-DD', 'HH', 'mm' in the scheduling zone — the host's unless told otherwise. */
 const SCHEDULE_TZ = env('TAM_SCHEDULE_TZ');
 
-function localNow(): { date: string; hour: number; minute: number } {
-  const d = new Date();
-  if (!SCHEDULE_TZ) {
-    const p = (n: number) => String(n).padStart(2, '0');
-    return {
-      date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
-      hour: d.getHours(),
-      minute: d.getMinutes(),
-    };
-  }
-  // en-CA gives ISO-ordered date parts, which is the cheapest way to get
-  // 'YYYY-MM-DD' in another zone without pulling in a date library.
-  const [date, time] = new Intl.DateTimeFormat('en-CA', {
-    timeZone: SCHEDULE_TZ,
-    hour12: false,
-    year: 'numeric', month: '2-digit', day: '2-digit',
-    hour: '2-digit', minute: '2-digit',
-  })
-    .format(d)
-    .split(', ');
-  const [hh, mm] = (time ?? '00:00').split(':');
-  return { date: date ?? '', hour: Number(hh), minute: Number(mm) };
-}
+const localNow = () => zonedNow(SCHEDULE_TZ);
 
 /**
  * Fire `fn` once a day at hour:minute.
@@ -867,6 +1718,162 @@ async function refreshForSchedule(name: string) {
   }
 }
 
+/* ------------------------------------------------------------------ *
+ * The daily thread.
+ *
+ * Three moving parts, and the reason each is where it is:
+ *
+ *   postDaily        posts the invitation and *records the ts*. Without the
+ *                    record, the 10:45 pass has no thread to read and tomorrow
+ *                    has nothing to link back to.
+ *   summariseDaily   re-reads that thread, stores what people typed, replies in
+ *                    the thread, and — only when a line has been repeated
+ *                    PENDING_DAYS times — posts once in the channel.
+ *   both return a line instead of throwing, so a schedule logs what happened
+ *                    and a slash command can show the same words to a person.
+ * ------------------------------------------------------------------ */
+
+/** A permalink is a nicety, so failing to get one must not lose the post. */
+async function permalinkFor(client: any, channel: string, ts: string): Promise<string | undefined> {
+  try {
+    const res = await client.chat.getPermalink({ channel, message_ts: ts });
+    return typeof res.permalink === 'string' ? res.permalink : undefined;
+  } catch (err) {
+    console.error('daily — ขอ permalink ไม่ได้ (ลิงก์ย้อนกลับของพรุ่งนี้จะเป็นข้อความเปล่า):', err);
+    return undefined;
+  }
+}
+
+async function postDaily(client: any, opts: { force?: boolean } = {}): Promise<string> {
+  if (!DAILY_CHANNEL) {
+    return 'ยังไม่ได้ตั้ง DAILY_CHANNEL (หรือ DIGEST_CHANNEL) — ไม่รู้จะโพสต์ที่ไหน';
+  }
+  const today = localNow().date;
+  const existing = dailyFor(today);
+  // Two daily posts in one morning split the thread, and the answers with it.
+  if (existing && !opts.force) {
+    return (
+      `วันนี้โพสต์ daily ไปแล้ว${existing.permalink ? ` → ${existing.permalink}` : ''}` +
+      ` · ถ้าจะโพสต์ใหม่ (เธรดเดิมจะไม่ถูกอ่านอีก): \`${CMD} daily post again\``
+    );
+  }
+
+  const previous = dailyBefore(today);
+  // Streaks are computed over every collected daily, not just yesterday's, so
+  // "ค้างมา 3 วัน" on the morning post is a count of mornings and not an estimate.
+  const carried = pendingStreaks(readDailies().filter((d) => d.date < today));
+
+  const posted = await client.chat.postMessage({
+    channel: DAILY_CHANNEL,
+    text: dailyTitle(today),
+    blocks: dailyPostBlocks({
+      date: today,
+      previous,
+      carried,
+      summaryAt: hhmm(DAILY_SUMMARY_AT),
+    }) as any,
+  });
+
+  const ts = String(posted.ts ?? '');
+  const permalink = await permalinkFor(client, DAILY_CHANNEL, ts);
+  // answers start empty even when re-posting: they belong to the thread that was
+  // read, and this is a different thread.
+  saveDaily({ date: today, channel: DAILY_CHANNEL, ts, permalink, posted_at: stamp(), answers: [] });
+
+  return (
+    `โพสต์ ${dailyTitle(today)} แล้ว` +
+    (carried.length ? ` · ยกยอดที่ค้างจากเมื่อวาน ${carried.length} เรื่อง` : '') +
+    ` · จะสรุปในเธรดตอน ${hhmm(DAILY_SUMMARY_AT)}`
+  );
+}
+
+async function summariseDaily(client: any): Promise<string> {
+  const today = localNow().date;
+  const record = dailyFor(today);
+  if (!record) return `ยังไม่มีโพสต์ daily ของวันนี้ — สั่ง \`${CMD} daily post\` ก่อน`;
+
+  const replies = await client.conversations.replies({
+    channel: record.channel,
+    ts: record.ts,
+    limit: 200,
+  });
+  // [0] is the parent post itself.
+  const messages: any[] = (replies.messages ?? []).slice(1);
+
+  const answers: DailyAnswer[] = [];
+  const unfilled: string[] = [];
+  for (const message of messages) {
+    const user = String(message.user ?? '');
+    // The bot's own summary lands in this thread too. Reading it back as somebody's
+    // standup is the same feedback loop the exporter has to skip TAM_SELF_USER for.
+    if (!user || message.bot_id || message.subtype) continue;
+    const parsed: DailyParse = parseDailyReply(String(message.text ?? ''), user, String(message.ts ?? ''));
+    if (parsed.kind === 'answer') {
+      // Last reply wins: people correct themselves further down the thread, and the
+      // correction is the answer they meant.
+      const at = answers.findIndex((a) => a.user === user);
+      if (at >= 0) answers[at] = parsed.answer;
+      else answers.push(parsed.answer);
+    } else if (parsed.kind === 'unfilled' && !unfilled.includes(user)) {
+      unfilled.push(user);
+    }
+  }
+
+  // Simulated answers survive a real collection, unless that person really replied.
+  // The demo seeds a morning and the people in the room type into the same thread;
+  // dropping the seeded ones here would silently reset the streak the demo is about,
+  // and overwriting a real reply with a seeded one would be worse still — so a real
+  // answer always wins, and only the seats nobody filled keep their placeholder.
+  const answered = new Set(answers.map((a) => a.user));
+  const kept = record.answers.filter((a) => a.simulated && !answered.has(a.user));
+  const merged = [...kept, ...answers];
+  const updated = { ...record, answers: merged, summarised_at: stamp() };
+  saveDaily(updated);
+
+  const history = readDailies();
+  const streaks = pendingStreaks(history);
+  // Decided before the summary is posted, because the summary's own "ค้างเกิน N วัน"
+  // section lists everything chronic while the channel message must only carry what
+  // is new — the two say different things on purpose.
+  const stuck = newEscalations(history, streaks, PENDING_DAYS);
+  await client.chat.postMessage({
+    channel: record.channel,
+    thread_ts: record.ts,
+    text: `สรุป ${dailyTitle(record.date)}`,
+    blocks: dailySummaryBlocks({
+      record: updated,
+      expected: STANDUP_USERS,
+      unfilled,
+      streaks,
+      pendingDays: PENDING_DAYS,
+    }) as any,
+  });
+
+  // The one channel-wide ping in this feature, and it needs a measured reason:
+  // the same line, from the same person, in PENDING_DAYS dailies running — and it
+  // fires once per obstacle, not once per morning for as long as it is open.
+  if (stuck.length) {
+    await client.chat.postMessage({
+      channel: record.channel,
+      text: `ค้างมา ${PENDING_DAYS} วันแล้ว`,
+      blocks: pendingEscalationBlocks(stuck, PENDING_DAYS) as any,
+    });
+    // Recorded only after Slack accepted it: a failed post that marked itself
+    // announced would silence the one message the threshold exists to send.
+    saveDaily({
+      ...updated,
+      announced: [...new Set([...(updated.announced ?? []), ...stuck.map(streakKey)])],
+    });
+  }
+
+  return (
+    `สรุปในเธรดแล้ว: ${answers.length} คนตอบ` +
+    (kept.length ? ` (+${kept.length} คำตอบจำลองของเดโม)` : '') +
+    (unfilled.length ? ` · ${unfilled.length} คนวางฟอร์มมาแต่ยังไม่กรอก` : '') +
+    (stuck.length ? ` · ประกาศเรื่องที่ค้างเกิน ${PENDING_DAYS} วัน ${stuck.length} เรื่อง` : '')
+  );
+}
+
 if (env('ENABLE_SCHEDULE') === '1') {
   scheduleDaily('standup DM 08:45', 8, 45, async () => {
     await refreshForSchedule('standup DM 08:45');
@@ -885,6 +1892,13 @@ if (env('ENABLE_SCHEDULE') === '1') {
       }
     }
   });
+  scheduleDaily(`daily post ${hhmm(DAILY_AT)}`, DAILY_AT.hour, DAILY_AT.minute, async () => {
+    await refreshForSchedule('daily post');
+    console.log(`⏰ daily post — ${await postDaily(app.client)}`);
+  });
+  scheduleDaily(`daily summary ${hhmm(DAILY_SUMMARY_AT)}`, DAILY_SUMMARY_AT.hour, DAILY_SUMMARY_AT.minute, async () => {
+    console.log(`⏰ daily summary — ${await summariseDaily(app.client)}`);
+  });
   scheduleDaily('digest 09:25', 9, 25, async () => {
     if (!DIGEST_CHANNEL) return;
     await refreshForSchedule('digest 09:25');
@@ -893,6 +1907,14 @@ if (env('ENABLE_SCHEDULE') === '1') {
       text: 'Standup digest',
       blocks: digestBlocks() as any,
     });
+  });
+  // After the digest, not before: the digest is the day's news, and an item nobody
+  // has mentioned in a week is not news — it is the thing you notice once the news
+  // is out of the way. Deduplicated across restarts by the announcements store, so
+  // this runs every morning and speaks only when something has newly gone quiet.
+  scheduleDaily('stale 09:30', 9, 30, async () => {
+    if (!DIGEST_CHANNEL) return;
+    console.log(`⏰ stale 09:30 — ${await announceStale(app.client, { channel: DIGEST_CHANNEL })}`);
   });
 }
 
@@ -929,8 +1951,28 @@ const cfg = apiConfig();
 const src = ledgerOrigin() === 'pipeline' ? `pipeline ${cfg?.baseUrl}` : 'fixture data/ledger.json';
 console.log(`🐾 Meowtam พร้อมแล้ว — ${l.items.length} work items, ${l.corpus_size} ข้อความ`);
 console.log(`   แหล่งข้อมูล: ${src}`);
+console.log(`   ${describeNames()}`);
 console.log(`   ${describePolicy(postPolicy)}`);
+// The allowlist blocks DMs as well as channel posts, which is right — and means the
+// person driving a demo gets no reply to their own button presses unless they are on
+// it. That is invisible from the line above, so it is said outright.
+if (!STANDUP_USERS.length && !env('SLACK_POST_ALLOWLIST')) {
+  console.log(
+    '   ⚠ ยังไม่มี user id ใน allowlist — ปุ่ม/เมนูจะทำงานจริงแต่ตอบกลับเข้า DM ไม่ได้\n' +
+      '     ใส่ id ของคนที่จะเดโมลง STANDUP_USERS หรือ SLACK_POST_ALLOWLIST',
+  );
+}
 console.log(`   เขียนเอง: ${storeSummary()}`);
+console.log(`   ${describeProjects()}`);
+console.log(`   ${describeTracker()}`);
+console.log(`   งานเงียบเกิน ${STALE_WORKDAYS} วันทำการแล้วประกาศ (\`${CMD} stale\`)`);
+console.log(
+  `   daily: ${DAILY_CHANNEL || 'ยังไม่ได้ตั้งช่อง (DAILY_CHANNEL/DIGEST_CHANNEL)'}` +
+    ` · โพสต์ ${hhmm(DAILY_AT)} · สรุปในเธรด ${hhmm(DAILY_SUMMARY_AT)} · ค้างเกิน ${PENDING_DAYS} วันแล้วประกาศ` +
+    // The one thing an operator actually needs told here: nothing above fires on its
+    // own until this is set, and that is invisible from the times alone.
+    (env('ENABLE_SCHEDULE') === '1' ? '' : ' — ยังไม่ยิงเอง (ENABLE_SCHEDULE ว่าง) สั่งมือ: ' + CMD + ' daily post'),
+);
 console.log(
   `   standup draft ${l.standups.length} คน · drift ${l.drifts.length}` +
     // This counter is the ledger's drift, which is a different thing from the ticket
@@ -941,4 +1983,4 @@ console.log(
     (l.drifts.length === 0 && !demoFixtures() ? ' (จาก ledger — เทียบ ticket จริงที่ /meowtam silent|drift)' : '') +
     (demoFixtures() ? ' · DEMO_FIXTURES=1 เปิดอยู่ — drift เป็นตัวอย่าง' : ''),
 );
-console.log(`   ลอง: /meowtam demo   (beats: ${BEATS.join(' → ')})`);
+console.log(`   ลอง: /meowtam demo   (beats: ${BEATS.map((b) => b.title).join(' → ')})`);

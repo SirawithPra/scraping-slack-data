@@ -5,6 +5,7 @@ import type { Ledger, WorkItem, Message, Decision, Drift, State } from './types.
 import { apiConfig, envNumber, fetchLedger } from './tam-api.js';
 import { readDecisions } from './store.js';
 import { buildStandups } from './standups.js';
+import { displayName } from './names.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const LEDGER_PATH = resolve(here, '../data/ledger.json');
@@ -216,14 +217,22 @@ export function findMessage(id: string): Message | undefined {
   return ledger().unassigned.find((m) => m.id === id);
 }
 
-/** Items where `who` is assignee or participant. Matches display name or raw Slack id. */
+/**
+ * Items where `who` is assignee or participant.
+ *
+ * Matches the raw Slack id *and* the resolved display name, because those are two
+ * spellings of the same person and the user only ever sees one of them. Typing
+ * `/meowtam @แนน` after reading แนน's name off the board used to return nothing:
+ * the ledger holds `U07…`, the screen said `แนน ก.`, and only the id matched.
+ */
 export function itemsFor(who: string): WorkItem[] {
   const needle = who.toLowerCase().replace(/^@/, '');
+  const matches = (value?: string): boolean => {
+    const raw = (value ?? '').toLowerCase();
+    return raw === needle || displayName(value).toLowerCase() === needle;
+  };
   return sortedItems().filter(
-    (i) =>
-      i.state !== 'done' &&
-      (i.assignee?.toLowerCase() === needle ||
-        i.participants.some((p) => p.toLowerCase() === needle)),
+    (i) => i.state !== 'done' && (matches(i.assignee) || i.participants.some(matches)),
   );
 }
 

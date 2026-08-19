@@ -3,8 +3,8 @@ import { ledger, ledgerOrigin, refreshStatus, sortedItems, findMessage } from '.
 import { apiConfig } from '../tam-api.js';
 import type { WorkItem } from '../types.js';
 import {
-  CMD, STATE_LABEL, clamp, context, days, divider, esc, evidenceButton,
-  header, section, sourceCounts, ticketButton,
+  CMD, STATE_LABEL, bodyText, clamp, context, days, divider, esc, evidenceButton,
+  header, section, sourceCounts, ticketButton, who,
 } from './common.js';
 
 /**
@@ -25,7 +25,7 @@ function blockedRow(item: WorkItem): KnownBlock[] {
     ),
   ];
   if (ev) {
-    out.push(context(`💬 *${esc(ev.user)}* · ${ev.when} — “${esc(clamp(ev.text, 160))}”`));
+    out.push(context(`💬 *${who(ev.user)}* · ${ev.when} — “${bodyText(ev.text, 160)}”`));
     out.push({
       type: 'actions',
       elements: [
@@ -43,9 +43,9 @@ function blockedRow(item: WorkItem): KnownBlock[] {
 }
 
 function compactRow(item: WorkItem): KnownBlock {
-  const who = item.assignee ? ` · ${esc(item.assignee)}` : '';
+  const owner = item.assignee ? ` · ${who(item.assignee)}` : '';
   return section(
-    `*${item.key}*  ${esc(item.headline)}  ·  _${days(item.age_days)}_${who}\n` +
+    `*${item.key}*  ${esc(item.headline)}  ·  _${days(item.age_days)}_${owner}\n` +
       `${sourceCounts(item)}${item.youtrack_status ? `  ·  YouTrack: ${esc(item.youtrack_status)}` : ''}`,
     {
       type: 'button',

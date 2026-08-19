@@ -81,15 +81,30 @@ Over that, lower `SIM_FLOOR` in `scripts/build-ledger.ts` and re-run.
 
 ## The demo
 
-**Drive it with `/meowtam demo`, not from memory.** Five beats, fired one at a time. A live demo
-that depends on you typing the right thing in the right order in front of judges will desync.
+**Drive it with `/meowtam demo`, not from memory.** Eleven beats, fired one at a time. A live
+demo that depends on you typing the right thing in the right order in front of judges will
+desync.
 
-**Rehearse and present with `DEMO_FIXTURES=1 npm start`.** Beat 3 needs it. Drift detection
-compares Slack against a ticket system and none is connected, so with the flag off there is no
-drift to show and beat 3 answers with an explanation instead of the nudge. With the flag on, the
-fixture's drift loads and the rendered block carries a visible
-`⚠ ตัวอย่างจาก fixture — ยังไม่ได้ต่อ ticket system จริง` label, which is the honest way to demo
-it: say the label out loud, it is a better answer than pretending.
+The step-by-step runbook for demo day — what to open, what to check first, what each beat needs
+to be configured, the links to have on screen, and what to do when a beat comes up empty — is
+[`../docs/DEMO_RUNBOOK.md`](../docs/DEMO_RUNBOOK.md). This section is the reference; that one is
+the thing you follow with a laptop open.
+
+Beats 1–7 are **one morning, on the clock the real jobs run on** — 08:45 the DM, 09:00 the post,
+the thread fills, 09:25 the digest, 09:30 the silence check, 10:45 the summary. It is the same
+order the `scheduleDaily` calls fire in, so nothing on stage happens before the thing it reads
+from and you never have to explain a jump backwards. The sequence matters because the three
+claims worth showing are all *about elapsed time*: a morning happens, the same blocker survives
+it, and a work item nobody has mentioned all week surfaces on its own.
+
+Beats 8–11 are the rest of the day, which has no clock. They are what a person reaches for when
+something happens, ordered by how often that is.
+
+Beats 1 and 4 write **simulated** data — a laptop set up yesterday has no history for "the same
+line, three mornings running" to be true of. Every seeded answer is labelled `(จำลอง)` wherever
+it is rendered, the summary carries a warning line saying how many of its answers are seeded, and
+`/meowtam demo clear` removes all of it. Say the label out loud; it is a better answer than
+pretending.
 
 `/mt` is a registered alias for the same handler — use it on stage, it's shorter and Slack's
 autocomplete on `/me` can hesitate.
@@ -98,30 +113,82 @@ autocomplete on `/me` can hesitate.
 /meowtam demo          → which beat is next
 /meowtam demo 1        → fire beat 1
 /meowtam demo next     → fire the next one
-/meowtam demo reset
+/meowtam demo reset    → back to beat 1 (data untouched)
+/meowtam demo clear    → delete every simulated morning
 ```
 
-| Beat | Command | What lands | The line to say |
+| # | Beat | The real thing it stands for | The line to say |
 | --- | --- | --- | --- |
-| 1 | `/meowtam demo 1` | 08:45 DM in **your DMs** | "It doesn't ask what I did. It tells me, and I correct it." |
-| 2 | `/meowtam demo 2` | 09:25 digest in the channel | "Blocked first. Every claim, one click from the message that proves it." |
-| 3 | `/meowtam demo 3` | Scope-change message, then a threaded nudge (needs `DEMO_FIXTURES=1`) | "The requirement changed here. The ticket didn't. It noticed." |
-| 4 | `/meowtam demo 4` | Recall with the decision chain | "May we said no BOM. August we changed it. The ticket still says May." |
-| 5 | `/meowtam demo 5` | The board | — |
+| 1 | Writes the previous working mornings into the daily history | — *(seeded; in real life those mornings simply happened)* | "Two mornings already happened. Same person, same blocker, worded differently each day." |
+| 2 | **08:45** standup DM, to everyone in `STANDUP_USERS` | the 08:45 schedule · the **ส่ง** / **ข้ามวันนี้** buttons in the DM | "It doesn't ask what I did. It tells me, and I correct it." |
+| 3 | **09:00** daily post, carrying that blocker forward | `/mt daily post` · the 09:00 schedule | "It doesn't ask what's outstanding. It already knows and puts it at the top." |
+| 4 | Simulated answers into today's thread | `/mt daily` → the private form → reply in the thread | "Anyone can type a real answer in the same thread — a real one wins over the placeholder." |
+| 5 | **09:25** digest in the channel | `/mt digest` · the 09:25 schedule · **ดูข้อความ** / **ที่มา** on any claim | "Blocked first. Every claim, one click from the message that proves it." |
+| 6 | **09:30** work nobody has touched for `TAM_STALE_WORKDAYS` working days | `/mt stale post` (`/mt stale` to look first) · the 09:30 schedule | "Nobody flagged these. Nobody mentioned them at all — that's a different illness, and only a count can find it." |
+| 7 | **10:45** thread summary **and** the pending escalation | `/mt daily summary` · the 10:45 schedule | "Third morning running. It says so once, to the channel, and never again for the same line." |
+| 8 | The paste modal, prefilled with a chat from a DM | `/mt paste` · ⋯ → **ผูกกับ ticket** on any message | "The decision happened in a DM no token can reach. Paste it, pick the ticket, and it lands in the corpus attached to that ticket." |
+| 9 | Scope-change message, then a threaded nudge | `/mt drift` → **ดูร่างที่เสนอ** in the card | "The requirement changed here. The ticket didn't. It noticed — and it writes a comment on the real ticket." |
+| 10 | Recall with the decision chain | `/mt recall <question>` — or any text that isn't a command | "May we said no BOM. August we changed it. The ticket still says May." |
+| 11 | The board | `/mt` · `/mt @someone` · `/mt PROJ-142` · `/mt blocked` | — |
 
-Beat 3 is the one that wins the room. Click **ดูร่างที่เสนอ** and let them see the proposed
-YouTrack diff, then say the important sentence: **it never writes on its own — a human always
-presses save.** (Started without `DEMO_FIXTURES=1`? Beat 3 will tell you so rather than post
-nothing — but fix it before you present, not on stage.)
+`/meowtam demo` with no argument prints this list with the real command under each beat, so the
+tour of the demo is also the tour of the command list — and the question that always follows a
+demo ("so how would I actually do that?") is answered on the screen already open.
+
+### Every action, and the beat that shows it
+
+Nothing in the bot is reachable only through the demo, and nothing in the demo is a path the
+product does not have. Everything with a `—` is real and simply does not need stage time.
+
+| Action | Beat |
+| --- | --- |
+| `/mt` · `/mt @someone` · `/mt PROJ-142` | 11 |
+| `/mt blocked` | 11 *(the digest at 5 already sorts blocked first)* |
+| `/mt daily` (private form) | 4 |
+| `/mt daily post` \| `post again` | 3 |
+| `/mt daily summary` | 7 |
+| `/mt digest` | 5 |
+| `/mt stale` \| `stale post` | 6 |
+| `/mt paste` | 8 |
+| `/mt drift` | 9 |
+| `/mt silent` \| `quiet` | — *tickets open and untouched for `TAM_SILENT_DAYS`; same `/api/tracker` fetch as beat 9, other half of the report* |
+| `/mt recall <question>` · any unrecognised text | 10 |
+| `/mt projects` | — *which channel is which project; worth typing before beat 8 if the ticket picker looks wrong* |
+| `/mt format` \| `help` \| `template` | — *the format the parser reads; send it to the team, don't demo it* |
+| `/mt reload` | — *operator command: re-read the ledger mid-demo without restarting* |
+| ⋯ → **ผูกกับ ticket** (any message) | 8 *(same write path: link override → YouTrack comment → rebuild)* |
+| ⋯ → **บันทึกเป็นการตัดสินใจ**, and 📌 / 🧠 | — *this is what fills the decision chain beat 10 reads* |
+| 🎫 / 🚧 / ✅ reactions | — *hint only, they write nothing, and the ephemeral reply says so* |
+| **ส่ง** / **ข้ามวันนี้** in the standup DM | 2 |
+| **ดูข้อความ** / **ที่มา** on any claim, **เปิด** / **ดูงานนี้ในบอร์ด** on any card | 5, 11 |
+| **ดูร่างที่เสนอ** → the *อัปเดต ticket* modal → **บันทึกลง YouTrack** | 9 |
+| **ไม่ใช่การเปลี่ยนสโคป** on a drift card | 9 *(say out loud that dismissals are logged, not stored — the reply says so too)* |
+| **อ่านให้ดูก่อน** → **เก็บเข้า corpus แล้วผูกกับ …** / **ยกเลิก** in the paste flow | 8 |
+| Schedules 08:45 · 09:00 · 09:25 · 09:30 · 10:45 (`ENABLE_SCHEDULE=1`) | 2 · 3 · 5 · 6 · 7 — the beats *are* these jobs, fired by hand |
+
+**Beat 6 will not invent anything.** If nothing has actually been quiet for `TAM_STALE_WORKDAYS`
+working days, it says so and names the quietest thing there is with its real number. That is the
+right behaviour and a good thing to point at.
+
+**Beat 8 is the one that closes the loop.** After you press *เก็บเข้า corpus*, the reply is a
+result object, not a congratulation: which file the link went to, the YouTrack comment id (go and
+find it on the ticket), and — the line that matters — how many of those pasted messages the
+**rebuilt** ledger now holds under that ticket. If the answer is zero it says zero.
+
+**Beat 9 writes to YouTrack for real** when `YOUTRACK_WRITE=1`. It writes a *comment*, never the
+description: overwriting a description from a Slack modal destroys whatever the PO wrote there
+with no undo. With the switch off, it shows the exact text it would have written and says which
+variable is unset — it never claims a write that did not happen.
 
 ### Rehearse this
 
 - **Record a backup video by hour 18.** Live Slack demos fail. Venue wifi, rate limits,
   a workspace that logs you out. A recording that plays is worth more than a live demo that
   might not.
-- Run `/meowtam demo reset` right before you present.
+- Run `/meowtam demo clear` then `/meowtam demo reset` right before you present, so beat 1
+  seeds a fresh history instead of stacking on yesterday's rehearsal.
 - Have the digest channel already open on screen, scrolled to the bottom.
-- Beat 1 posts to *your* DMs — have that conversation open in a second window or the demo
+- Beat 2 posts to *your* DMs — have that conversation open in a second window or the demo
   stalls while you navigate.
 
 ### Questions you will get
@@ -152,16 +219,56 @@ leaderboards. Nudges go by DM, never to the channel. That is a design rule, not 
 
 ---
 
+## Commands
+
+| Command | What it does |
+| --- | --- |
+| `/meowtam` | your board |
+| `/meowtam daily` | the form, privately · `daily post` posts today's · `daily summary` runs the 10:45 collection now |
+| `/meowtam blocked` | what is blocked right now |
+| `/meowtam stale` | work nobody has touched for `TAM_STALE_WORKDAYS` working days · `stale post` announces it in the channel |
+| `/meowtam paste` | attach a chat copied out of a DM to a ticket — parse preview first, then store, link and rebuild |
+| `/meowtam projects` | which channels are which project, and what this one is mapped to |
+| `/meowtam digest` | the 09:25 screen on demand |
+| `/meowtam drift` \| `silent` | where Slack and the tracker disagree, and which tickets went quiet |
+| `/meowtam recall <คำถาม>` | search with the decision chain |
+| `/meowtam demo …` | the demo driver — see above |
+
+Message shortcuts (the `⋯` menu on any message): **ผูกกับ ticket**, **บันทึกเป็นการตัดสินใจ**.
+📌 and 🧠 file a decision too.
+
+### Linking a message to a ticket
+
+The picker searches **YouTrack itself**, per keystroke, not the work items the pipeline built.
+That distinction is the whole fix: a ticket already named in Slack is already linked, and the one
+you are reaching for is the one nobody has typed yet. The old menu offered work items, capped at
+100 with no search box, so past the hundredth item a ticket was simply unreachable.
+
+Type a key (`REVERAPP-140`), a bare number (`140`, when the channel names one project), or words
+from the title. Set `TAM_CHANNEL_PROJECTS` and the picker opens on that channel's project
+instead of the whole tracker — and the pipeline's linker uses the same map to prefer the
+channel's own project when a message names two tickets.
+
+Pressing **ผูก** does four things and reports each one separately, including the ones that
+failed: writes the correction to the file the linker reads as its top tier, writes a comment on
+the ticket (when `YOUTRACK_WRITE=1`) with the Slack permalink in it so the link is two-way,
+rebuilds the pipeline index, and then says how many of those messages the rebuilt ledger actually
+holds under that ticket.
+
+---
+
 ## What is real and what is faked
 
 Say this plainly if asked — judges reward knowing the difference.
 
-| Real | Faked / mocked |
+| Real | Faked / simulated |
 | --- | --- |
-| Slack app, commands, modals, threads, emoji actions | YouTrack write-back (logs to console; the exact call site is marked in `src/app.ts`) |
-| Clustering, state detection, evidence linking | YouTrack read (states in the fixture are hand-set) |
-| Recall, decision chains, supersession | Meeting transcripts (fixture only — Teams Graph needs a tenant toggle, see below) |
-| Runs on your real exported channel history | The 08:45 / 09:25 schedules (off by default; `ENABLE_SCHEDULE=1` turns them on) |
+| Slack app, commands, modals, threads, emoji actions | The daily history beats 1 and 4 seed — labelled everywhere, removed by `/meowtam demo clear` |
+| **YouTrack read**: the ticket picker searches the live tracker, every ticket, per keystroke | Meeting transcripts (fixture only — Teams Graph needs a tenant toggle, see below) |
+| **YouTrack write**: a real comment, with its comment id returned — needs `YOUTRACK_WRITE=1` | The 08:45 / 09:25 schedules (off by default; `ENABLE_SCHEDULE=1` turns them on) |
+| Clustering, state detection, evidence linking, the working-day silence count | |
+| Pasting a DM into the corpus and attaching it to a ticket, verified against the rebuilt ledger | |
+| Recall, decision chains, supersession | |
 
 **Teams transcripts** need `OnlineMeetingTranscript.Read.All`, an application access policy,
 **and** — since 31 July 2026 — a tenant-level toggle
@@ -181,6 +288,11 @@ src/
                     and the two-signal relevance gate (passesGate)
   store.ts          the bot's own writes: ticket-link overrides and the decision log
   standups.ts       standup drafts derived from work items, not read from a fixture
+  daily.ts          the daily thread: the clock, the parser, the pending-streak count
+  demo.ts           the seeded morning, so a time-based claim can be shown at all
+  projects.ts       which channels are which project (TAM_CHANNEL_PROJECTS)
+  youtrack.ts       ticket search per keystroke, and the one call that writes a comment
+  stale.ts          working-day silence: the count, and what counts as already said
   search.ts         recall: the pipeline when TAM_API_URL is set, else the local
                     trigram + literal-term hybrid, no API key
   app.ts            commands, actions, modals, the demo driver
@@ -190,6 +302,9 @@ src/
     standupDm.ts    the 08:45 DM
     itemCard.ts     one work item, full detail
     drift.ts        the nudge and the diff modal
+    daily.ts        the morning post, the form, the 10:45 summary, the escalation
+    link.ts         the ticket picker options, the paste preview, and the link result
+    stale.ts        work nobody has touched for N working days
     recall.ts       search results and decision chains
 scripts/
   export-slack.ts   real channel history via bot token
@@ -208,6 +323,11 @@ data/
                        never lands in a commit
   decisions.json       the decision log, written on demand and gitignored; absent
                        until someone files one (`TAM_DECISIONS_PATH` moves it)
+  dailies.json         one record per morning: the post, the answers people typed
+                       verbatim, and which escalations were already sent. Gitignored —
+                       it is what colleagues wrote about their own work
+  announcements.json   what has already been said in the channel, so a restart does
+                       not repeat yesterday's escalation
 ```
 
 ```bash
@@ -293,7 +413,18 @@ server side.
 | `TAM_OVERRIDES_PATH` | — | where ticket-link corrections are written (unset → `../pipeline/data/link_overrides.json`) |
 | `TAM_DECISIONS_PATH` | — | the decision log (unset → `data/decisions.json`) |
 | `TAM_RECENT_DAYS` | `1.5` | activity inside this window counts as "what you did" |
-| `DEMO_FIXTURES` | — | `1` loads the fixture's drift for beat 3, labelled in the UI |
+| `TAM_NAMES` | — | `slack` \| `pseudonym` \| `id`. Empty picks `slack` when the name cache exists, else `pseudonym`. **Set it to the same value as `pipeline/.env`**, or the dashboard and Slack name the same person differently |
+| `TAM_NAMES_PATH` | — | the id → name mapping both halves read (unset → `../pipeline/data/user_names.json`, gitignored). Written by `python3 -m tam.ingest.users --fetch`; `/meowtam reload` re-reads it |
+| `DEMO_FIXTURES` | — | `1` loads the fixture's drift for the drift beat, labelled in the UI |
+| `YOUTRACK_URL` / `YOUTRACK_TOKEN` | — | the bot searches the tracker directly for the ticket picker. Empty → it goes through the pipeline instead (needs `TAM_API_URL` + `TAM_ADMIN_TOKEN`) |
+| `YOUTRACK_PROJECTS` | — | which projects the picker searches when the channel is not mapped |
+| `YOUTRACK_WRITE` | — | `1` lets the bot write a real comment on a ticket. Off means it says so, with the reason, and never claims otherwise |
+| `YOUTRACK_WRITE_TOKEN` | — | a token that may comment; falls back to `YOUTRACK_TOKEN`, but only once `YOUTRACK_WRITE` is on |
+| `TAM_CHANNEL_PROJECTS` | — | `REVERAPP (Rever App)=C0ABC,#reverapp-qa; MOB=C0GHI` — which channels are which project. **Same variable and syntax in `pipeline/.env`** |
+| `TAM_ADMIN_TOKEN` | — | required by `/meowtam paste` and the reindex after a link; the pipeline prints one at boot when unset |
+| `TAM_API_WRITE_TIMEOUT_MS` | `300000` | budget for the write routes, which re-embed the corpus |
+| `TAM_STALE_WORKDAYS` | `5` | working days of silence before a work item is raised in the channel |
+| `TAM_ANNOUNCEMENTS_PATH` | — | what has already been announced (unset → `data/announcements.json`) |
 
 ## Design rules that are not negotiable
 
@@ -302,6 +433,8 @@ server side.
 3. **Absolute timestamps.** `2026-08-14 16:31`, not "2 days ago" — the reader is reconciling
    against their own memory of the week.
 4. **Derived facts and generated prose look different.** The facts are the product.
-5. **Never write to a ticket unattended.** A human presses save, always.
+5. **Never write to a ticket unattended.** A human presses save, always — and writing is off
+   until somebody sets `YOUTRACK_WRITE=1`. What gets written is a *comment*, never the
+   description: overwriting a description from a modal destroys what the PO wrote, with no undo.
 6. **Report on tickets, never on people.**
 7. **Never `letter-spacing` on Thai**, and truncate by line count, not characters.

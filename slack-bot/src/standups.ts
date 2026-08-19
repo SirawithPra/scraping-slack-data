@@ -7,10 +7,11 @@
  * fixture made the DM a mock-up of itself.
  *
  * One deliberate restriction: a draft is only built for participants that are
- * real Slack user ids. The pipeline does not resolve ids to display names yet, so
- * a participant recorded as "Alice" cannot be sent a DM and has no draft. Adding
- * name→id guessing here would put the wrong standup in someone's DMs, which is
- * worse than no standup.
+ * real Slack user ids. A participant recorded as "Alice" — a meeting transcript's
+ * speaker — has no id to address a DM to, so they get no draft. Resolving ids to
+ * names (which `names.ts` now does for the *header*) does not help here and must
+ * not be confused with it: going the other way, name→id, would be guesswork, and
+ * the wrong standup in somebody's DMs is worse than no standup.
  *
  * That restriction stays, but it no longer happens quietly. A corpus whose
  * participants are all display names produces zero drafts, which looks exactly

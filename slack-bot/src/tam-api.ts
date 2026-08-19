@@ -42,6 +42,17 @@ export interface ApiConfig {
   /** Raw cosine the nearest record must reach before recall reports any hit. */
   minCosine: number;
   timeoutMs: number;
+  /** Required by the pipeline's write routes. Empty means this bot may only read. */
+  adminToken: string;
+  /**
+   * Separate, and much longer, than the read timeout.
+   *
+   * Ingesting a pasted chat re-embeds and re-clusters the corpus, which takes tens
+   * of seconds on a real one. Reusing the 20-second read timeout aborted a write
+   * that then completed anyway — the corpus changed, the ledger changed, and the
+   * person was told it had failed, which is the worst of the three outcomes.
+   */
+  writeTimeoutMs: number;
 }
 
 /**
@@ -84,6 +95,8 @@ export function apiConfig(): ApiConfig | null {
     staleDays: envNumber('TAM_STALE_DAYS', 3, { min: 0 }),
     minCosine: envNumber('TAM_MIN_COSINE', 0.45, { min: 0, max: 1 }),
     timeoutMs: envNumber('TAM_API_TIMEOUT_MS', 20_000, { min: 1 }),
+    adminToken: process.env.TAM_ADMIN_TOKEN?.trim() ?? '',
+    writeTimeoutMs: envNumber('TAM_API_WRITE_TIMEOUT_MS', 300_000, { min: 1 }),
   };
 }
 
@@ -118,12 +131,21 @@ function channelFor(id: string): string | undefined {
   return SLACK_ID.exec(id)?.[1];
 }
 
-/** The pipeline stamps source on records; fall back to the id prefix. */
+/**
+ * The pipeline stamps source on records; fall back to the id prefix.
+ *
+ * Every source the pipeline emits has to be listed here, not only the ones with an
+ * icon: an unlisted value falls through to the prefix test and a pasted chat or a
+ * typed note would report itself as an exported Slack message, which is a claim about
+ * where it came from and about there being a permalink behind it.
+ */
+const SOURCES: readonly string[] = ['slack', 'slack_paste', 'meeting', 'note', 'youtrack', 'notion'];
+
 function sourceFor(id: string, given?: unknown): Source {
-  if (given === 'slack' || given === 'meeting' || given === 'youtrack' || given === 'notion') {
-    return given;
-  }
-  return id.startsWith('mtg_') ? 'meeting' : 'slack';
+  if (typeof given === 'string' && SOURCES.includes(given)) return given as Source;
+  if (id.startsWith('mtg_')) return 'meeting';
+  if (id.startsWith('paste_')) return 'slack_paste';
+  return 'slack';
 }
 
 /**
@@ -225,6 +247,8 @@ interface ApiMessage {
   /** Epoch seconds, when the server sends it. See daysSince. */
   ts?: number;
   user?: string | null;
+  /** The server's own rendering of `user`. Fallback only — see toMessage. */
+  user_name?: string | null;
   source?: string | null;
   text: string;
 }
@@ -241,6 +265,8 @@ interface ApiTimelineEntry {
   to_id?: string;
   to_text?: string;
   to_user?: string | null;
+  /** Added alongside the id; older servers sent the rendered name in `to_user`. */
+  to_user_name?: string | null;
   evidence?: string;
   /** How many further messages collapsed onto this same event. */
   also_answers?: number;
@@ -250,9 +276,13 @@ function toMessage(m: ApiMessage, cfg: ApiConfig): Message {
   return {
     id: m.id,
     source: sourceFor(m.id, m.source),
-    // Never invent a display name: the pipeline does not resolve ids yet, so a
-    // raw U… is the honest thing to render.
-    user: m.user?.trim() || 'unknown',
+    // The id, in preference to the name the server already rendered. Both halves
+    // resolve ids the same way (src/names.ts mirrors tam/ingest/users.py), so
+    // carrying the id here means the *bot's* TAM_NAMES decides what Slack shows —
+    // otherwise a bot in pseudonym mode would print whatever mode the server
+    // happened to be running in. `user_name` is the fallback for a record that has
+    // a name and no id, e.g. a meeting transcript's speaker.
+    user: m.user?.trim() || m.user_name?.trim() || 'unknown',
     when: m.when,
     text: m.text,
     permalink: permalinkFor(m.id, cfg.workspace),
@@ -275,7 +305,7 @@ function toTimeline(entries: ApiTimelineEntry[]): TimelineEvent[] {
         kind: KIND_BY_RELATION[e.relation] ?? 'status_change',
         text,
         source: sourceFor(e.to_id as string),
-        user: e.to_user?.trim() || 'unknown',
+        user: e.to_user?.trim() || e.to_user_name?.trim() || 'unknown',
         evidence_id: e.to_id,
       };
     });
@@ -379,6 +409,7 @@ export interface ApiSearchHit {
   id: string;
   source?: string | null;
   user?: string | null;
+  user_name?: string | null;
   when: string;
   text: string;
   why: Record<string, number>;
@@ -478,6 +509,91 @@ export async function fetchLedger(cfg: ApiConfig): Promise<Ledger> {
  * `npm run check-api` re-measures both numbers wherever it runs, because the floor
  * is a property of one corpus and one model together rather than a constant.
  */
+/**
+ * POST to the pipeline with the admin token, which the two write routes require.
+ *
+ * Separate from `get` rather than a flag on it, because the failure mode is
+ * different: a read that 500s is an outage, and a write that 403s is a token the
+ * operator has to go and set. The detail FastAPI puts in `detail` is carried out
+ * verbatim so the person sees which of the two they are looking at.
+ */
+async function post<T>(cfg: ApiConfig, path: string, body: unknown): Promise<T> {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), cfg.writeTimeoutMs);
+  try {
+    const res = await fetch(`${cfg.baseUrl}${path}`, {
+      method: 'POST',
+      signal: ctl.signal,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(cfg.adminToken ? { 'X-TAM-Token': cfg.adminToken } : {}),
+      },
+      body: JSON.stringify(body ?? {}),
+    });
+    const text = await res.text();
+    let parsed: any = {};
+    try {
+      parsed = text ? JSON.parse(text) : {};
+    } catch {
+      parsed = { detail: text.slice(0, 300) };
+    }
+    if (!res.ok) {
+      throw new Error(
+        res.status === 401 || res.status === 403
+          ? `pipeline ปฏิเสธ (${res.status}) — ต้องตั้ง TAM_ADMIN_TOKEN ให้ตรงกับที่ server พิมพ์ตอนบูต`
+          : `${path} → ${parsed?.detail ?? `HTTP ${res.status}`}`,
+      );
+    }
+    return parsed as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Rebuild the pipeline's index now, so a correction is visible before the demo moves on. */
+export async function reindex(cfg: ApiConfig): Promise<{ built_at: string; records: number }> {
+  return post(cfg, '/api/reindex', {});
+}
+
+export interface PasteResult {
+  stored: boolean;
+  title: string;
+  day: string;
+  channel_id: string;
+  records: Array<{ id: string; user: string; when: string; text: string }>;
+  skipped: string[];
+  replaced?: number;
+  corpus_size?: number;
+  link_key?: string;
+  linked?: number;
+  /** Non-empty only when the rebuilt digest really holds a work item by that key. */
+  item_key?: string;
+  in_item?: number;
+  built_at?: string;
+}
+
+/**
+ * Send a chat somebody copied out of a DM into the corpus.
+ *
+ * `dry_run` returns what the parser made of it and stores nothing. That round trip
+ * is not optional politeness: the paste format is a heuristic over something Slack
+ * does not document, and a misread paste looks exactly like a short conversation —
+ * so a person sees the parsed messages before any of it is kept.
+ */
+export async function pasteChat(
+  cfg: ApiConfig,
+  input: { chat: string; title: string; day?: string; linkKey?: string; by?: string; dryRun?: boolean },
+): Promise<PasteResult> {
+  return post(cfg, '/api/paste', {
+    chat: input.chat,
+    title: input.title,
+    day: input.day ?? '',
+    link_key: input.linkKey ?? '',
+    by: input.by ?? '',
+    dry_run: Boolean(input.dryRun),
+  });
+}
+
 export interface Relevance {
   /** Raw BM25 of the best-matching record. Exactly 0 when no word is shared. */
   lexical: number;
@@ -527,7 +643,7 @@ export async function searchViaApi(
 
 export function hitToMessage(hit: ApiSearchHit, cfg: ApiConfig): Message {
   return toMessage(
-    { id: hit.id, when: hit.when, user: hit.user, source: hit.source, text: hit.text },
+    { id: hit.id, when: hit.when, user: hit.user, user_name: hit.user_name, source: hit.source, text: hit.text },
     cfg,
   );
 }
@@ -550,10 +666,23 @@ export async function ping(cfg: ApiConfig): Promise<{ corpus_size: number; topic
  * never as an empty result — "no stale tickets" and "we could not look" must not read the
  * same on screen.
  */
+export interface UnresolvedLink {
+  record_id: string;
+  key: string;
+  channel: string;
+  why: string;
+}
+
 export interface TrackerReport {
   coverage: Record<string, number>;
   drift: Array<{ ticket: string; ticket_state: string; our_state: string; detail: string; ticket_url: string }>;
   silent: Array<{ ticket: string; state: string; url: string; summary: string; quiet_days: number; mentioned_in_slack: boolean }>;
+  /**
+   * Ticket links the pipeline could not apply, because the record they name is not in
+   * its corpus. Empty on an older pipeline that does not compute them, which is why
+   * nothing here may render "no broken links" from an absent field.
+   */
+  unresolved_links: UnresolvedLink[];
   error: string;
   built_at: string;
 }
@@ -565,12 +694,13 @@ export async function fetchTracker(cfg: ApiConfig): Promise<TrackerReport> {
       coverage: body.coverage ?? {},
       drift: body.drift ?? [],
       silent: body.silent ?? [],
+      unresolved_links: body.unresolved_links ?? [],
       error: body.error ?? '',
       built_at: body.built_at ?? '',
     };
   } catch (err) {
     return {
-      coverage: {}, drift: [], silent: [], built_at: '',
+      coverage: {}, drift: [], silent: [], unresolved_links: [], built_at: '',
       error: `อ่าน /api/tracker ไม่ได้: ${(err as Error).message} — pipeline เวอร์ชันเก่า หรือยังไม่ได้ตั้ง YouTrack`,
     };
   }

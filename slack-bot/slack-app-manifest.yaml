@@ -14,20 +14,20 @@ features:
     always_online: true
   slash_commands:
     - command: /meowtam
-      description: บอร์ดงาน · /meowtam blocked · /meowtam PROJ-1 · /meowtam recall <ข้อความ> · /meowtam demo
-      usage_hint: "[blocked|digest|recall <ข้อความ>|PROJ-1|@someone|demo]"
+      description: บอร์ดงาน · daily · blocked · stale · paste · recall <ข้อความ> · demo
+      usage_hint: "[daily|blocked|stale|paste|projects|digest|recall <ข้อความ>|PROJ-1|demo]"
       should_escape: false
     # Short alias — same handler. Worth having on stage: eight keystrokes fewer
     # per beat, and Slack's autocomplete on /me can hesitate.
     - command: /mt
       description: ย่อของ /meowtam
-      usage_hint: "[blocked|digest|recall <ข้อความ>|PROJ-1|@someone|demo]"
+      usage_hint: "[daily|blocked|stale|paste|projects|digest|recall <ข้อความ>|PROJ-1|demo]"
       should_escape: false
   shortcuts:
     - name: ผูกกับ ticket
       type: message
       callback_id: link_to_ticket
-      description: ผูกข้อความนี้เข้ากับ work item
+      description: ค้น ticket ใน YouTrack แล้วผูกข้อความนี้เข้ากับมัน
     - name: บันทึกเป็นการตัดสินใจ
       type: message
       callback_id: mark_decision

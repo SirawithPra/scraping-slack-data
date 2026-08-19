@@ -1,5 +1,6 @@
 import type { KnownBlock } from '@slack/types';
 import type { State, Message, WorkItem, Source } from '../types.js';
+import { displayName, isSlackId, namesInText } from '../names.js';
 
 /**
  * State is icon + word, never colour alone — colour-blind readers and Slack's
@@ -14,6 +15,7 @@ export const STATE_LABEL: Record<State, string> = {
 
 export const SOURCE_ICON: Record<Source, string> = {
   slack: '💬',
+  slack_paste: '📋',
   meeting: '🎙',
   note: '📝',
   youtrack: '🎫',
@@ -63,9 +65,36 @@ export function days(n: number): string {
   return `${n < 10 ? n.toFixed(1) : Math.round(n)} วัน`;
 }
 
-/** Participants: real names as-is, raw Slack ids as code chips. Never fake an avatar or a name. */
+/**
+ * Participants, rendered.
+ *
+ * `displayName` resolves the ids under the active `TAM_NAMES` mode; a value that
+ * is already a name (a meeting transcript's speaker, the ledger's own strings)
+ * passes through. Anything still id-shaped afterwards means `TAM_NAMES=id`, and
+ * only then does it get the code chip that says "this is a key, not a person".
+ */
 export function people(list: string[]): string {
-  return list.map((p) => (/^U[A-Z0-9]{6,}$/.test(p) ? `\`${p}\`` : p)).join(', ');
+  return list
+    .map((p) => {
+      const shown = displayName(p) || p;
+      return isSlackId(shown) ? `\`${shown}\`` : shown;
+    })
+    .join(', ');
+}
+
+/** A user field ready to print: resolved to a name, then escaped. */
+export function who(value: unknown): string {
+  return esc(displayName(value) || '-');
+}
+
+/**
+ * Message text ready to print: `@U0123…` mentions resolved first, then clamped
+ * and escaped. Resolving before clamping matters — a name is shorter than an id,
+ * so clamping first would spend the budget on the key and cut the sentence.
+ */
+export function bodyText(text: unknown, limit?: number): string {
+  const resolved = namesInText(text);
+  return esc(limit ? clamp(resolved, limit) : resolved);
 }
 
 export function divider(): KnownBlock {
@@ -104,7 +133,7 @@ export function evidenceButton(messageId: string, permalink?: string, label = '�
 }
 
 export function quote(m: Message): string {
-  return `>${sourceIcon(m.source)} *${esc(m.user)}* · ${m.when}\n>${esc(clamp(m.text, 240)).replace(/\n/g, '\n>')}`;
+  return `>${sourceIcon(m.source)} *${who(m.user)}* · ${m.when}\n>${bodyText(m.text, 240).replace(/\n/g, '\n>')}`;
 }
 
 /** '💬 8 · 🎙 2 · 🎫 3' — counts are computed facts, so they get to look like facts. */

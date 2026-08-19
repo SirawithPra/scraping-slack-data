@@ -11,12 +11,20 @@ export type State = 'blocked' | 'stalled' | 'moving' | 'done';
 // `note` is a note somebody typed and pasted in, which is not the same as a transcript:
 // on this team a meeting usually leaves hand-written notes rather than a recording, and
 // calling those `meeting` would claim a transcript that never existed.
-export type Source = 'slack' | 'meeting' | 'note' | 'youtrack' | 'notion';
+// `slack_paste` is a conversation copied out of a DM or a private group by hand. It is
+// kept apart from `slack` for the same reason: an exported message is whole and has a
+// permalink, a pasted one is whatever somebody happened to select and has neither.
+export type Source = 'slack' | 'slack_paste' | 'meeting' | 'note' | 'youtrack' | 'notion';
 
 export interface Message {
   id: string;
   source: Source;
-  /** Display name where we have one, raw Slack id where we don't. Never invent a name. */
+  /**
+   * The Slack user id, or a name for a source that only has one (a meeting
+   * transcript's speaker). Stored as-is and resolved at render time by
+   * `names.ts` — never pre-rendered here, because the same record has to be able
+   * to print as a real name, a pseudonym, or the raw key depending on TAM_NAMES.
+   */
   user: string;
   /** Absolute, 'YYYY-MM-DD HH:mm'. The reader is reconciling against their own memory. */
   when: string;
@@ -115,4 +123,84 @@ export interface Ledger {
   decisions: Decision[];
   drifts: Drift[];
   standups: StandupDraft[];
+}
+
+/* ------------------------------------------------------------------ *
+ * The daily thread. Not part of the ledger: these are answers people
+ * typed at the bot's invitation, stored as typed, so tomorrow's post can
+ * quote them and a pending line can be counted across days.
+ * ------------------------------------------------------------------ */
+
+/** One "Blockers / Pending" line, with whoever it waits on. */
+export interface DailyBlocker {
+  /** The line as typed, minus the bullet. Never rewritten — it is evidence. */
+  text: string;
+  /**
+   * Who it waits on: a Slack user id, the literal `PO`, or '' when the writer
+   * named nobody. Empty is kept rather than guessed — tagging the wrong person
+   * every morning is worse than tagging none.
+   */
+  tag: string;
+}
+
+/** One person's reply in a daily thread, as the parser read it. */
+export interface DailyAnswer {
+  user: string;
+  /** `ts` of their reply, so the summary can link back to the words themselves. */
+  ts: string;
+  done: string[];
+  focus: string[];
+  blockers: DailyBlocker[];
+  /**
+   * True when the demo driver wrote this answer instead of a person.
+   *
+   * Carried on the answer rather than on the day, because a demo morning can hold
+   * both: seeded answers to make the streak real, and whatever the people in the
+   * room type into the same thread. Every renderer that shows an answer has to
+   * label this one — a screenshot of a summary that cannot be told apart from a
+   * real morning is the fake confirmation this codebase keeps deleting, with a
+   * bigger audience.
+   */
+  simulated?: boolean;
+}
+
+/** One morning's post and everything its thread produced. */
+export interface DailyRecord {
+  /** 'YYYY-MM-DD' in the scheduling zone. One record per day, and the key. */
+  date: string;
+  channel: string;
+  /** `ts` of the parent post — how the thread is re-read and linked to. */
+  ts: string;
+  /** Filled when Slack gave us one; the morning link degrades to plain text without it. */
+  permalink?: string;
+  posted_at: string;
+  /** Set when the 10:45 pass ran, so a second run is visible rather than silent. */
+  summarised_at?: string;
+  answers: DailyAnswer[];
+  /**
+   * Pending lines already announced in the channel, as `user::normalised text`.
+   *
+   * Stored because the escalation must fire *once*. Announcing everything over the
+   * threshold every morning would tag the same person for the same line for as long
+   * as it stays open, which is how a bot earns a mute — and muting it loses the
+   * announcements that are new. Kept per person, since two people can be waiting on
+   * the same thing and each is their own claim.
+   */
+  announced?: string[];
+  /** Set by the demo driver, so a seeded morning cannot be mistaken for a real one. */
+  simulated?: boolean;
+}
+
+/**
+ * Something the bot has already said in the channel, so it does not say it again.
+ *
+ * `kind` separates the escalations that have nothing to do with each other — a
+ * pending line and a work item going quiet are both "we already told you", but a
+ * shared namespace would let one silence the other.
+ */
+export interface Announcement {
+  kind: string;
+  key: string;
+  at: string;
+  note?: string;
 }

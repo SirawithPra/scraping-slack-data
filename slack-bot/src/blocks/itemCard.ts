@@ -2,9 +2,10 @@ import type { KnownBlock } from '@slack/types';
 import type { WorkItem } from '../types.js';
 import { findMessage, ledgerOrigin, refreshStatus } from '../data.js';
 import {
-  CMD, STATE_LABEL, clamp, context, days, divider, esc,
-  evidenceButton, header, people, quote, section, sourceCounts, sourceIcon, ticketButton,
+  CMD, STATE_LABEL, bodyText, clamp, context, days, divider, esc,
+  evidenceButton, header, people, quote, section, sourceCounts, sourceIcon, ticketButton, who,
 } from './common.js';
+import { displayName } from '../names.js';
 
 const KIND_ICON: Record<string, string> = {
   status_change: '🔁',
@@ -57,7 +58,7 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
   ];
 
   if (ev) {
-    blocks.push(context(`หลักฐาน: ${sourceIcon(ev.source)} *${esc(ev.user)}* · ${ev.when}`));
+    blocks.push(context(`หลักฐาน: ${sourceIcon(ev.source)} *${who(ev.user)}* · ${ev.when}`));
     blocks.push({
       type: 'actions',
       elements: [evidenceButton(ev.id, ev.permalink) as any],
@@ -67,7 +68,7 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
   blocks.push(
     context(
       `${sourceCounts(item)}  ·  ${item.first} → ${item.last}` +
-        (item.assignee ? `  ·  รับผิดชอบ: ${esc(item.assignee)}` : '') +
+        (item.assignee ? `  ·  รับผิดชอบ: ${who(item.assignee)}` : '') +
         (item.youtrack_status ? `  ·  YouTrack: ${esc(item.youtrack_status)}` : ''),
     ),
   );
@@ -81,7 +82,7 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
       const link = m?.permalink ? ` <${m.permalink}|↗>` : '';
       blocks.push(
         context(
-          `${KIND_ICON[t.kind] ?? '•'} *${t.when}*  ${sourceIcon(t.source)} ${esc(t.user)} — ${esc(clamp(t.text, 200))}${link}`,
+          `${KIND_ICON[t.kind] ?? '•'} *${t.when}*  ${sourceIcon(t.source)} ${who(t.user)} — ${bodyText(t.text, 200)}${link}`,
         ),
       );
     }
@@ -126,7 +127,7 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
       blocks.push({
         type: 'actions',
         elements: cited.map(
-          (m) => evidenceButton(m.id, m.permalink, clamp(`${m.user} · ${m.when}`, 70)) as any,
+          (m) => evidenceButton(m.id, m.permalink, clamp(`${displayName(m.user) || m.user} · ${m.when}`, 70)) as any,
         ),
       } as KnownBlock);
     }

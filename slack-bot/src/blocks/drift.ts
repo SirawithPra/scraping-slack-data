@@ -1,7 +1,7 @@
 import type { KnownBlock, View } from '@slack/types';
 import type { Drift, WorkItem } from '../types.js';
 import { demoFixtures, findMessage } from '../data.js';
-import { clamp, context, divider, esc, section } from './common.js';
+import { bodyText, clamp, context, divider, esc, section, who } from './common.js';
 
 /**
  * Drift detection — the demo's wow beat, and the fix for
@@ -65,7 +65,7 @@ export function driftModal(drift: Drift, item: WorkItem): View {
 
   if (trigger) {
     blocks.push(section('*ข้อความที่ทำให้สโคปเปลี่ยน*'));
-    blocks.push(section(`>*${esc(trigger.user)}* · ${trigger.when}\n>${esc(trigger.text).replace(/\n/g, '\n>')}`));
+    blocks.push(section(`>*${who(trigger.user)}* · ${trigger.when}\n>${bodyText(trigger.text).replace(/\n/g, '\n>')}`));
     blocks.push(divider());
   }
 
