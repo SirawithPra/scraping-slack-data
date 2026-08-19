@@ -43,13 +43,35 @@ fi
 
 mkdir -p "$LOGS" "$AGENTS"
 
+# TAM_DAILY_EVERY turns the morning job into an interval timer, in seconds. It exists for
+# testing the loop: waiting until 08:30 to learn whether a message typed in Slack reaches
+# the dashboard is not a test anybody runs. Unset means the standing 08:30 calendar entry.
+# One line of XML either way, so the substitution below needs no newline handling.
+EVERY="${TAM_DAILY_EVERY:-}"
+if [ -n "$EVERY" ]; then
+  SCHEDULE="<key>StartInterval</key><integer>$EVERY</integer>"
+  DAILY_HUMAN="ทุก $EVERY วินาที        (โหมดทดสอบ — TAM_DAILY_EVERY)"
+else
+  SCHEDULE="<key>StartCalendarInterval</key><dict><key>Hour</key><integer>8</integer><key>Minute</key><integer>30</integer></dict>"
+  DAILY_HUMAN="08:30 ทุกวัน            (เครื่องหลับอยู่ก็รันเมื่อตื่น)"
+fi
+
 JOBS="com.tam.dashboard com.tam.daily"
 [ "$BOT_OK" = 1 ] && JOBS="$JOBS com.tam.bot"
+# Named jobs install only those. Changing the daily schedule should not have to restart
+# the dashboard — which means a 60-second reload of a 2.1 GB model — and the bot with it.
+if [ "$#" -gt 0 ]; then
+  for job in "$@"; do
+    [ -f "$DEPLOY/$job.plist.template" ] || { echo "✕ ไม่รู้จักงาน $job — มีให้เลือก: com.tam.dashboard com.tam.daily com.tam.bot"; exit 1; }
+  done
+  JOBS="$*"
+fi
 
 for job in $JOBS; do
   sed -e "s|__VENV__|$VENV|g" -e "s|__PIPELINE__|$PIPELINE|g" \
       -e "s|__LOGS__|$LOGS|g" -e "s|__RECORDS__|$RECORDS|g" \
       -e "s|__NODE__|$NODE|g" -e "s|__NODEBIN__|$NODEBIN|g" -e "s|__BOT__|$BOT|g" \
+      -e "s|__SCHEDULE__|$SCHEDULE|g" \
       "$DEPLOY/$job.plist.template" > "$AGENTS/$job.plist"
   # bootout first so a re-run replaces the definition instead of erroring on a
   # label that is already loaded. It fails when nothing is loaded, which is fine.
@@ -73,7 +95,7 @@ done
 
 echo
 echo "dashboard  → http://localhost:8899   (เปิดใหม่เองถ้าตาย)"
-echo "daily      → 08:30 ทุกวัน            (เครื่องหลับอยู่ก็รันเมื่อตื่น)"
+echo "daily      → $DAILY_HUMAN"
 if [ "$BOT_OK" = 1 ]; then
   echo "bot        → Socket Mode            (/meowtam ใช้ได้ตลอด ไม่ต้องเปิด terminal)"
   echo "             ตอน login บอทมักล้มสองสามครั้งก่อนต่อได้ เพราะรอ dashboard โหลดโมเดลเสร็จ — ปกติ"

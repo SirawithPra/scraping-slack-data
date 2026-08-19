@@ -18,7 +18,7 @@ cd deploy && ./install.sh
 | งาน | ทำอะไร | เมื่อไหร่ |
 |---|---|---|
 | `com.tam.dashboard` | เปิด dashboard ที่ port 8899 และเปิดใหม่ถ้าตาย | ตอน login และตลอดเวลา |
-| `com.tam.daily` | `python3 -m tam.ingest.daily` — ดึงทุกช่อง → merge → rebuild | **08:30 ทุกวัน** |
+| `com.tam.daily` | `python3 -m tam.ingest.daily` — ดึงทุกช่อง → merge → rebuild | **08:30 ทุกวัน** (เปลี่ยนได้ ดูข้างล่าง) |
 | `com.tam.bot` | บอท Slack (Socket Mode) — `/meowtam` ใช้ได้โดยไม่ต้องเปิด terminal | ตอน login และตลอดเวลา |
 
 log อยู่ที่ `deploy/logs/` — `dashboard.log` และ `daily.log` เก็บทั้ง stdout และ stderr
@@ -41,6 +41,25 @@ curl -s localhost:8899/api/health      # dashboard ตอบไหม
 launchctl kickstart -k gui/$(id -u)/com.tam.daily
 tail -f deploy/logs/daily.log
 ```
+
+## ให้ดึงถี่ ๆ ตอนเทส
+
+รอถึง 08:30 เพื่อดูว่าข้อความที่พิมพ์ใน Slack ไปถึง dashboard หรือยัง ไม่ใช่การเทส
+`TAM_DAILY_EVERY` เปลี่ยนงานเช้าเป็นตัวจับเวลา หน่วยเป็นวินาที
+
+```bash
+cd deploy
+TAM_DAILY_EVERY=600 ./install.sh com.tam.daily   # ทุก 10 นาที
+./install.sh com.tam.daily                       # กลับไปเป็น 08:30
+```
+
+**ชื่องานท้ายคำสั่งสำคัญ** — ใส่ไว้เพื่อลงเฉพาะงานนั้น ถ้าไม่ใส่มันจะลงใหม่ทั้งสามงาน
+ซึ่งหมายถึง dashboard ต้องโหลดโมเดล 2.1 GB ใหม่ และบอทหลุดไปด้วยระหว่างนั้น
+
+ข้อควรรู้ตอนตั้งให้ถี่: Slack จำกัด `conversations.history` ราว 1 request/นาที สำหรับแอปใหม่
+รอบหนึ่งใช้ราว 1 request ต่อช่อง (ตอนนี้ 5 ช่อง) ทุก 10 นาทีจึงยังอยู่ในงบ แต่ถ้าตั้งต่ำกว่านี้
+มันจะเริ่มรอ `Retry-After` ซึ่ง log จะบอกให้เห็น · แต่ละรอบที่มีของใหม่จะสั่ง rebuild ด้วย
+ใช้เวลาอีก ~20-40 วินาที · รอบที่ไม่มีข้อความใหม่จะข้าม ไม่แตะ corpus
 
 ## ถอนออก
 
