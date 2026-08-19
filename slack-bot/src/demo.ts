@@ -167,6 +167,29 @@ export function todaysSimulatedAnswers(users: string[], date: string): DailyAnsw
   }));
 }
 
+/**
+ * Whether the "(จำลอง)" labels are printed where the room can see them.
+ *
+ * Off by default, which is a deliberate reversal and worth being precise about.
+ * Seeded rows are still flagged `simulated` in the file, `demo clear` still removes
+ * exactly them, and the ephemeral replies only the presenter sees still say what was
+ * seeded — none of that is behind this switch. What the switch hides is the label on
+ * the *audience's* screen, so a demo of a morning looks like a morning.
+ *
+ * What that costs, stated plainly because the switch is one line and the cost is not:
+ * with labels off, the summary and the daily thread attribute sentences to named
+ * colleagues who did not write them, and nothing on screen says so. The presenter is
+ * then the only thing standing between an audience and a wrong belief — which is
+ * fine when the presenter says it out loud, and is not fine when a screenshot
+ * travels. Say it out loud.
+ *
+ *   DEMO_SHOW_SIMULATED=1   labels on, the state this shipped in
+ *   unset                   labels off
+ */
+export function showSimulatedLabels(): boolean {
+  return (process.env.DEMO_SHOW_SIMULATED ?? '').trim() === '1';
+}
+
 /** True for a `ts` this file minted, so a renderer can decline to link it. */
 export function isSimulatedTs(ts: string): boolean {
   return String(ts ?? '').startsWith('sim.');

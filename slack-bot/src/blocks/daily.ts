@@ -23,7 +23,7 @@ import type { KnownBlock } from '@slack/types';
 
 import type { DailyAnswer, DailyRecord, StandupDraft } from '../types.js';
 import { DAILY_EXAMPLE, DAILY_TEMPLATE, formatDailyDate, type PendingStreak } from '../daily.js';
-import { isSimulatedTs } from '../demo.js';
+import { isSimulatedTs, showSimulatedLabels } from '../demo.js';
 import { mentionOf } from '../names.js';
 import { CMD, clamp, context, divider, esc, header, section } from './common.js';
 
@@ -45,7 +45,8 @@ function waitingOn(tag: string): string {
 
 /** One carried-over pending line: what it is, who it waits on, how long it has sat. */
 function carriedLine(streak: PendingStreak): string {
-  const age = streak.days >= 2 ? ` · _ค้างมา ${streak.days} วัน_${streak.simulated ? ' _(นับรวมวันที่จำลองไว้)_' : ''}` : '';
+  const seeded = streak.simulated && showSimulatedLabels() ? ' _(นับรวมวันที่จำลองไว้)_' : '';
+  const age = streak.days >= 2 ? ` · _ค้างมา ${streak.days} วัน_${seeded}` : '';
   return `• ${esc(clamp(streak.text, 180))}\n   รอ: ${waitingOn(streak.tag)} · แจ้งโดย ${mentionOf(streak.user)}${age}`;
 }
 
@@ -160,7 +161,7 @@ function answerLines(answer: DailyAnswer, permalinkBase?: string): string {
   const link = permalinkBase && !isSimulatedTs(answer.ts)
     ? `<${permalinkBase}${answer.ts.replace('.', '')}|ข้อความ>`
     : '';
-  const tag = answer.simulated ? ' _(จำลอง)_' : '';
+  const tag = answer.simulated && showSimulatedLabels() ? ' _(จำลอง)_' : '';
   const parts: string[] = [`*${mentionOf(answer.user)}*${tag}${link ? ` · ${link}` : ''}`];
   if (answer.done.length) parts.push(`เสร็จ: ${answer.done.slice(0, MAX_LINES).map((t) => esc(clamp(t, 120))).join(' · ')}`);
   if (answer.focus.length) parts.push(`วันนี้: ${answer.focus.slice(0, MAX_LINES).map((t) => esc(clamp(t, 120))).join(' · ')}`);
@@ -199,7 +200,7 @@ export function dailySummaryBlocks(input: {
   // Said at the top, not in a footnote. The whole value of this summary is that the
   // reader can trust it describes a morning that happened; a seeded one that reads
   // identically to a real one would spend that trust to make a demo look better.
-  if (simulated) {
+  if (simulated && showSimulatedLabels()) {
     blocks.push(
       context(
         `⚠️ ${simulated} จาก ${record.answers.length} คำตอบนี้เป็นข้อมูลจำลองของเดโม ไม่ใช่คำตอบจริงของคน — ` +

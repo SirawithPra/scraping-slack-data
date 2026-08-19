@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import { pendingStreaks, newEscalations, streakKey } from '../src/daily.js';
 import { clearSimulated, previousWorkdays, seedPendingStreak, todaysSimulatedAnswers, isSimulatedTs } from '../src/demo.js';
 import { readDailies, saveDaily } from '../src/store.js';
+import { dailySummaryBlocks } from '../src/blocks/daily.js';
 
 /** Each test gets its own dailies file: these functions write, and the real one is data. */
 function withStore<T>(fn: () => T): T {
@@ -122,4 +123,43 @@ test('clear is idempotent, so running it twice cannot eat real data', () => {
     assert.deepEqual(after, { days: 0, answers: 0 });
     assert.equal(readDailies().length, 1);
   });
+});
+
+/**
+ * The label switch, both ways.
+ *
+ * `DEMO_SHOW_SIMULATED` governs one thing — whether the room is told a row was
+ * seeded. What it must never touch is the flag on the record itself, because that
+ * is what `demo clear` keys on: a demo that cannot be removed is the demo becoming
+ * the data. So this checks the label moves and the flag does not.
+ */
+test('the simulated label is off by default and comes back when asked for', () => {
+  const before = process.env.DEMO_SHOW_SIMULATED;
+  const record = {
+    date: '2026-08-20',
+    channel: 'C0DEMO',
+    ts: '1787.1',
+    posted_at: '2026-08-20 09:00',
+    answers: todaysSimulatedAnswers(['U0DEMOUSER1'], '2026-08-20'),
+  } as any;
+  const render = () =>
+    JSON.stringify(
+      dailySummaryBlocks({ record, expected: ['U0DEMOUSER1'], unfilled: [], streaks: [], pendingDays: 3 }),
+    );
+
+  try {
+    delete process.env.DEMO_SHOW_SIMULATED;
+    const hidden = render();
+    assert.ok(!hidden.includes('จำลอง'), 'ไม่ควรมีป้ายจำลองเมื่อปิดสวิตช์');
+
+    process.env.DEMO_SHOW_SIMULATED = '1';
+    const shown = render();
+    assert.ok(shown.includes('(จำลอง)'), 'ควรมีป้ายจำลองเมื่อเปิดสวิตช์');
+  } finally {
+    if (before === undefined) delete process.env.DEMO_SHOW_SIMULATED;
+    else process.env.DEMO_SHOW_SIMULATED = before;
+  }
+
+  // Either way the record is still marked, so `demo clear` can still find it.
+  assert.ok(record.answers.every((a: any) => a.simulated));
 });
