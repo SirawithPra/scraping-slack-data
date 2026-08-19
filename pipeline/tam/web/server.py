@@ -1721,6 +1721,45 @@ def agreement_cell(row: dict[str, Any]) -> str:
     return '<span style="color:var(--state-resolved)">ตรงกัน</span>'
 
 
+def drift_card(drift: dict[str, Any]) -> str:
+    """One disagreement, with both of the messages behind it.
+
+    A drift rests on two claims: somebody typed this ticket's key in this conversation,
+    and something in this conversation says the work is stuck (or done). Those are almost
+    never the same message — 0 of 4 on this project the day this was written — and the
+    card used to show only the second under a heading that asserted the first. A reader
+    who opened the evidence found a sentence about another ticket and had no way to tell
+    whether the finding was wrong or the display was. Now both are here, labelled, and
+    the card says plainly when they are not one message.
+    """
+    state_label = STATE_STYLE.get(drift["our_state"], ("", drift["our_state"]))[1]
+    parts = [
+        '<article class="card blocked">',
+        f'<div class="card-head"><span class="chip blocked">{esc(DRIFT_LABEL.get(drift["kind"], drift["kind"]))}</span>'
+        f'<h3><a href="/item/{esc(drift["item_id"])}">{esc(drift["item_id"])}</a></h3></div>',
+        f'<p class="facts"><span>ทิกเก็ตว่า “{esc(drift["ticket_state"])}”</span>'
+        f'<span>Slack ว่า “{esc(state_label)}”</span>'
+        + (f'<span><a href="{esc(drift["ticket_url"])}" target="_blank" rel="noopener">เปิดทิกเก็ต ↗</a></span>'
+           if drift.get("ticket_url") else "")
+        + "</p>",
+        f'<p class="detail">{esc(drift["detail"])}</p>',
+    ]
+    if not drift.get("evidence_names_ticket", True):
+        parts.append(
+            '<p class="warn">ประโยคที่ทำให้สถานะนี้เป็นอย่างนี้ ไม่ได้พูดถึงเลขทิกเก็ตนี้ตรง ๆ — '
+            "มันมาจากบทสนทนาในเรื่องเดียวกัน ที่ผูกกับทิกเก็ตนี้เพราะมีคนพิมพ์เลขไว้อีกข้อความหนึ่ง "
+            "อ่านสองประโยคข้างล่างเทียบกันก่อนเชื่อ</p>"
+        )
+    rows = [f'<p class="meta"><b>สถานะมาจากข้อความนี้</b><br>{esc(drift["evidence"])}</p>']
+    if drift.get("link_text"):
+        rows.append(f'<p class="meta"><b>ผูกกับทิกเก็ตนี้เพราะข้อความนี้</b><br>{esc(drift["link_text"])}</p>')
+    parts.append(
+        '<details class="more"><summary>ข้อความที่ใช้ตัดสิน (2 ประโยค)</summary>' + "".join(rows) + "</details>"
+    )
+    parts.append("</article>")
+    return "".join(parts)
+
+
 @app.get("/tracker", response_class=HTMLResponse)
 def tracker_page() -> HTMLResponse:
     """Where the ticket board and the conversation disagree, and what nobody is discussing.
@@ -1749,18 +1788,7 @@ def tracker_page() -> HTMLResponse:
         ]
         return render("เทียบกับทิกเก็ต", tiles, sections, f"ข้อมูล ณ {build.built_at}", current="/tracker", build=build, hero=cat("tracker", eyes="squint"))
 
-    drift_rows = "".join(
-        f'<article class="card blocked">'
-        f'<div class="card-head"><span class="chip blocked">{esc(DRIFT_LABEL.get(drift["kind"], drift["kind"]))}</span>'
-        f'<h3><a href="/item/{esc(drift["item_id"])}">{esc(drift["item_id"])}</a></h3></div>'
-        f'<p class="facts"><span>ทิกเก็ตว่า “{esc(drift["ticket_state"])}”</span>'
-        f'<span>Slack ว่า “{esc(STATE_STYLE.get(drift["our_state"], ("", drift["our_state"]))[1])}”</span>'
-        + (f'<span><a href="{esc(drift["ticket_url"])}" target="_blank" rel="noopener">เปิดทิกเก็ต ↗</a></span>' if drift.get("ticket_url") else "")
-        + f'</p><p class="detail">{esc(drift["detail"])}</p>'
-        f'<details class="more"><summary>ข้อความที่ใช้ตัดสิน</summary><p class="meta">{esc(drift["evidence"])}</p></details>'
-        "</article>"
-        for drift in build.drifts
-    )
+    drift_rows = "".join(drift_card(drift) for drift in build.drifts)
     silent_rows = "".join(
         f'<tr data-text="{row_text(quiet["ticket"], quiet["summary"], quiet["state"])}">'
         f'<td><a href="{esc(quiet["url"])}" target="_blank" rel="noopener">{esc(quiet["ticket"])}</a></td>'
@@ -1797,7 +1825,9 @@ def tracker_page() -> HTMLResponse:
             drift_rows or f'<div class="empty">{nothing("ในบรรดาเรื่องที่เทียบได้ ไม่มีอันไหนขัดกับบอร์ด")}</div>',
             title=f"ที่ทิกเก็ตกับ Slack ไม่ตรงกัน ({len(build.drifts)})",
             note="ทิกเก็ตบอกอย่างหนึ่ง แต่คนในแชทพูดอีกอย่าง — ปกติแปลว่ามีคนลืมอัปเดตบอร์ด "
-            "หรือมีปัญหาโผล่ขึ้นมาใหม่หลังปิดทิกเก็ตไปแล้ว",
+            "หรือมีปัญหาโผล่ขึ้นมาใหม่หลังปิดทิกเก็ตไปแล้ว · แต่ละใบยืนอยู่บนสองประโยค: "
+            "ประโยคที่มีคนพิมพ์เลขทิกเก็ต และประโยคที่ทำให้สถานะฝั่ง Slack เป็นอย่างนั้น "
+            "ถ้าสองประโยคนี้ไม่ใช่ข้อความเดียวกัน การ์ดจะบอกไว้ให้เห็น",
         ),
         section(
             (row_filter("พิมพ์เพื่อกรอง — เลขทิกเก็ต ชื่อเรื่อง หรือสถานะ", "ทิกเก็ต")

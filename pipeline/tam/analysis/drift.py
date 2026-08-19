@@ -33,6 +33,22 @@ Every drift carries the message that triggered it, because a claim about a work 
 has to name the message that proves it. A drift with no evidence would be exactly the
 unverifiable assertion this project refuses everywhere else.
 
+It carries *two* messages, and the distinction is the one this module got wrong for
+longest. `evidence` is the message that decided the item's state; `link_text` is the
+message where somebody typed the ticket key. The gate below only ever checked that the
+second exists *somewhere in the cluster* — so a finding could read "the board says Done
+but a person said they are stuck on it" while quoting a sentence about a different
+ticket, which is what a reader clicking the evidence would discover for themselves.
+Measured on the real project the day this was added: 0 of 4 findings had both in one
+message, including one whose state evidence named `REVERAPP-110` under a heading about
+`REVERAPP-87`.
+
+Nothing is dropped for it. A cluster that names a ticket and disagrees with it is still
+worth a person's attention, and requiring one message to carry both would trade every
+finding on this corpus for a page that says nothing. `evidence_names_ticket` is False
+instead, and every surface says so, which is the same discipline `unverified` gets on a
+generated summary.
+
 The honest limit, stated because it decides whether this is useful: a drift needs a
 ticket key, and the key comes from somebody typing it into Slack. On the corpus this
 was built against, 8 of 38 work items have one — so drift sees about a fifth of the
@@ -76,6 +92,18 @@ class Drift:
     evidence_id: str
     evidence: str
     detail: str
+    #: The message that ties this work item to this ticket: somebody typed the key. It is
+    #: a *different* message from `evidence` more often than not, and conflating the two
+    #: is what let this module report "the board says Done but a person is stuck on it"
+    #: while quoting a sentence about another ticket entirely. Measured on the real
+    #: project: 0 of 4 findings had the state evidence and the mention in one message.
+    link_id: str = ""
+    link_text: str = ""
+    #: Whether the two above are the same message. False does not make the finding wrong
+    #: — the item really is about this ticket and the states really do disagree — but it
+    #: is the difference between a claim a reader can check in one message and one they
+    #: have to take on the cluster's word. Every surface has to show which it is.
+    evidence_names_ticket: bool = True
 
     def as_dict(self) -> dict[str, Any]:
         return {
@@ -88,6 +116,9 @@ class Drift:
             "evidence_id": self.evidence_id,
             "evidence": self.evidence,
             "detail": self.detail,
+            "link_id": self.link_id,
+            "link_text": self.link_text,
+            "evidence_names_ticket": self.evidence_names_ticket,
         }
 
 
@@ -142,6 +173,14 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
         last = mentions[-1] if mentions else None
         last_ts = timestamp(last) if last else float("nan")
         last_id = str(last["id"]) if last else ""
+        # The mention is reported beside every finding, because "somebody named this
+        # ticket" and "somebody said the work is stuck" are two claims and the reader is
+        # owed both. `named` answers whether one message happens to carry both.
+        mention_ids = {str(record["id"]) for record in mentions}
+        link_text = " ".join(str(last.get("text", "")).split())[:200] if last else ""
+
+        def named(evidence_id: str) -> bool:
+            return bool(evidence_id) and evidence_id in mention_ids
         talked_after = (
             np.isfinite(last_ts)
             and issue.updated > 0
@@ -167,6 +206,8 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
                 evidence_id=topic.evidence_id or last_id,
                 evidence=topic.evidence or "",
                 detail=f"ticket ปิดแล้ว ({issue.state}) แต่ใน Slack ยังติดอยู่",
+                link_id=last_id, link_text=link_text,
+                evidence_names_ticket=named(topic.evidence_id or last_id),
             ))
         elif issue.resolved and talked_after:
             hours = (last_ts - issue.updated) / 3600.0
@@ -180,6 +221,9 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
                     f"ticket ปิดแล้ว ({issue.state}) เมื่อ {format_timestamp(str(issue.updated))} "
                     f"แต่ยังมีคนพูดถึง {issue.key} อีก {hours:.0f} ชั่วโมงหลังจากนั้น"
                 ),
+                # This kind is timed off the mention itself, so the two are one message
+                # by construction — the only branch where that is true for free.
+                link_id=last_id, link_text=link_text, evidence_names_ticket=True,
             ))
         elif not issue.resolved and topic.state == "blocked":
             # The case the docstring promised and the code never emitted. Measured before
@@ -196,6 +240,8 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
                     f"ใน Slack ติดอยู่ แต่ ticket ยังเปิดปกติ ({issue.state or 'ไม่ทราบสถานะ'}) "
                     "— ไม่มีใครถืองานที่มีคนรอ"
                 ),
+                link_id=last_id, link_text=link_text,
+                evidence_names_ticket=named(topic.evidence_id or last_id),
             ))
         elif not issue.resolved and topic.state == "resolved":
             drifts.append(Drift(
@@ -205,6 +251,8 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
                 evidence_id=topic.evidence_id or last_id,
                 evidence=topic.evidence or "",
                 detail=f"Slack คุยจบแล้ว แต่ ticket ยังเปิดอยู่ ({issue.state or 'ไม่ทราบสถานะ'})",
+                link_id=last_id, link_text=link_text,
+                evidence_names_ticket=named(topic.evidence_id or last_id),
             ))
 
     return drifts
@@ -370,8 +418,12 @@ def main() -> None:
     if not drifts:
         print("  (ไม่มี — ในบรรดางานที่มี ticket key เท่านั้น)")
     for d in drifts:
-        print(f"  {d.ticket:14} {d.ticket_state:14} เราว่า {d.our_state}")
+        mark = "" if d.evidence_names_ticket else "  ⚠ หลักฐานสถานะไม่ได้พูดถึง ticket นี้"
+        print(f"  {d.ticket:14} {d.ticket_state:14} เราว่า {d.our_state}{mark}")
         print(f"     {d.detail}")
+        print(f"     สถานะมาจาก: {d.evidence[:88]}")
+        if d.link_text:
+            print(f"     พูดถึง ticket: {d.link_text[:88]}")
 
     print(f"\n=== เงียบ ({len(quiet)}) — ticket เปิดค้าง ไม่ถูกแตะเกิน {args.silent_days or SILENT_DAYS:.0f} วัน ===")
     for s in quiet[:20]:
