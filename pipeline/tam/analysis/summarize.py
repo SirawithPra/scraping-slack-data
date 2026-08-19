@@ -182,7 +182,6 @@ def _template_summary(brief: dict[str, Any], language: str) -> TopicSummary:
     messages = brief["messages"]
     latest = messages[-1] if messages else None
     people = ", ".join(brief["participants"][:4]) or ("ไม่ทราบ" if thai else "unknown")
-    sources = " + ".join(f"{count} {name}" for name, count in sorted(brief["sources"].items()))
 
     state_text = {
         ("blocked", True): "ติดอยู่ ยังไปต่อไม่ได้",
@@ -194,19 +193,23 @@ def _template_summary(brief: dict[str, Any], language: str) -> TopicSummary:
     }[(brief["state"], thai)]
 
     headline = f"{brief['label']} — {state_text}"
+    # Deliberately *not* the counts, the participant list and the state evidence: every
+    # renderer already lays those out as their own fields, so repeating them here is how
+    # one work item became a paragraph that restated its own header three times. What is
+    # left is the one thing none of them show in prose — the last thing somebody said.
     if thai:
-        detail = f"{brief['total_messages']} ข้อความ ({sources}) · ผู้เกี่ยวข้อง: {people}."
-        if brief["state_evidence"]:
-            detail += f" หลักฐาน: {brief['state_evidence']}."
-        if latest:
-            detail += f" ล่าสุด [{latest['who']}] {latest['text'][:160]}"
+        detail = (
+            f"ล่าสุดเมื่อ {latest['when']} {latest['who']} บอกว่า “{latest['text'][:220]}”"
+            if latest
+            else f"ยังไม่มีข้อความใหม่ในช่วงนี้ ({brief['total_messages']} ข้อความทั้งหมด จาก {people})"
+        )
         next_step = "ต้องมีคนไล่ให้ก่อน ถึงจะไปต่อได้" if brief["state"] == "blocked" else ""
     else:
-        detail = f"{brief['total_messages']} messages ({sources}) · people: {people}."
-        if brief["state_evidence"]:
-            detail += f" Evidence: {brief['state_evidence']}."
-        if latest:
-            detail += f" Latest [{latest['who']}] {latest['text'][:160]}"
+        detail = (
+            f"Last word, {latest['when']}, {latest['who']}: “{latest['text'][:220]}”"
+            if latest
+            else f"Nothing new in this window ({brief['total_messages']} messages in all, from {people})"
+        )
         next_step = "Needs someone to unblock it before it can move" if brief["state"] == "blocked" else ""
 
     # Cite what was actually read: the state evidence and the latest messages.

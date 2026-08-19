@@ -279,9 +279,16 @@ def thread_similarity_figure(records: list[dict[str, Any]], matrix: np.ndarray) 
 
 
 def stat_tile(label: str, value: str, note: str) -> str:
+    """One metric. A value that is words rather than a number is marked as such.
+
+    The display size here is chosen for digits; a name or a phrase in the same slot
+    wraps to three lines and pushes the tile past its neighbours, so it is tagged and
+    the stylesheet sizes it down.
+    """
+    numeric = any(character.isdigit() for character in value) and len(value) <= 12
     return (
         f'<div class="tile"><div class="tile-label">{html.escape(label)}</div>'
-        f'<div class="tile-value">{html.escape(value)}</div>'
+        f'<div class="tile-value{"" if numeric else " text"}">{html.escape(value)}</div>'
         f'<div class="tile-note">{html.escape(note)}</div></div>'
     )
 
@@ -304,12 +311,223 @@ def matches_table(matches: list[tuple[float, dict[str, Any]]]) -> str:
     )
 
 
-def build_page(title: str, tiles: list[str], sections: list[tuple[str, str]], subtitle: str | None = None) -> str:
-    body = "".join(
-        f'<section><p class="lede">{html.escape(note)}</p>'
-        f'<div class="plot-wrap">{figure_html}</div></section>'
-        for note, figure_html in sections
+# ---- the cat ---------------------------------------------------------------
+#
+# The deck dresses five photographs in one duotone so they cohere. The product
+# cannot: a demo runs on a laptop where those files are gitignored and usually
+# absent, and a broken-image icon in front of the room is worse than no cat. So
+# the mascot here is drawn, not photographed — it always renders, it inherits the
+# theme instead of fighting it, and it costs no request.
+#
+# One cat, one prop per surface. The prop is what makes each page *its* cat rather
+# than the same sticker six times, and it is always the thing that page does.
+
+#: Drawn once, at 120x110, so every pose shares a body and only the prop moves.
+CAT_BODY = """
+  <path d="M92,97 C111,97 113,73 100,63" fill="none" stroke="var(--cat-fur)"
+        stroke-width="6.5" stroke-linecap="round"/>
+  <path d="M30,105 C28,79 38,62 60,62 C82,62 92,79 90,105 Z" fill="var(--cat-fur)"/>
+  <path d="M40,35 L35,9 L59,24 Z" fill="var(--cat-fur)"/>
+  <path d="M80,35 L85,9 L61,24 Z" fill="var(--cat-fur)"/>
+  <path d="M42.5,31 L40,17 L52,26 Z" fill="var(--accent)" opacity=".5"/>
+  <path d="M77.5,31 L80,17 L68,26 Z" fill="var(--accent)" opacity=".5"/>
+  <ellipse cx="60" cy="44" rx="25.5" ry="22" fill="var(--cat-fur)"/>
+"""
+
+#: Open, closed, or narrowed. The eyes are the only part that carries mood, which is
+#: why the sleeping cat is the empty state and the squint is the one that is stuck.
+CAT_EYES = {
+    "open": """
+  <ellipse cx="50" cy="43" rx="3.5" ry="4.6" fill="var(--cat-eye)"/>
+  <ellipse cx="70" cy="43" rx="3.5" ry="4.6" fill="var(--cat-eye)"/>
+  <circle cx="51.2" cy="41.4" r="1.15" fill="var(--surface)" opacity=".9"/>
+  <circle cx="71.2" cy="41.4" r="1.15" fill="var(--surface)" opacity=".9"/>""",
+    "shut": """
+  <g fill="none" stroke="var(--cat-eye)" stroke-width="2.1" stroke-linecap="round">
+    <path d="M45.5,43 Q50,47.5 54.5,43"/><path d="M65.5,43 Q70,47.5 74.5,43"/>
+  </g>""",
+    "squint": """
+  <g fill="none" stroke="var(--cat-eye)" stroke-width="2.4" stroke-linecap="round">
+    <path d="M45.5,44 Q50,40.5 54.5,44"/><path d="M65.5,44 Q70,40.5 74.5,44"/>
+  </g>""",
+}
+
+CAT_FACE = """
+  <path d="M60,50.5 l3.2,3.4 h-6.4 Z" fill="var(--accent)"/>
+  <g fill="none" stroke="var(--cat-line)" stroke-width="1.3" stroke-linecap="round">
+    <path d="M44,49 L29,46"/><path d="M44,53 L30,54.5"/>
+    <path d="M76,49 L91,46"/><path d="M76,53 L90,54.5"/>
+  </g>
+"""
+
+#: What each surface's cat is holding. Drawn in front of the body, so a prop that
+#: sits at the waist hides the lower half and the cat reads as *behind* it.
+CAT_PROPS = {
+    # The coding cat: paws over a laptop lid, a prompt on the screen.
+    "code": """
+  <rect x="24" y="77" width="72" height="28" rx="4" fill="var(--cat-prop)" stroke="var(--cat-line)" stroke-width="1"/>
+  <rect x="29" y="82" width="62" height="20" rx="2.5" fill="var(--page)"/>
+  <g stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M35,88 l4,3.5 -4,3.5"/><path d="M43,95 h11"/>
+  </g>
+  <g stroke="var(--cat-line)" stroke-width="2" stroke-linecap="round"><path d="M62,88 h22"/></g>
+  <ellipse cx="31" cy="77" rx="6.5" ry="4.2" fill="var(--cat-fur)"/>
+  <ellipse cx="89" cy="77" rx="6.5" ry="4.2" fill="var(--cat-fur)"/>""",
+    # Stuck: the barrier is in front of the cat, not held by it.
+    "blocked": """
+  <rect x="16" y="79" width="88" height="12" rx="2.5" fill="var(--state-blocked)"/>
+  <g stroke="var(--page)" stroke-width="3.4" opacity=".55">
+    <path d="M24,91 L32,79"/><path d="M40,91 L48,79"/><path d="M56,91 L64,79"/>
+    <path d="M72,91 L80,79"/><path d="M88,91 L96,79"/>
+  </g>
+  <ellipse cx="26" cy="79" rx="6.5" ry="4.2" fill="var(--cat-fur)"/>
+  <ellipse cx="94" cy="79" rx="6.5" ry="4.2" fill="var(--cat-fur)"/>""",
+    # Two more cats behind, so "people" is a room and not a portrait.
+    "people": """
+  <g opacity=".42">
+    <path d="M8,105 C6,88 13,78 26,78 C39,78 46,88 44,105 Z" fill="var(--cat-fur)"/>
+    <path d="M15,72 L12,58 L25,66 Z" fill="var(--cat-fur)"/>
+    <path d="M37,72 L40,58 L27,66 Z" fill="var(--cat-fur)"/>
+    <ellipse cx="26" cy="76" rx="14" ry="12.5" fill="var(--cat-fur)"/>
+    <path d="M112,105 C114,88 107,78 94,78 C81,78 74,88 76,105 Z" fill="var(--cat-fur)"/>
+    <path d="M105,72 L108,58 L95,66 Z" fill="var(--cat-fur)"/>
+    <path d="M83,72 L80,58 L93,66 Z" fill="var(--cat-fur)"/>
+    <ellipse cx="94" cy="76" rx="14" ry="12.5" fill="var(--cat-fur)"/>
+  </g>""",
+    # Two boards that disagree: one says done, one says stuck.
+    "tracker": """
+  <rect x="18" y="76" width="36" height="29" rx="4" fill="var(--cat-prop)" stroke="var(--cat-line)" stroke-width="1"/>
+  <rect x="66" y="76" width="36" height="29" rx="4" fill="var(--cat-prop)" stroke="var(--cat-line)" stroke-width="1"/>
+  <g stroke="var(--state-resolved)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M28,90 l4.5,4.5 L44,84"/>
+  </g>
+  <g stroke="var(--state-blocked)" stroke-width="2.4" stroke-linecap="round" fill="none">
+    <path d="M76,84 L92,96"/><path d="M92,84 L76,96"/>
+  </g>
+  <ellipse cx="60" cy="88" rx="7" ry="5" fill="var(--cat-fur)"/>""",
+    # A magnifier the cat is looking through.
+    "search": """
+  <circle cx="84" cy="80" r="15" fill="var(--page)" fill-opacity=".55" stroke="var(--accent)" stroke-width="3.2"/>
+  <path d="M95,91 L108,104" stroke="var(--accent)" stroke-width="5" stroke-linecap="round"/>
+  <ellipse cx="34" cy="86" rx="7" ry="5" fill="var(--cat-fur)"/>""",
+    # A page with lines, and a paw holding it down.
+    "note": """
+  <path d="M30,74 h44 l12,12 v22 h-56 Z" fill="var(--cat-prop)" stroke="var(--cat-line)" stroke-width="1"/>
+  <path d="M74,74 v12 h12" fill="none" stroke="var(--cat-line)" stroke-width="1"/>
+  <g stroke="var(--accent)" stroke-width="2" stroke-linecap="round" opacity=".85">
+    <path d="M38,88 h30"/><path d="M38,95 h30"/><path d="M38,102 h18"/>
+  </g>
+  <ellipse cx="30" cy="76" rx="6.5" ry="4.2" fill="var(--cat-fur)"/>""",
+    # A clock, for the one page that is a sequence of events.
+    "clock": """
+  <circle cx="60" cy="88" r="17" fill="var(--cat-prop)" stroke="var(--cat-line)" stroke-width="1"/>
+  <g stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round">
+    <path d="M60,88 V78"/><path d="M60,88 l7,5"/>
+  </g>
+  <ellipse cx="36" cy="82" rx="6.5" ry="4.2" fill="var(--cat-fur)"/>
+  <ellipse cx="84" cy="82" rx="6.5" ry="4.2" fill="var(--cat-fur)"/>""",
+    # Asleep, curled, with the z's. The empty state, everywhere.
+    "sleep": """
+  <g fill="var(--cat-line)" font-family="ui-monospace, monospace" font-weight="700">
+    <text x="88" y="30" font-size="11">z</text>
+    <text x="97" y="20" font-size="14">z</text>
+  </g>""",
+    "none": "",
+}
+
+
+def cat(prop: str = "code", *, eyes: str = "open", size: int = 92, label: str = "") -> str:
+    """The mascot, framed the way the deck frames its photographs.
+
+    Same border, same radius, same surface, so the product and the deck read as one
+    thing — but drawn, so it is here whether or not anyone remembered to copy the
+    photos onto the machine doing the demo.
+    """
+    body = CAT_BODY + CAT_EYES.get(eyes, CAT_EYES["open"]) + CAT_FACE + CAT_PROPS.get(prop, "")
+    title = f"<title>{html.escape(label)}</title>" if label else ""
+    return (
+        f'<figure class="cat" style="--cat-size:{size}px" aria-hidden="{"false" if label else "true"}">'
+        f'<svg viewBox="0 0 120 112" xmlns="http://www.w3.org/2000/svg" role="img">{title}{body}</svg>'
+        "</figure>"
     )
+
+
+#: Applied before first paint, not after: a theme stamped once the document has
+#: rendered flashes the dark default at whoever chose light, on every navigation.
+THEME_BOOT = (
+    "<script>try{var t=localStorage.getItem('tam-theme');"
+    "if(t)document.documentElement.setAttribute('data-theme',t);}catch(e){}</script>"
+)
+
+#: The light palette has existed under [data-theme="light"] since this file was
+#: written and nothing ever set the attribute, so it was unreachable. The label is
+#: the theme it switches *to*, and it is a word rather than a glyph because a moon
+#: or sun renders as a colour emoji on this platform and breaks the mono chrome.
+THEME_SCRIPT = """<script>
+(function () {
+  var root = document.documentElement, button = document.querySelector('[data-theme-toggle]');
+  if (!button) return;
+  function paint() { button.textContent = root.getAttribute('data-theme') === 'light' ? 'DARK' : 'LIGHT'; }
+  button.addEventListener('click', function () {
+    var light = root.getAttribute('data-theme') !== 'light';
+    if (light) root.setAttribute('data-theme', 'light'); else root.removeAttribute('data-theme');
+    try { localStorage.setItem('tam-theme', light ? 'light' : 'dark'); } catch (e) {}
+    paint();
+  });
+  paint();
+})();
+</script>"""
+
+
+def section(body: str, *, title: str = "", note: str = "", actions: str = "") -> str:
+    """A pre-rendered section, for callers whose content is not a Plotly figure.
+
+    `build_page` wraps a (note, figure) pair in an x-scrolling box, which is right for
+    a wide chart and wrong for a column of cards — `overflow-x: auto` computes
+    `overflow-y` to `auto` too, so a sticky or overflowing child inside one gets
+    clipped. Anything built here goes into the page as written.
+    """
+    head = ""
+    if title or actions:
+        head = (
+            f'<div class="section-head"><h2>{html.escape(title)}</h2>'
+            f'<div class="section-actions">{actions}</div></div>'
+        )
+    lede = f'<p class="lede">{html.escape(note)}</p>' if note else ""
+    return f"<section>{head}{lede}{body}</section>"
+
+
+def build_page(
+    title: str,
+    tiles: list[str],
+    sections: list[tuple[str, str] | str],
+    subtitle: str | None = None,
+    *,
+    head: str = "",
+    topbar: str = "",
+    actions: str = "",
+    hero: str = "",
+    tail: str = "",
+) -> str:
+    """The shared page shell. The four keyword slots are what an app needs and a report does not.
+
+    `topbar` sits outside `main` so it can span the viewport and stick; `head` and `tail`
+    carry a caller's own CSS and scripts. They exist because the web app used to
+    concatenate its nav and its stylesheet *in front of* the string this returns, which
+    put both ahead of the doctype — every page rendered in quirks mode with the nav
+    outside the content column.
+    """
+    body = "".join(
+        item
+        if isinstance(item, str)
+        else (
+            "<section>"
+            + (f'<p class="lede">{html.escape(item[0])}</p>' if item[0] else "")
+            + f'<div class="plot-wrap">{item[1]}</div></section>'
+        )
+        for item in sections
+    )
+    tiles_html = f'<div class="tiles">{"".join(tiles)}</div>' if tiles else ""
     return f"""<!doctype html>
 <html lang="th"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -323,7 +541,10 @@ def build_page(title: str, tiles: list[str], sections: list[tuple[str, str]], su
     --line:{GRID}; --line-2:{AXIS};
     --accent:{SERIES_1}; --accent-dim:{ACCENT_DIM}; --accent-wash:rgba(240,134,106,.10);
     --good:{GOOD}; --warn:{WARN}; --on-accent:{ON_ACCENT};
-    --u:4px; --r:3px;
+    --u:4px; --r:3px; --r-lg:12px;
+    /* The cat is drawn, so it needs ink of its own: fur that separates from the
+       surface it sits on, and an eye that is the accent, in both themes. */
+    --cat-fur:#3B322E; --cat-line:#5C4F49; --cat-eye:{SERIES_1}; --cat-prop:#221D1B;
     --f-mono:{MONO};
     --paw:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cellipse cx='12' cy='16' rx='6.2' ry='5.1' fill='%23000'/%3E%3Ccircle cx='5.2' cy='9.2' r='2.6' fill='%23000'/%3E%3Ccircle cx='9.8' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='14.2' cy='6.1' r='2.75' fill='%23000'/%3E%3Ccircle cx='18.8' cy='9.2' r='2.6' fill='%23000'/%3E%3C/svg%3E");
   }}
@@ -333,23 +554,59 @@ def build_page(title: str, tiles: list[str], sections: list[tuple[str, str]], su
     --line:{LIGHT["grid"]}; --line-2:#D3C2BA;
     --accent:{LIGHT["accent"]}; --accent-dim:{LIGHT["accent_dim"]}; --accent-wash:rgba(191,81,56,.08);
     --good:{LIGHT["accent2"]}; --warn:{LIGHT["warn"]}; --on-accent:{LIGHT["on_accent"]};
+    --cat-fur:#E0D0C8; --cat-line:#A98F84; --cat-eye:{LIGHT["accent"]}; --cat-prop:#F3E9E3;
   }}
 
   * {{ box-sizing: border-box; }}
-  body {{ margin: 0; padding: calc(var(--u)*8) calc(var(--u)*5) calc(var(--u)*18);
-         background: var(--page); color: var(--ink);
+  /* The padding lives on main, not body, so a caller's topbar can span the viewport
+     while the content it labels still lines up with the same 1100px column. */
+  body {{ margin: 0; background: var(--page); color: var(--ink);
          font-family: {FONT}; font-size: .93rem; line-height: 1.68;
          -webkit-font-smoothing: antialiased; }}
-  main {{ max-width: 1100px; margin: 0 auto; }}
+  main {{ max-width: 1100px; margin: 0 auto;
+          padding: calc(var(--u)*8) calc(var(--u)*5) calc(var(--u)*18); }}
 
   /* The paw carries the heading: it is the product's mark, not an ornament. */
-  h1 {{ font-size: 1.7rem; line-height: 1.22; margin: 0 0 calc(var(--u)*2);
+  .page-head {{ display: flex; align-items: center; gap: calc(var(--u)*4);
+                margin: 0 0 calc(var(--u)*2); }}
+  .page-head h1 {{ flex: 1 1 auto; }}
+  /* One mark per heading. With a cat beside the title the paw before it is a second
+     logo saying the same thing, so the cat takes over and the paw stands down. */
+  .page-head:has(.cat) h1::before {{ display: none; }}
+
+  /* The mascot, framed the way the deck frames its photographs — same border, same
+     surface, same paw watermark showing through — so the two surfaces read as one
+     product rather than two designs that happen to share an accent. */
+  .cat {{ flex: none; margin: 0; width: var(--cat-size, 92px); height: var(--cat-size, 92px);
+          display: grid; place-items: center; border: 1px solid var(--line);
+          border-radius: var(--r-lg); background: var(--surface-2);
+          background-image: var(--paw); background-repeat: no-repeat;
+          background-position: center 62%; background-size: 34%;
+          overflow: hidden; }}
+  .cat svg {{ width: 100%; height: 100%; display: block; position: relative; }}
+  .cat--sm {{ --cat-size: 64px; }}
+  @media (max-width: 620px) {{ .cat {{ --cat-size: 68px; }} }}
+  .page-actions {{ display: flex; align-items: center; gap: calc(var(--u)*2); flex: none; }}
+  h1 {{ font-size: 1.7rem; line-height: 1.22; margin: 0;
         letter-spacing: -.022em; font-weight: 650; text-wrap: balance;
         display: flex; align-items: center; gap: calc(var(--u)*3); }}
   h1::before {{ content: ""; flex: none; width: 22px; height: 22px; background: var(--accent);
         -webkit-mask: var(--paw) center/contain no-repeat; mask: var(--paw) center/contain no-repeat; }}
   .sub {{ font-family: var(--f-mono); font-size: .7rem; text-transform: uppercase;
           letter-spacing: .11em; color: var(--ink3); margin: 0 0 calc(var(--u)*7); }}
+
+  /* Secondary button: chrome that must not compete with the one filled accent button
+     a page is allowed to have. Shared because both surfaces grew one independently. */
+  button.ghost {{ background: transparent; color: var(--ink2); border-color: var(--line-2);
+                  padding: calc(var(--u)*1.5) calc(var(--u)*2.5); font-family: var(--f-mono);
+                  font-size: .64rem; font-weight: 600; text-transform: uppercase;
+                  letter-spacing: .1em; border-width: 1px; border-style: solid;
+                  border-radius: var(--r); cursor: pointer; }}
+  button.ghost:hover {{ color: var(--accent); border-color: var(--accent); background: transparent; }}
+  .section-head {{ display: flex; align-items: baseline; justify-content: space-between;
+                   gap: calc(var(--u)*4); margin: 0 0 calc(var(--u)*3); }}
+  .section-head h2 {{ margin: 0; font-size: .95rem; font-weight: 650; letter-spacing: -.01em; }}
+  .section-actions {{ display: flex; align-items: center; gap: calc(var(--u)*2); flex: none; }}
 
   .tiles {{ display: grid; gap: calc(var(--u)*5); margin-bottom: calc(var(--u)*7);
             grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); }}
@@ -363,7 +620,7 @@ def build_page(title: str, tiles: list[str], sections: list[tuple[str, str]], su
                  margin: calc(var(--u)*2) 0 0; font-variant-numeric: tabular-nums; letter-spacing: -.035em; }}
   .tile-note {{ font-size: .7rem; color: var(--ink3); margin-top: calc(var(--u)*1.5); }}
 
-  section {{ background: var(--surface); border: 1px solid var(--line); border-radius: var(--r);
+  section {{ background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg);
              padding: calc(var(--u)*6) calc(var(--u)*6) calc(var(--u)*3); margin-bottom: calc(var(--u)*5); }}
   .lede {{ margin: 0 0 calc(var(--u)*2); font-size: .82rem; color: var(--ink2); }}
   .table-view {{ margin: calc(var(--u)*1) 0 calc(var(--u)*4); font-size: .82rem; }}
@@ -383,13 +640,14 @@ def build_page(title: str, tiles: list[str], sections: list[tuple[str, str]], su
   :focus-visible {{ outline: 1px solid var(--accent); outline-offset: 3px; }}
   ::selection {{ background: var(--accent); color: var(--on-accent); }}
   @media (prefers-reduced-motion: reduce) {{ * {{ transition: none !important; animation: none !important; }} }}
-</style></head>
-<body><main>
-<h1>{html.escape(title)}</h1>
+</style>{THEME_BOOT}{head}</head>
+<body>{topbar}<main>
+<div class="page-head">{hero}<h1>{html.escape(title)}</h1>
+<div class="page-actions">{actions}<button class="ghost" type="button" data-theme-toggle aria-label="Switch theme">LIGHT</button></div></div>
 <p class="sub">{html.escape(subtitle or f"Model {model_name()} · cosine similarity · no translation anywhere in the pipeline")}</p>
-<div class="tiles">{''.join(tiles)}</div>
+{tiles_html}
 {body}
-</main></body></html>
+</main>{THEME_SCRIPT}{tail}</body></html>
 """
 
 
