@@ -96,21 +96,22 @@
 <header>
   <p class="eyebrow">ตาม (Tam) · สถาปัตยกรรมและ flow</p>
   <h1>ข้อความหนึ่งข้อความ เดินทางไปเป็นการ์ดใน Slack ได้อย่างไร</h1>
-  <p>ห้าภาพ ภาพละหนึ่งเรื่อง — เส้นทางข้อมูลทั้งเส้น, การให้คะแนน query หนึ่งครั้ง, ใครเป็นเจ้าของนิยาม
-  “งานหนึ่งชิ้น”, การเขียนกลับเมื่อคนแก้, และด่านที่ทำให้ recall ตอบได้ว่า “ไม่เจอ” แล้วปิดท้ายด้วย
+  <p>แปดหัวข้อ หัวข้อละหนึ่งเรื่อง — เส้นทางข้อมูลทั้งเส้น, การให้คะแนน query หนึ่งครั้ง, ใครเป็นเจ้าของนิยาม
+  “งานหนึ่งชิ้น”, การเขียนกลับเมื่อคนแก้, ด่านที่ทำให้ recall ตอบได้ว่า “ไม่เจอ”, หลักการที่มาจากการวัด,
+  กราฟจากตัวเลขจริง และกฎที่ทำให้ทิกเก็ตเข้า corpus ได้โดยไม่กลืนงานที่คนคุยกัน แล้วปิดท้ายด้วย
   โครงโฟลเดอร์ ทุกชื่อโมดูลในภาพคือไฟล์ที่มีอยู่จริงในรีโป</p>
 </header>
 
 <!-- ============ 1 ============ -->
 <section>
   <h2>1 · เส้นทางทั้งเส้น</h2>
-  <p>เรื่องสำคัญที่สุดของภาพนี้อยู่กลางภาพ: <strong>Slack กับบันทึกการประชุมถูกแปลงเป็น record
+  <p>เรื่องสำคัญที่สุดของภาพนี้อยู่กลางภาพ: <strong>Slack บันทึกการประชุม และทิกเก็ต ถูกแปลงเป็น record
   รูปแบบเดียวกัน</strong> ตั้งแต่ต้น ทุกขั้นหลังจากนั้นจึงไม่ต้องรู้ว่าข้อความมาจากไหน
-  งานหนึ่งชิ้นข้ามสองแหล่งได้โดยไม่มีโค้ดพิเศษ</p>
+  งานหนึ่งชิ้นข้ามสามแหล่งได้โดยไม่มีโค้ดพิเศษ — และทิกเก็ตมีกฎกันไม่ให้ตั้งตัวเป็นงานเอง (หัวข้อ 8)</p>
 
   <figure>
-    <svg viewBox="0 0 740 690" role="img"
-         aria-label="ผังการไหลจากช่อง Slack และบันทึกการประชุม ผ่าน tam.ingest เป็น record รูปแบบเดียว แล้วเข้า tam.retrieval, tam.analysis, tam.web.server และไปสิ้นสุดที่ Slack bot พร้อมเส้นเขียนกลับจากบอทไปที่ไฟล์ override">
+    <svg viewBox="0 0 740 726" role="img"
+         aria-label="ผังการไหลจากช่อง Slack บันทึกการประชุม และทิกเก็ต YouTrack ผ่าน tam.ingest เป็น record รูปแบบเดียว แล้วเข้า tam.retrieval, tam.analysis, tam.web.server และไปสิ้นสุดที่ Slack bot พร้อมเส้นเขียนกลับจากบอทไปที่ไฟล์ override">
       <defs>
         <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
           <path d="M0,0 L10,5 L0,10 z" fill="currentColor"/>
@@ -121,93 +122,100 @@
       </defs>
 
       <!-- row 1: sources -->
-      <rect class="box" x="80" y="14" width="200" height="46" rx="4"/>
-      <text class="tb" x="180" y="34" text-anchor="middle">ช่อง Slack</text>
-      <text class="tdim" x="180" y="50" text-anchor="middle">ข้อความ + เธรด</text>
+      <rect class="box" x="80" y="14" width="176" height="46" rx="4"/>
+      <text class="tb" x="168" y="34" text-anchor="middle">ช่อง Slack</text>
+      <text class="tdim" x="168" y="50" text-anchor="middle">ข้อความ + เธรด</text>
 
-      <rect class="box" x="440" y="14" width="200" height="46" rx="4"/>
-      <text class="tb" x="540" y="34" text-anchor="middle">บันทึกการประชุม</text>
-      <text class="tdim" x="540" y="50" text-anchor="middle">.vtt · .srt · Name:</text>
+      <rect class="box" x="272" y="14" width="176" height="46" rx="4"/>
+      <text class="tb" x="360" y="34" text-anchor="middle">บันทึกการประชุม</text>
+      <text class="tdim" x="360" y="50" text-anchor="middle">.vtt · .srt · โน้ตที่วางเอง</text>
 
-      <path class="flow" d="M180,60 L180,96" marker-end="url(#a1)"/>
-      <path class="flow" d="M540,60 L540,96" marker-end="url(#a1)"/>
+      <rect class="box" x="464" y="14" width="176" height="46" rx="4"/>
+      <text class="tb" x="552" y="34" text-anchor="middle">ทิกเก็ต YouTrack</text>
+      <text class="tdim" x="552" y="50" text-anchor="middle">197 ใบ · เปิดค้าง 57</text>
+
+      <path class="flow" d="M168,60 L168,96" marker-end="url(#a1)"/>
+      <path class="flow" d="M360,60 L360,96" marker-end="url(#a1)"/>
+      <path class="flow" d="M552,60 L552,96" marker-end="url(#a1)"/>
 
       <!-- row 2: ingest -->
-      <rect class="box" x="80" y="96" width="560" height="74" rx="4"/>
+      <rect class="box" x="80" y="96" width="560" height="96" rx="4"/>
       <text class="tacc" x="96" y="114">tam.ingest</text>
-      <text class="tm" x="180" y="136" text-anchor="middle">export_slack.py</text>
-      <text class="tdim" x="180" y="152" text-anchor="middle">429-aware paging</text>
-      <text class="tm" x="540" y="136" text-anchor="middle">meetings.py</text>
-      <text class="tdim" x="540" y="152" text-anchor="middle">1 ประโยค = 1 record</text>
-      <text class="tm" x="360" y="136" text-anchor="middle">prepare_messages.py</text>
-      <text class="tdim" x="360" y="152" text-anchor="middle">ล้าง markup · กรอง noise</text>
+      <text class="tm" x="168" y="138" text-anchor="middle">export_slack.py</text>
+      <text class="tdim" x="168" y="154" text-anchor="middle">429-aware paging</text>
+      <text class="tm" x="360" y="138" text-anchor="middle">meetings.py · notes.py</text>
+      <text class="tdim" x="360" y="154" text-anchor="middle">1 ประโยค = 1 record</text>
+      <text class="tm" x="552" y="138" text-anchor="middle">youtrack.py</text>
+      <text class="tdim" x="552" y="154" text-anchor="middle">ชื่อ + 2 บรรทัดแรก</text>
+      <text class="tdim" x="360" y="180" text-anchor="middle">prepare_messages.py — ล้าง markup · กรอง noise · ตัดโพสต์ของบอทเอง</text>
 
-      <path class="flow" d="M360,170 L360,200" marker-end="url(#a1)"/>
+      <path class="flow" d="M360,192 L360,222" marker-end="url(#a1)"/>
 
       <!-- row 3: records -->
-      <rect class="box-hi" x="180" y="200" width="360" height="48" rx="4"/>
-      <text class="tb" x="360" y="220" text-anchor="middle">record รูปแบบเดียว</text>
-      <text class="tm" x="360" y="238" text-anchor="middle">id · ts · user · text · source · thread_ts</text>
+      <rect class="box-hi" x="150" y="222" width="420" height="48" rx="4"/>
+      <text class="tb" x="360" y="242" text-anchor="middle">record รูปแบบเดียว</text>
+      <text class="tm" x="360" y="260" text-anchor="middle">id · ts · user · text · source · thread_ts · youtrack_*</text>
 
-      <path class="flow" d="M360,248 L360,278" marker-end="url(#a1)"/>
+      <path class="flow" d="M360,270 L360,300" marker-end="url(#a1)"/>
 
       <!-- row 4: retrieval -->
-      <rect class="box" x="80" y="278" width="560" height="86" rx="4"/>
-      <text class="tacc" x="96" y="296">tam.retrieval</text>
-      <text class="tm" x="150" y="322" text-anchor="middle">embeddings</text>
-      <text class="tm" x="290" y="322" text-anchor="middle">lexical (BM25)</text>
-      <text class="tm" x="430" y="322" text-anchor="middle">signals</text>
-      <text class="tm" x="570" y="322" text-anchor="middle">fusion → rerank</text>
-      <text class="tdim" x="150" y="340" text-anchor="middle">ความหมาย</text>
-      <text class="tdim" x="290" y="340" text-anchor="middle">คำตรงตัว · ไทย</text>
-      <text class="tdim" x="430" y="340" text-anchor="middle">เธรด เวลา คนพูด</text>
-      <text class="tdim" x="570" y="340" text-anchor="middle">รวมคะแนน</text>
-      <text class="tdim" x="360" y="358" text-anchor="middle">แคชเวกเตอร์ไว้ที่ data/processed/embeddings_*.npz</text>
+      <rect class="box" x="80" y="300" width="560" height="86" rx="4"/>
+      <text class="tacc" x="96" y="318">tam.retrieval</text>
+      <text class="tm" x="150" y="344" text-anchor="middle">embeddings</text>
+      <text class="tm" x="290" y="344" text-anchor="middle">lexical (BM25)</text>
+      <text class="tm" x="430" y="344" text-anchor="middle">signals</text>
+      <text class="tm" x="570" y="344" text-anchor="middle">fusion → rerank</text>
+      <text class="tdim" x="150" y="362" text-anchor="middle">ความหมาย</text>
+      <text class="tdim" x="290" y="362" text-anchor="middle">คำตรงตัว · ไทย</text>
+      <text class="tdim" x="430" y="362" text-anchor="middle">เธรด เวลา คนพูด</text>
+      <text class="tdim" x="570" y="362" text-anchor="middle">รวมคะแนน</text>
+      <text class="tdim" x="360" y="380" text-anchor="middle">แคชเวกเตอร์ไว้ที่ data/processed/embeddings_*.npz</text>
 
-      <path class="flow" d="M360,364 L360,394" marker-end="url(#a1)"/>
+      <path class="flow" d="M360,386 L360,416" marker-end="url(#a1)"/>
 
       <!-- row 5: analysis -->
-      <rect class="box" x="80" y="394" width="560" height="96" rx="4"/>
-      <text class="tacc" x="96" y="412">tam.analysis</text>
-      <text class="tm" x="160" y="438" text-anchor="middle">graph.py</text>
-      <text class="tdim" x="160" y="454" text-anchor="middle">จับกลุ่ม Louvain</text>
-      <text class="tm" x="300" y="438" text-anchor="middle">relations.py</text>
-      <text class="tdim" x="300" y="454" text-anchor="middle">resolves · blocked_by</text>
-      <text class="tm" x="440" y="438" text-anchor="middle">linker.py</text>
-      <text class="tdim" x="440" y="454" text-anchor="middle">ระบุตัวตนงาน</text>
-      <text class="tm" x="575" y="438" text-anchor="middle">digest.py</text>
-      <text class="tdim" x="575" y="454" text-anchor="middle">สถานะ + หลักฐาน</text>
-      <text class="tdim" x="360" y="478" text-anchor="middle">summarize.py เขียนเฉพาะประโยค · สถานะไม่ผ่านโมเดล</text>
+      <rect class="box" x="80" y="416" width="560" height="96" rx="4"/>
+      <text class="tacc" x="96" y="434">tam.analysis</text>
+      <text class="tm" x="160" y="460" text-anchor="middle">graph.py</text>
+      <text class="tdim" x="160" y="476" text-anchor="middle">จับกลุ่ม Louvain</text>
+      <text class="tm" x="300" y="460" text-anchor="middle">relations.py</text>
+      <text class="tdim" x="300" y="476" text-anchor="middle">resolves · blocked_by</text>
+      <text class="tm" x="440" y="460" text-anchor="middle">linker.py</text>
+      <text class="tdim" x="440" y="476" text-anchor="middle">ระบุตัวตนงาน</text>
+      <text class="tm" x="575" y="460" text-anchor="middle">digest.py</text>
+      <text class="tdim" x="575" y="476" text-anchor="middle">สถานะ + หลักฐาน</text>
+      <text class="tdim" x="360" y="500" text-anchor="middle">drift.py เทียบกับทิกเก็ต · summarize.py เขียนเฉพาะประโยค · สถานะไม่ผ่านโมเดล</text>
 
-      <path class="flow" d="M360,490 L360,520" marker-end="url(#a1)"/>
+      <path class="flow" d="M360,512 L360,542" marker-end="url(#a1)"/>
 
       <!-- row 6: serving -->
-      <rect class="box" x="80" y="520" width="560" height="64" rx="4"/>
-      <text class="tacc" x="96" y="538">tam.web.server</text>
-      <text class="tm" x="210" y="562" text-anchor="middle">HTML 5 หน้า</text>
-      <text class="tdim" x="210" y="578" text-anchor="middle">/ · /blockers · /item · /search · /upload</text>
-      <text class="tm" x="500" y="562" text-anchor="middle">JSON /api/*</text>
-      <text class="tdim" x="500" y="578" text-anchor="middle">digest · blockers · item · search</text>
+      <rect class="box" x="80" y="542" width="560" height="90" rx="4"/>
+      <text class="tacc" x="96" y="560">tam.web.server</text>
+      <text class="tm" x="210" y="584" text-anchor="middle">HTML 8 หน้า</text>
+      <text class="tdim" x="210" y="601" text-anchor="middle">/ · /blockers · /people · /person</text>
+      <text class="tdim" x="210" y="617" text-anchor="middle">/tracker · /item · /search · /upload</text>
+      <text class="tm" x="500" y="584" text-anchor="middle">JSON /api/*</text>
+      <text class="tdim" x="500" y="601" text-anchor="middle">digest · blockers · item · search</text>
+      <text class="tdim" x="500" y="617" text-anchor="middle">tracker · people · health · reindex</text>
 
-      <path class="flow" d="M500,584 L500,616" marker-end="url(#a1)"/>
-      <text class="tdim" x="512" y="604">HTTP</text>
+      <path class="flow" d="M500,632 L500,660" marker-end="url(#a1)"/>
+      <text class="tdim" x="512" y="650">HTTP</text>
 
       <!-- row 7: bot -->
-      <rect class="box" x="330" y="616" width="310" height="56" rx="4"/>
-      <text class="tacc" x="346" y="634">slack-bot</text>
-      <text class="tm" x="485" y="656" text-anchor="middle">Block Kit · slash · shortcut · DM</text>
+      <rect class="box" x="330" y="660" width="310" height="56" rx="4"/>
+      <text class="tacc" x="346" y="678">slack-bot</text>
+      <text class="tm" x="485" y="700" text-anchor="middle">Block Kit · slash · shortcut · DM</text>
 
       <!-- write-back -->
-      <path class="flow-warn" d="M330,644 L110,644 L110,225 L180,225" marker-end="url(#a1w)"/>
-      <text class="twarn" x="120" y="430" transform="rotate(-90 120 430)" text-anchor="middle">คนแก้ → link_overrides.json</text>
+      <path class="flow-warn" d="M330,688 L38,688 L38,247 L150,247" marker-end="url(#a1w)"/>
+      <text class="twarn" x="26" y="452" transform="rotate(-90 26 452)" text-anchor="middle">คนแก้ → link_overrides.json</text>
     </svg>
-    <figcaption><b>ทุกขั้นอ่าน record รูปแบบเดียวกัน</b> ทำให้การประชุมไม่ต้องมี pipeline ที่สอง
+    <figcaption><b>ทุกขั้นอ่าน record รูปแบบเดียวกัน</b> ทำให้การประชุมและทิกเก็ตไม่ต้องมี pipeline ที่สอง
+    ทั้งสามแหล่งมาบรรจบที่แถวสีส้มแถวเดียว แล้วทุกขั้นใต้แถวนั้นไม่รู้จักคำว่า “Slack” อีกเลย ·
     เส้นประสีส้มคือทางเดียวที่ข้อมูลไหลย้อนกลับ — คนแก้การผูก ticket ใน Slack แล้ว
     <code>linker.py</code> อ่านเป็นชั้นสูงสุดในรอบถัดไป (ภาพที่ 4)</figcaption>
   </figure>
 </section>
-
-<!-- ============ 2 ============ -->
 <section>
   <h2>2 · query หนึ่งครั้ง ได้คะแนนมาอย่างไร</h2>
   <p>cosine ตัวเดียวตอบไม่ครบ เพราะมันสมมาตร มองไม่เห็นสตริงตรงตัวอย่าง <code>REV-1421</code>
@@ -275,15 +283,13 @@
     ในภาพที่ 5 คุณจะเห็นว่าคะแนนรวมหลัง RRF <em>บอกไม่ได้</em> ว่า “ไม่เจออะไรเลย” และแก้อย่างไร</figcaption>
   </figure>
 </section>
-
-<!-- ============ 3 ============ -->
 <section>
   <h2>3 · ใครเป็นเจ้าของนิยาม “งานหนึ่งชิ้น”</h2>
   <p>เดิมสองฝั่งอ่าน Slack เองและจับกลุ่มด้วยกฎต่างกัน ช่องเดียวกันจึงได้ work item ไม่เท่ากัน
   และคำตอบที่ทีมเห็นขึ้นอยู่กับว่าเปิดที่ไหน ตั้ง <code>TAM_API_URL</code> แล้วเหลือเจ้าของเดียว</p>
 
   <figure>
-    <svg viewBox="0 0 740 400" role="img"
+    <svg viewBox="0 0 740 414" role="img"
          aria-label="เทียบก่อนและหลัง ก่อนหน้านี้ pipeline และบอทอ่าน Slack แยกกันและได้ work item ไม่ตรงกัน หลังจากนั้นบอทอ่านจาก API ของ pipeline ฝ่ายเดียว และเติมเฉพาะสามอย่างที่ pipeline ไม่มี">
       <defs>
         <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -300,11 +306,11 @@
       <rect class="box" x="128" y="42" width="104" height="38" rx="4"/>
       <text class="tm" x="180" y="66" text-anchor="middle">ช่อง Slack</text>
 
-      <rect class="box-warn" x="30" y="112" width="128" height="52" rx="4"/>
+      <rect class="box-warn" x="24" y="112" width="140" height="52" rx="4"/>
       <text class="tm" x="94" y="132" text-anchor="middle">pipeline</text>
       <text class="tdim" x="94" y="150" text-anchor="middle">Louvain + embeddings</text>
 
-      <rect class="box-warn" x="200" y="112" width="128" height="52" rx="4"/>
+      <rect class="box-warn" x="196" y="112" width="140" height="52" rx="4"/>
       <text class="tm" x="264" y="132" text-anchor="middle">bot</text>
       <text class="tdim" x="264" y="150" text-anchor="middle">character trigram</text>
 
@@ -318,9 +324,10 @@
       <rect class="box" x="510" y="42" width="104" height="38" rx="4"/>
       <text class="tm" x="562" y="66" text-anchor="middle">ช่อง Slack</text>
 
-      <rect class="box-good" x="470" y="112" width="184" height="52" rx="4"/>
-      <text class="tm" x="562" y="132" text-anchor="middle">pipeline เท่านั้น</text>
-      <text class="tdim" x="562" y="150" text-anchor="middle">/api/digest · /api/item · /api/search · /api/health</text>
+      <rect class="box-good" x="430" y="106" width="264" height="60" rx="4"/>
+      <text class="tm" x="562" y="126" text-anchor="middle">pipeline เท่านั้น</text>
+      <text class="tdim" x="562" y="143" text-anchor="middle">/api/digest · item · search · blockers</text>
+      <text class="tdim" x="562" y="158" text-anchor="middle">tracker · people · health</text>
 
       <path class="flow" d="M562,80 L562,112" marker-end="url(#a3g)"/>
       <text class="tgood" x="561" y="196" text-anchor="middle">บอทเป็นตัวเรนเดอร์</text>
@@ -331,25 +338,25 @@
       <text class="t" x="14" y="274">work item · สถานะ · หลักฐาน · อายุ</text>
       <text class="t" x="14" y="294">timeline · ข้อความ · ประโยคสรุป</text>
       <text class="t" x="14" y="314">recall (embeddings + BM25)</text>
+      <text class="t" x="14" y="334">drift · ticket ที่เงียบ · ใครอยู่กับเรื่องไหน</text>
 
-      <line x1="366" y1="240" x2="366" y2="330" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
+      <line x1="366" y1="240" x2="366" y2="344" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
 
       <text class="tacc" x="396" y="252">บอทเติมเอง — pipeline ยังไม่มี</text>
       <text class="t" x="396" y="274">decision · จากที่คนกดบันทึก (เขียนลงไฟล์จริง)</text>
       <text class="t" x="396" y="294">standup draft · คำนวณจาก item ที่ได้มา</text>
-      <text class="t" x="396" y="314">drift · ไม่มี จนกว่าจะต่อ ticket system</text>
+      <text class="t" x="396" y="314">การเรนเดอร์ Block Kit · ปุ่ม · modal</text>
 
-      <rect class="box-warn" x="14" y="344" width="712" height="44" rx="4"/>
-      <text class="twarn" x="30" y="364">ไม่มี fallback</text>
-      <text class="t" x="30" y="380">ถ้าตั้ง TAM_API_URL แล้ว pipeline ตอบไม่ได้ → บอทไม่สตาร์ต ไม่แอบเสิร์ฟ fixture ที่หน้าตาเหมือนของจริง</text>
+      <rect class="box-warn" x="14" y="358" width="712" height="44" rx="4"/>
+      <text class="twarn" x="30" y="378">ไม่มี fallback</text>
+      <text class="t" x="30" y="394">ถ้าตั้ง TAM_API_URL แล้ว pipeline ตอบไม่ได้ → บอทไม่สตาร์ต ไม่แอบเสิร์ฟ fixture ที่หน้าตาเหมือนของจริง</text>
     </svg>
     <figcaption><b>ที่แบ่งไม่ได้แบ่งตามใจ แต่แบ่งตามว่าฝั่งไหนคำนวณจริง</b>
-    สามอย่างขวามือไม่มีของเทียบใน pipeline ถ้าปล่อยว่างคือลบฟีเจอร์ที่ทำงานอยู่ทิ้ง
-    จึงเติมจากแหล่งที่เป็นของจริงของมันเอง และ drift ที่ยังไม่มีแหล่งก็คือ “ไม่มี”</figcaption>
+    สิ่งที่ขวามือไม่มีของเทียบใน pipeline ถ้าปล่อยว่างคือลบฟีเจอร์ที่ทำงานอยู่ทิ้ง จึงเติมจากแหล่งที่เป็นของจริงของมันเอง ·
+    <b>drift เคยอยู่ขวามือในฐานะ “ยังไม่มีแหล่ง”</b> — พอต่อ YouTrack เข้ามาจริง มันก็ย้ายมาซ้าย
+    <code>drift.py</code> คำนวณทุกรอบ แล้วออกทาง <code>/api/tracker</code> ทั้งบอทและหน้าเว็บอ่านชุดเดียวกัน</figcaption>
   </figure>
 </section>
-
-<!-- ============ 4 ============ -->
 <section>
   <h2>4 · คนแก้แล้วระบบจำ — วงเขียนกลับ</h2>
   <p>การจับกลุ่มอัตโนมัติผิดได้ และเมื่อคนแก้ ระบบต้องไม่เดาทับรอบหน้า
@@ -413,8 +420,6 @@
     <code>คนแก้เอง</code> — ไม่ใช่การต่อบนกระดาษ</figcaption>
   </figure>
 </section>
-
-<!-- ============ 5 ============ -->
 <section>
   <h2>5 · ด่านที่ทำให้ recall ตอบว่า “ไม่เจอ” ได้</h2>
   <p>คะแนนรวมคิดจาก<strong>อันดับ</strong> ไม่ใช่ความคล้าย มันจึงบอกไม่ได้ว่า “ไม่เจออะไรเลย” —
@@ -450,7 +455,7 @@
 
       <!-- the gate: one conjunction over two absolute signals -->
       <rect class="box" x="426" y="34" width="300" height="132" rx="4"/>
-      <text class="tacc" x="442" y="56">ด่าน — passesGate() ในบอท</text>
+      <text class="tacc" x="442" y="56">ด่าน — passesGate() · เกณฑ์เดียวกัน สองที่</text>
       <line x1="442" y1="66" x2="710" y2="66" stroke="var(--rule)" stroke-width="1" stroke-dasharray="3 4"/>
       <text class="tm" x="442" y="88">lexical &gt; 0</text>
       <text class="tdim" x="442" y="105">BM25 ดิบ — ขยะไม่มีคำตรงกัน ได้ 0.000</text>
@@ -470,8 +475,9 @@
       <text class="tdim" x="626" y="190">ผ่านทั้งสองข้อ</text>
 
       <rect class="box-warn" x="426" y="206" width="150" height="56" rx="4"/>
-      <text class="tm" x="501" y="230" text-anchor="middle">ตอบว่าไม่เจอ</text>
-      <text class="tdim" x="501" y="248" text-anchor="middle">ไม่แสดงแถวลอย ๆ</text>
+      <text class="tm" x="501" y="228" text-anchor="middle">ตอบว่าไม่เจอ</text>
+      <text class="tdim" x="501" y="244" text-anchor="middle">บอท: ไม่แสดงแถวลอย ๆ</text>
+      <text class="tdim" x="501" y="257" text-anchor="middle">หน้าเว็บ: แสดงพร้อมคำเตือน</text>
 
       <rect class="box-good" x="594" y="206" width="132" height="56" rx="4"/>
       <text class="tm" x="660" y="230" text-anchor="middle">แสดงผลลัพธ์</text>
@@ -479,7 +485,7 @@
 
       <!-- measurement -->
       <line x1="14" y1="290" x2="726" y2="290" stroke="var(--rule)" stroke-width="1"/>
-      <text class="tacc" x="14" y="312">ตารางนี้วัดบน corpus จริง 1,102 record — ตัวเลขเต็มอยู่ใน docs/EXPERIMENTS.md ข้อ 5 หน้านี้ไม่คัดซ้ำ</text>
+      <text class="tacc" x="14" y="312">วัดบน corpus จริงตอนนั้น 1,102 record (ตอนนี้ 1,301 — เกณฑ์ต้องวัดใหม่เมื่อ corpus เปลี่ยน) · ตัวเลขเต็มอยู่ใน docs/EXPERIMENTS.md ข้อ 5</text>
 
       <text class="tdim" x="14" y="336">กลไกของด่าน</text>
       <text class="tdim" x="474" y="336" text-anchor="middle">ขยะที่กรองได้</text>
@@ -507,7 +513,6 @@
     corpus คู่กับโมเดล ไม่ใช่ค่าคงที่</figcaption>
   </figure>
 </section>
-
 <section>
   <h2>6 · หลักการคิด — และการวัดที่ทำให้ได้หลักการนั้น</h2>
   <p>ห้าข้อนี้ไม่ได้ตั้งไว้ก่อนเริ่มเขียน ทุกข้อมาจากบั๊กที่วัดเจอแล้วต้องกลับไปแก้กลไก
@@ -582,7 +587,7 @@
       <rect class="box-good" x="684" y="30" width="176" height="62" rx="3"/>
       <text class="tb" x="698" y="52">Slack permalink</text>
       <text class="tdim" x="698" y="70">เปิดอ่านในบริบทเดิม</text>
-      <text class="tdim" x="698" y="84">660/713 สร้างได้</text>
+      <text class="tdim" x="698" y="84">642/691 สร้างได้</text>
 
       <path class="flow-acc" marker-end="url(#e1)" d="M176,61 L222,61"/>
       <path class="flow-acc" marker-end="url(#e1)" d="M404,61 L450,61"/>
@@ -600,7 +605,6 @@
       — และเมื่อขั้นใดขั้นหนึ่งขาด หน้าที่ของระบบคือบอกว่าขาด ไม่ใช่เดาให้เต็ม</figcaption>
   </figure>
 </section>
-
 <section>
   <h2>7 · กราฟจากตัวเลขที่วัดจริง</h2>
   <p>ทุกตัวเลขในหัวข้อนี้มาจากการรันบน corpus จริง ไม่ใช่ตัวอย่าง —
@@ -778,7 +782,6 @@
       เพื่อให้เลื่อนหนึ่งวันคำตอบไม่เปลี่ยน · สิ่งที่มีค่าคือรูปร่างของสองยอด ไม่ใช่จำนวน 24</figcaption>
   </figure>
 </section>
-
 <section>
   <h2>8 · สองแหล่งกลายเป็น corpus เดียว — และกฎที่กันไม่ให้มันกลืนกัน</h2>
   <figure>
@@ -787,7 +790,7 @@
       <text class="tdim" x="0" y="12">8 · ticket เข้า corpus แต่ห้ามตั้งตัวเป็นงานเอง</text>
 
       <rect class="box" x="0" y="32" width="200" height="74" rx="3"/>
-      <text class="tb" x="14" y="54">ticket 195 ใบ</text>
+      <text class="tb" x="14" y="54">ticket 197 ใบ · เปิดค้าง 57</text>
       <text class="tdim" x="14" y="72">summary + description</text>
       <text class="twarn" x="14" y="92">median 582 ตัวอักษร · สุด 14,556</text>
 
@@ -798,12 +801,12 @@
 
       <rect class="box" x="0" y="140" width="200" height="56" rx="3"/>
       <text class="tb" x="14" y="162">ข้อความ Slack</text>
-      <text class="tdim" x="14" y="180">974 + reply ในเธรด 170</text>
+      <text class="tdim" x="14" y="180">1,079 + reply ในเธรด 191</text>
 
       <rect class="box-good" x="560" y="72" width="300" height="82" rx="3"/>
       <text class="tb" x="574" y="94">corpus เดียว · embed ชุดเดียว</text>
       <text class="tdim" x="574" y="114">ค้นครั้งเดียวเจอทั้งสองแหล่ง</text>
-      <text class="tdim" x="574" y="132">1,192 record ที่ index อยู่</text>
+      <text class="tdim" x="574" y="132">1,301 record ที่ index อยู่</text>
 
       <path class="flow-acc" marker-end="url(#e1)" d="M200,69 L258,69"/>
       <path class="flow-acc" marker-end="url(#e1)" d="M476,86 L554,102"/>
@@ -813,15 +816,14 @@
       <path class="band" d="M0,222 L860,222"/>
       <text class="tb" x="0" y="248">กฎเดียวที่กันก้อน ticket ล้วน</text>
       <text class="t" x="0" y="270">บทสนทนาในก้อนต้อง<tspan style="fill:var(--accent)">ไม่น้อยกว่า</tspan> ticket ในก้อนนั้น มิฉะนั้นไม่นับเป็นงาน</text>
-      <text class="tdim" x="0" y="292">วัดแล้ว: 82 จาก 194 ใบไปเกาะกับบทสนทนาจริง — อีก 112 ใบยุบเป็น 3 ก้อนที่แทบไม่มีคนคุย ก้อนใหญ่สุดมี ticket 108 ใบ + Slack 2 ข้อความ</text>
+      <text class="tdim" x="0" y="292">วัดแล้ว: 43 จาก 196 ใบไปเกาะกับบทสนทนาจริงใน 19 งาน — ที่เหลือไม่ตั้งตัวเป็นงานเลย (0 งานที่มีแต่ ticket)</text>
       <text class="tdim" x="0" y="310">ก้อนแบบนั้นจะโผล่เป็น “งานหนึ่งชิ้น” ชื่อ api, then, view ซึ่งไม่ใช่งาน มันคือ backlog</text>
-      <text class="tgood" x="0" y="328">ทั้ง 195 ใบยังค้นเจอครบ และยังถูกเทียบครบ — ที่ถูกกันคือการโผล่บน digest เท่านั้น เพราะ /meowtam silent ดูแลเรื่องนี้ได้ดีกว่าอยู่แล้ว</text>
+      <text class="tgood" x="0" y="328">ทั้ง 196 ใบยังค้นเจอครบ และยังถูกเทียบครบ — ที่ถูกกันคือการโผล่บน digest เท่านั้น เพราะ /meowtam silent ดูแลเรื่องนี้ได้ดีกว่าอยู่แล้ว</text>
     </svg>
     <figcaption><b>เข้า corpus ได้ แต่สร้างงานเองไม่ได้</b> ticket เป็นส่วนขยายของงานที่คนคุยกัน
       ไม่ใช่ต้นกำเนิดของงาน — และ ticket ที่ไม่มีใครคุยถึงมีรายงานของตัวเองที่ทำได้ละเอียดกว่า</figcaption>
   </figure>
 </section>
-
 <section>
   <h2>โครงโฟลเดอร์</h2>
   <p>สองฝั่งเป็นคู่กัน อยู่ระดับเดียวกัน และเข้าแบบเดียวกัน — <code>cd pipeline</code> กับ

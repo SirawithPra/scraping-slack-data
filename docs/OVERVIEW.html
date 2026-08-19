@@ -143,10 +143,10 @@
 <div class="wrap">
 
 <header class="top">
-  <p class="eyebrow">ต้นแบบใช้งานได้ · ข้อมูลจริง 4 ช่อง · 18 ส.ค. 2569</p>
+  <p class="eyebrow">ต้นแบบใช้งานได้ · ข้อมูลจริง Slack + ประชุม + ทิกเก็ต · 19 ส.ค. 2569</p>
   <h1>ตาม — รู้ว่าอะไรติด<br>ก่อนเข้า standup</h1>
   <p class="thesis measure">
-    อ่าน Slack กับบันทึกประชุม รวมเป็น <strong>“งาน” หนึ่งชิ้น</strong> แล้วบอกว่าอะไรติด
+    อ่าน Slack, บันทึกประชุม และทิกเก็ต YouTrack รวมเป็น <strong>“งาน” หนึ่งชิ้น</strong> แล้วบอกว่าอะไรติด
     ติดเพราะอะไร และ <strong>หลักฐานอยู่ข้อความไหน</strong> —
     สถานะคำนวณด้วยกฎที่ตรวจสอบได้ ไม่ได้ให้โมเดลภาษาเดา
   </p>
@@ -223,7 +223,9 @@
   </svg>
   <figcaption>
     <strong>รูป 1</strong> — สองแหล่งเข้า สามสายวิเคราะห์ หนึ่งจุดรวม สามหน้าจอออก
-    เส้นประคือวงจรที่ทำให้ต่างจากถาม AI แล้วจบ: สิ่งที่คนแก้ย้อนกลับเข้าไปเป็นชั้นที่ชนะทุกชั้น
+    เส้นประคือวงจรที่ทำให้ต่างจากถาม AI แล้วจบ: สิ่งที่คนแก้ย้อนกลับเข้าไปเป็นชั้นที่ชนะทุกชั้น ·
+    <strong>แหล่งที่สามเข้ามาแล้ว</strong> — ทิกเก็ต YouTrack ถูกแปลงเป็น record แถวเดียวกันที่กล่อง “ล้าง / รวม”
+    จึงไม่มี pipeline ที่สอง (ผังสามแหล่งเต็ม ๆ อยู่ใน <code>architecture.html</code>)
   </figcaption>
 </figure>
 
@@ -268,8 +270,8 @@
       <text x="600" y="80" text-anchor="middle" font-size="10" opacity=".7">ผลลัพธ์ผ่านด่าน</text>
 
       <text x="1" y="186" font-size="11.5" class="go">ผลที่ตามมา — ระบบกล้าตอบว่า “ไม่มี”</text>
-      <text x="1" y="207" font-size="11" opacity=".8">บนข้อมูลจริง 936 ข้อความ หน้า /blockers ว่าง ทั้งที่เป็นฟีเจอร์เรือธง</text>
-      <text x="1" y="226" font-size="11" opacity=".8">เพราะไม่มี relation ไหนพิสูจน์ว่าติด — ไม่ใช่เพราะพัง และไม่แต่งขึ้นมาให้หน้าจอดูมีอะไร</text>
+      <text x="1" y="207" font-size="11" opacity=".8">เคยรายงาน 0 blocked บน 936 ข้อความ และรายงาน 0 ตรง ๆ ไม่แต่งขึ้นมา</text>
+      <text x="1" y="226" font-size="11" opacity=".8">วันนี้อ่าน cue ระดับบรรทัดแล้ว จึงได้ blocked 7 จาก 38 งาน — ทุกอันมีบรรทัดที่พิสูจน์</text>
     </g>
   </svg>
   <figcaption>
@@ -281,21 +283,21 @@
 <h2><span class="num">03</span>ผลลัพธ์บนข้อมูลจริง</h2>
 
 <div class="cards">
-  <div class="card"><span class="big">1,057</span><span class="lab">ข้อความจริง 4 ช่อง</span>
-    <p>402 ข้อความหลัก + 655 reply · เดิมมีแค่ 22 ข้อความ</p></div>
-  <div class="card"><span class="big">34</span><span class="lab">งานที่ระบบแยกออกมา</span>
-    <p>จาก 936 record หลังล้าง · 17 กำลังทำ · 17 ปิดแล้ว</p></div>
-  <div class="card"><span class="big">8</span><span class="lab">งานที่ได้ ticket จริงเป็นชื่อ</span>
-    <p>linker เจอ key ในข้อความเอง เช่น <code>PROJ-142</code> · ที่เหลือใช้ hash ที่คงที่</p></div>
-  <div class="card"><span class="big">72</span><span class="lab">เทสอัตโนมัติ</span>
-    <p>Python 19 · TypeScript 53 · พิสูจน์แล้วว่าจับ regression ได้จริง</p></div>
+  <div class="card"><span class="big">1,301</span><span class="lab">record ที่ระบบใช้จริง</span>
+    <p>จากไฟล์ 1,492 record — Slack 1,079 · reply ในเธรด 191 (ตัดออกตาม default) · ทิกเก็ต YouTrack 196 · ประชุม 24</p></div>
+  <div class="card"><span class="big">38</span><span class="lab">งานในหน้าต่าง 7 วัน</span>
+    <p>22 กำลังทำ · <strong>7 ติดอยู่</strong> · 9 ปิดแล้ว · ทั้งคลังทั้งหมด 66 งาน</p></div>
+  <div class="card"><span class="big">13</span><span class="lab">งานที่ได้ ticket จริงเป็นชื่อ</span>
+    <p>linker เจอ key ในข้อความเอง เช่น <code>PROJ-142</code> · ที่เหลือใช้ hash ที่คงที่ · เทียบกับ YouTrack ได้ทั้ง 13 งาน</p></div>
+  <div class="card"><span class="big">198</span><span class="lab">เทสอัตโนมัติ</span>
+    <p>Python 124 · TypeScript 74 · พิสูจน์แล้วว่าจับ regression ได้จริง</p></div>
 </div>
 
 <div class="ev">
   <span class="k">วัดจาก</span>
-  <code>curl localhost:8899/api/health</code> → <code>936 records · 34 topics · BAAI/bge-m3</code><br>
-  <code>cd pipeline &amp;&amp; python3 -m pytest -q</code> → <code>19 passed</code> ·
-  <code>cd slack-bot &amp;&amp; npm test</code> → <code>53 pass</code>
+  <code>curl localhost:8899/api/health</code> → <code>1301 records · 38 topics · BAAI/bge-m3</code><br>
+  <code>cd pipeline &amp;&amp; python3 -m pytest -q</code> → <code>124 passed</code> ·
+  <code>cd slack-bot &amp;&amp; npm test</code> → <code>74 pass</code>
 </div>
 
 <h3>เลือกโมเดลด้วยการวัด ไม่ใช่ด้วยชื่อ</h3>
@@ -406,7 +408,9 @@
   <span class="t">1 · จับ blocker ได้น้อยกว่าที่มีจริงมาก และคอขวดไม่ใช่คำศัพท์</span>
   <p>
     อ่านด้วยมือทั้ง 76 ข้อความที่เข้าข่าย พบ blocker จริง <strong>22 ข้อความ</strong>
-    แต่ถ้าใส่ตัวตรวจที่แม่น 100% ทั้ง precision และ recall ผลออกมาได้แค่ <strong>2 งาน</strong>
+    ตอนนั้นระบบรายงานได้แค่ <strong>2 งาน</strong> · หลังแก้ให้อ่าน cue ระดับ<strong>บรรทัด</strong>
+    (ทั้ง <code>ingest/blockers.py</code> และฝั่ง relation) วันนี้รายงาน <strong>7 จาก 38 งาน</strong>
+    ยังต่ำกว่าที่มีจริง แต่ไม่ใช่ตัวเลขเดิมอีกแล้ว
     เพราะ topic เป็นคลัสเตอร์แนวเรื่อง กินเวลา median 43 วัน 25 ข้อความ
     แล้วคำ ack สั้น ๆ คำเดียวตัดสินคลัสเตอร์ 44 ข้อความข้ามหลายสัปดาห์ได้
     <strong>งานรอบถัดไปอยู่ที่การจัดกลุ่มและกฎตัดสินสถานะ ไม่ใช่ที่ลิสต์คำ</strong>
@@ -450,10 +454,14 @@
 </div>
 
 <div class="flag">
-  <span class="t">6 · ยังไม่ได้ต่อ ticket system จึงยังไม่มี drift detection</span>
+  <span class="t">6 · ต่อ ticket system แล้ว — ที่เหลือคือ drift ยังพิสูจน์ “ประโยคที่ตัดสินสถานะ” ไม่ได้</span>
   <p>
-    การเทียบว่า “Slack บอกอย่าง ticket บอกอีกอย่าง” เป็นจุดต่างที่แรงที่สุดในแนวคิด
-    และยังไม่มีแหล่งข้อมูล ระบบจึงแสดงว่าว่าง ไม่ใช่แสดงตัวอย่างปลอม
+    YouTrack ถูกอ่านจริงแล้ว (อ่านอย่างเดียว) <strong>197 ใบ · เปิดค้าง 57</strong> และทิกเก็ตอยู่ใน
+    corpus เดียวกับ Slack จึงค้นครั้งเดียวเจอทั้งสองแหล่ง ผลที่ใช้งานได้ทันทีคือ
+    <strong>24 ใบเงียบเกิน 21 วัน</strong> (22 ใบอยู่ <em>Ready for test</em>) ซึ่ง Slack ไม่พูดถึงเลย ·
+    ส่วน <strong>drift</strong> ที่เทียบสถานะสองฝั่งได้ <strong>3 ใบ</strong> ยังมีข้อจำกัดจริง: ประโยคที่ทำให้
+    สถานะฝั่ง Slack เป็นอย่างนั้น กับประโยคที่มีคนพิมพ์เลขทิกเก็ต <strong>ไม่ใช่ข้อความเดียวกันเลย (0 จาก 3)</strong>
+    การ์ดทุกใบจึงติดป้ายบอกและโชว์สองประโยคให้เทียบกันเอง
   </p>
 </div>
 
@@ -463,19 +471,19 @@
   <caption>ลำดับนี้มาจากการวัด ไม่ใช่จากความรู้สึก</caption>
   <thead><tr><th>ลำดับ</th><th>ทำอะไร</th><th>ทำไมอยู่ตำแหน่งนี้</th></tr></thead>
   <tbody>
-    <tr class="win"><td class="n">1</td><td><strong>ล้าง markup ก่อนแมตช์ cue</strong></td>
-      <td>ตอนนี้ cue ไปแมตช์ในบล็อกโค้ดที่คนแปะรีวิวมา ในข้อความที่ขีดฆ่าแล้ว และในเอกสารเงื่อนไขที่กิน 5.5% ของคลัง · บอทกับ AI assistant 39 ข้อความ (27.9% ของตัวอักษร) ไม่ถูกแยกออก — ประเมินว่าได้ผลมากกว่าการแก้ cue ทั้งหมดรวมกัน</td></tr>
-    <tr><td class="n">2</td><td>ประตูกันไม่ให้ ack คำเดียวตัดสินคลัสเตอร์ทั้งก้อน</td>
-      <td>คือคอขวดที่วัดแล้วว่ากั้น 20 จาก 22 blocker ไว้ · ต้องมีเงื่อนไขน้ำหนัก/ที่มาว่าอะไรมีสิทธิเปลี่ยนสถานะ และคิดสถานะระดับงานย่อย</td></tr>
-    <tr><td class="n">3</td><td>จัดกลุ่มให้ละเอียดขึ้น</td>
-      <td>ขึ้น resolution เป็น 4.0 ทำให้เพดานที่ทำได้ขยับจาก 2 เป็น 4 งาน · ต้องวัดว่ามันไม่แตกงานจริงออกเป็นเสี่ยง</td></tr>
-    <tr><td class="n">4</td><td>ตัวกรองแบบวัดความครอบคลุมของคำถาม</td>
+    <tr><td class="n">✓</td><td><strong>ล้าง markup ก่อนแมตช์ cue — ทำแล้ว</strong></td>
+      <td><code>ingest/quoted.py</code> ตัด fence, quote, ข้อความขีดฆ่า และ inline code ออกก่อนแมตช์ และ <code>asserted_lines()</code> เก็บ<strong>ขอบบรรทัด</strong>ไว้ ทำให้ cue อ่านทีละบรรทัดได้ · ยืนยันว่าให้ผลเหมือนเดิมทุกไบต์บน 1,517 record ก่อนเปลี่ยนกฎ</td></tr>
+    <tr><td class="n">✓</td><td>ประตูกันไม่ให้ ack คำเดียวตัดสินคลัสเตอร์ทั้งก้อน — <strong>ทำแล้ว</strong></td>
+      <td>cue ที่อยู่ใต้บรรทัดแรกต้องมีอะไรผูกกับข้อความอีกฝั่ง (anchor ร่วม หรือเอ่ยถึงคนที่เขียนก่อนหน้า) · ตัด 58 คู่ที่อ่านผิดออกโดยไม่สร้างของใหม่เลย และมีเพียงเจ้าตัวที่ยกเลิกคำประกาศว่าติดของตัวเองได้</td></tr>
+    <tr><td class="n">✓</td><td>จัดกลุ่มให้ละเอียดขึ้น — <strong>ทำแล้ว</strong> (<code>DEFAULT_RESOLUTION = 4.0</code>)</td>
+      <td>วัดสองทางก่อนเปลี่ยน: ที่ 1.0 ก้อนที่แย่สุดปน ticket ต่างกัน 19 ใบและงานใหญ่สุด 132 ข้อความ · ที่ 4.0 เหลือ 7 ใบและ 50 ข้อความ แลกกับความครอบคลุม 90% → 85%</td></tr>
+    <tr><td class="n">2</td><td>ตัวกรองแบบวัดความครอบคลุมของคำถาม</td>
       <td>ตัวเดียวที่วัดได้ margin เป็นบวก · ต้องมีชุดทดสอบที่คนอื่นเขียนก่อนจะเชื่อ</td></tr>
-    <tr><td class="n">5</td><td>ต่อ YouTrack / Notion</td>
-      <td>ปลดล็อก drift detection ซึ่งเป็นจุดต่างเชิงแนวคิดที่แรงสุด และเป็นสิ่งที่ต่อ AI เข้า Slack ทำแทนไม่ได้</td></tr>
-    <tr><td class="n">6</td><td>เปิดตารางเวลาอัตโนมัติ</td>
-      <td>“ไม่ต้องถามก็รู้” คือหัวใจ · โค้ดมีแล้วแต่ปิดอยู่ ควรเปิดหลังข้อ 1–2 เพราะไม่อยากส่งวาระที่เต็มไปด้วยของเก่า</td></tr>
-    <tr><td class="n">7</td><td>เทรนโมเดลอีกครั้ง <em>เมื่อ</em> ข้อมูลมากพอ</td>
+    <tr><td class="n">✓</td><td>ต่อ YouTrack — <strong>ทำแล้ว</strong> (Notion / Jira ยังไม่ได้ต่อ)</td>
+      <td>อ่านอย่างเดียว 197 ใบเข้า corpus เดียวกัน · <code>/tracker</code> · <code>/api/tracker</code> · <code>/meowtam silent</code> · <code>/meowtam drift</code> — ไม่มีอะไรเขียนกลับเข้า YouTrack</td></tr>
+    <tr class="win"><td class="n">1</td><td>เปิดตารางเวลาอัตโนมัติในช่องจริง</td>
+      <td>“ไม่ต้องถามก็รู้” คือหัวใจ · โค้ดพร้อมและงานเช้าเดินบนตัวจับเวลาแล้ว เหลือชี้ <code>DIGEST_CHANNEL</code> ไปช่องจริง — ตั้ง <code>ENABLE_SCHEDULE=1</code> หลังชี้ช่องทดสอบผ่านแล้ว</td></tr>
+    <tr><td class="n">3</td><td>เทรนโมเดลอีกครั้ง <em>เมื่อ</em> ข้อมูลมากพอ</td>
       <td>อยู่ท้ายสุดเพราะวัดแล้วว่าแพ้ · ถ้าจะกลับมาทำ ต้องได้ข้อมูลหลายเท่า และเปลี่ยนฐานเป็น bge-m3 ก่อน ไม่ใช่เทรนบนตัวเดิม</td></tr>
   </tbody>
 </table>
@@ -483,7 +491,7 @@
 
 <hr>
 <p class="foot">
-  ทุกตัวเลขในหน้านี้วัดจากเครื่องที่รันระบบอยู่จริง ณ 18 ส.ค. 2569 และมีคำสั่งกำกับให้ทำซ้ำได้ ·
+  ทุกตัวเลขในหน้านี้วัดจากเครื่องที่รันระบบอยู่จริง ณ 19 ส.ค. 2569 23:24 และมีคำสั่งกำกับให้ทำซ้ำได้ · corpus โตทุกเช้าที่งานดึงข้อมูลรัน ตัวเลขจึงเป็นภาพของเวลานั้น ·
   บันทึกการทดลองทั้งหมดรวมทั้งตัวที่แพ้อยู่ใน <code>docs/EXPERIMENTS.md</code> ·
   คู่มือใช้งานรายวันอยู่ใน <code>docs/DAILY_USE.md</code> ·
   ข้อมูลจริงของบริษัทและชื่อพนักงานไม่ได้ขึ้น git — หน้านี้รายงานเฉพาะตัวเลขรวม

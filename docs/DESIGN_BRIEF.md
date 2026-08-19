@@ -103,7 +103,7 @@ the whole index rebuilds, which takes 5–60 seconds — design that wait honest
     "summary": {
       "headline": "omega, usd, agentforce add — ติดอยู่ ยังไปต่อไม่ได้",
       "detail": "10 ข้อความ (2 meeting + 8 slack) · ผู้เกี่ยวข้อง: Alice, Sam … ล่าสุด [Sam] ผมคุยกับทาง Omega เมื่อวาน เขาสนใจ Agentforce Add-on ค่อนข้างมาก แต่ขอดู pricing ละเอียดก่อน",
-      "next_step": "ต้องมีคนไล่ให้ก่อน ถึงจะไปต่อได้",
+      "next_step": "ต้องมีคนมาแก้เรื่องที่ติดอยู่ก่อน ถึงจะเดินต่อได้",
       "citations": ["msg_C0DEMOCHAN1_1786630933.931999", "mtg_20260814-0930-daily-standup_1786699865.000000"],
       "unverified": false,
       "backend": "template"
@@ -115,8 +115,10 @@ the whole index rebuilds, which takes 5–60 seconds — design that wait honest
 "timeline": [{
   "when": "2026-08-14 16:30",
   "relation": "resolves",
-  "from_user": "U0DEMOUSER1", "from_text": "Hey team, we've got a user reporting that our Android app crashes…",
-  "to_user": "Bob",           "to_text": "ผม debug แล้วครับ เจอ bug ใน Profile module … fix เสร็จแล้ว รอ patch ขึ้น release",
+  "from_user": "U0DEMOUSER1", "from_user_name": "เก่ง ธ.",
+  "from_text": "Hey team, we've got a user reporting that our Android app crashes…",
+  "to_user": "Bob",           "to_user_name": "Bob",
+  "to_text": "ผม debug แล้วครับ เจอ bug ใน Profile module … fix เสร็จแล้ว รอ patch ขึ้น release",
   "evidence": "cue “เสร็จแล้ว”",
   "also_answers": 4          // this event also answers 4 earlier messages; collapsed
 }]
