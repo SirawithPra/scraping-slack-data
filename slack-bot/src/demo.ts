@@ -59,31 +59,115 @@ export function previousWorkdays(today: string, count: number): string[] {
 const RECURRING = [
   'Pending รอ requirement หน้า redemption จาก PO',
   'รอ requirement หน้า redemption จาก PO',
-  'Pending: รอ requirement หน้า redemption จาก PO อยู่',
+  'Pending: *รอ requirement หน้า redemption จาก PO*',
 ];
 
-/** Ordinary blockers that clear the next day — the contrast that makes a streak mean something. */
-const PASSING = [
-  'Pending รอ merge PR #128',
-  'Pending รอ staging deploy',
-  'Pending รอ design ไฟล์ export',
+/**
+ * What the matcher can and cannot absorb, which decides what may go in that list.
+ *
+ * `normaliseBlocker` drops mentions, a leading "Pending", punctuation and case. It
+ * does not know synonyms and does not tolerate an extra word: the previous third
+ * variant ended "…จาก PO อยู่" and normalised to a different key, so a run of four
+ * mornings or more quietly counted two streaks of one instead of one of three — the
+ * demo's own claim, broken by the demo's own data, in the branch nobody rehearses
+ * (`TAM_DAILY_PENDING_DAYS` above 3). The variants now differ only in decoration,
+ * which is exactly what the matcher handles, and `demo.test.ts` pins that they share
+ * a key so the next line added here cannot reintroduce it.
+ */
+
+/**
+ * The seeded mornings, written out day by day instead of cycled from four lists.
+ *
+ * The cycled version put nearly the same two sentences under every name on every
+ * morning, and a reader watching three identical mornings scroll past cannot tell
+ * which repetition is the point. The whole claim rests on one line coming back while
+ * everything around it moves, so everything around it has to move: seat 0 ships
+ * something different each day and keeps waiting on the same requirement, seat 1
+ * raises a blocker on Monday and clears it on Tuesday — the contrast that makes a
+ * streak mean anything — and seat 2 never blocks at all.
+ *
+ * Newest last. `seedPendingStreak` takes the last N entries before today, so raising
+ * `TAM_DAILY_PENDING_DAYS` reaches further back into the script rather than repeating
+ * the same morning; past the end it falls back to the oldest entry, which is a duller
+ * demo but never a wrong one.
+ */
+interface SeededAnswer {
+  done: string[];
+  focus: string[];
+  /** Absent means this person had nothing blocking that morning. */
+  blocker?: { text: string; tag: string };
+}
+
+const MORNINGS: SeededAnswer[][] = [
+  [
+    {
+      done: ['ต่อหน้า voucher list ของ REVERAPP-140 — ส่วน UI เสร็จแล้ว'],
+      focus: ['เริ่ม flow redeem ต่อจาก voucher list'],
+      blocker: { text: RECURRING[0] as string, tag: 'PO' },
+    },
+    {
+      done: ['review PR #128 ให้ทีม BE'],
+      focus: ['ทำ REVERAPP-152 ต่อ'],
+      blocker: { text: 'Pending รอ merge PR #128', tag: '' },
+    },
+    {
+      done: ['เขียน test ของ redemption flow 6 เคส'],
+      focus: ['ตาม requirement หน้า redemption กับ PO'],
+    },
+  ],
+  [
+    {
+      done: ['แก้ bug หน้า voucher list ตามที่ QA แจ้ง 3 ข้อ'],
+      focus: ['เตรียม flow redeem ไว้ก่อน พอ requirement มาจะได้ต่อได้เลย'],
+      blocker: { text: RECURRING[1] as string, tag: 'PO' },
+    },
+    {
+      // Monday's blocker, gone by Tuesday. Nobody is asked to notice it; it is there
+      // so that "ค้างมา 3 วัน" on the other line reads as a finding, not as the format.
+      done: ['merge PR #128 แล้ว ขึ้น staging ให้ QA ลอง'],
+      focus: ['เก็บ bug ที่ QA แจ้งไว้เมื่อวาน'],
+    },
+    {
+      done: ['เขียน test เพิ่มอีก 4 เคส คลุม error ของ redeem'],
+      focus: ['ช่วยดู QA ของ voucher list'],
+    },
+  ],
 ];
 
-const DONE = [
-  'ปิด REVERAPP-247 แล้ว รอ QA verify',
-  'review PR #128 ให้ทีม BE',
-  'แก้ bug หน้า voucher list',
-  'เขียน test ของ redemption flow',
+/** Today, in the same shape — seat 0 is on the third morning of the same wait. */
+const TODAY: SeededAnswer[] = [
+  {
+    done: ['ปิด REVERAPP-152 แล้ว รอ QA verify'],
+    focus: ['ต่อ REVERAPP-140 หน้า redemption'],
+    // The third wording of the same wait. Three mornings, three sentences, one
+    // streak — which is the only way to show that the counter is matching the
+    // obstacle rather than the string.
+    blocker: { text: RECURRING[2] as string, tag: 'PO' },
+  },
+  {
+    done: ['เก็บ bug จาก QA รอบเช้า 2 ข้อ'],
+    focus: ['ต่อ REVERAPP-152 ส่วน sync กับ BE'],
+    blocker: { text: 'Pending รอ BE เปิด endpoint /redeem ให้ก่อน', tag: '' },
+  },
+  {
+    done: ['เตรียม test data สำหรับ redeem'],
+    focus: ['เก็บงาน QA ที่ค้าง'],
+  },
 ];
 
-const FOCUS = [
-  'ต่อ REVERAPP-140 หน้า redemption',
-  'ทำ REVERAPP-152 ต่อ',
-  'ตาม requirement หน้า redemption',
-  'เก็บงาน QA ที่ค้าง',
-];
+/** The script for one seeded morning, oldest entry reused when the run is longer. */
+function morningOf(index: number, total: number): SeededAnswer[] {
+  const from = MORNINGS.length - (total - index);
+  return MORNINGS[Math.max(0, Math.min(from, MORNINGS.length - 1))] as SeededAnswer[];
+}
 
-const pick = <T,>(list: T[], n: number): T => list[n % list.length] as T;
+/** What the demo will say it fabricated, for the reply only the presenter sees. */
+export function seededSummary(mornings: number, people: number): string {
+  return (
+    `${mornings} เช้า × ${people} คน — คนแรกติดเรื่องเดิม (requirement หน้า redemption จาก PO) ทุกเช้า ` +
+    'เขียนคนละสำนวน · คนที่สองติดคนละเรื่องแล้วเคลียร์ได้วันถัดมา · งานที่ทำเสร็จเปลี่ยนทุกวัน'
+  );
+}
 
 export interface SeedOptions {
   /** Today, 'YYYY-MM-DD'. The seeded mornings are the working days before it. */
@@ -113,19 +197,25 @@ export function seedPendingStreak(opts: SeedOptions): string[] {
   const dates = previousWorkdays(today, Math.max(0, mornings));
 
   dates.forEach((date, index) => {
-    const answers: DailyAnswer[] = roster.slice(0, 3).map((user, seat) => ({
-      user,
-      ts: `sim.${date}.${seat}`,
-      done: [pick(DONE, index + seat)],
-      focus: [pick(FOCUS, index + seat)],
-      blockers:
-        seat === 0
-          ? [{ text: pick(RECURRING, index), tag: 'PO' }]
-          : index % 2 === seat % 2
-            ? [{ text: pick(PASSING, index + seat), tag: '' }]
-            : [],
-      simulated: true,
-    }));
+    const script = morningOf(index, dates.length);
+    const answers: DailyAnswer[] = roster.slice(0, 3).map((user, seat) => {
+      const line = script[Math.min(seat, script.length - 1)] as SeededAnswer;
+      return {
+        user,
+        ts: `sim.${date}.${seat}`,
+        done: [...line.done],
+        focus: [...line.focus],
+        // Seat 0 carries the recurring line whatever the script says, because the
+        // streak is the claim; the rest keep whatever that morning gave them.
+        blockers:
+          seat === 0
+            ? [{ text: RECURRING[index % RECURRING.length] as string, tag: 'PO' }]
+            : line.blocker
+              ? [{ ...line.blocker }]
+              : [],
+        simulated: true,
+      };
+    });
     const record: DailyRecord = {
       date,
       channel,
@@ -152,19 +242,17 @@ export function seedPendingStreak(opts: SeedOptions): string[] {
  * line, which is what pushes the streak over the threshold.
  */
 export function todaysSimulatedAnswers(users: string[], date: string): DailyAnswer[] {
-  return users.filter(Boolean).slice(0, 3).map((user, seat) => ({
-    user,
-    ts: `sim.${date}.${seat}`,
-    done: [pick(DONE, seat + 2)],
-    focus: [pick(FOCUS, seat + 2)],
-    blockers:
-      seat === 0
-        ? [{ text: RECURRING[0] as string, tag: 'PO' }]
-        : seat === 1
-          ? [{ text: 'Pending รอ BE เปิด endpoint /redeem ให้ก่อน', tag: '' }]
-          : [],
-    simulated: true,
-  }));
+  return users.filter(Boolean).slice(0, 3).map((user, seat) => {
+    const line = TODAY[Math.min(seat, TODAY.length - 1)] as SeededAnswer;
+    return {
+      user,
+      ts: `sim.${date}.${seat}`,
+      done: [...line.done],
+      focus: [...line.focus],
+      blockers: line.blocker ? [{ ...line.blocker }] : [],
+      simulated: true,
+    };
+  });
 }
 
 /**

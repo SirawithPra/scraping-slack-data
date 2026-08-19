@@ -163,3 +163,30 @@ test('the simulated label is off by default and comes back when asked for', () =
   // Either way the record is still marked, so `demo clear` can still find it.
   assert.ok(record.answers.every((a: any) => a.simulated));
 });
+
+/**
+ * The seeded wordings must all be one streak.
+ *
+ * The demo's claim is that the counter matches the obstacle rather than the string,
+ * so it varies the wording every morning — and `normaliseBlocker` absorbs decoration
+ * (a leading "Pending", punctuation, mentions, case) but not an extra word. A variant
+ * that steps outside that splits three mornings into separate runs and the escalation
+ * never fires, which is only visible when TAM_DAILY_PENDING_DAYS is raised past the
+ * two mornings a default demo seeds.
+ */
+test('every wording of the recurring blocker counts as the same one', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'meowtam-recurring-'));
+  process.env.TAM_DAILIES_PATH = join(dir, 'dailies.json');
+  try {
+    const users = ['U0DEMOUSER1', 'U0DEMOUSER2'];
+    // Four mornings walks the whole RECURRING list, which two never reaches.
+    seedPendingStreak({ today: '2026-08-21', channel: 'C0DEMO', users, mornings: 4 });
+    const keys = new Set(
+      readDailies().flatMap((d) => d.answers.filter((a) => a.user === users[0]).flatMap((a) => a.blockers.map((b) => streakKey({ user: a.user, text: b.text })))),
+    );
+    assert.equal(keys.size, 1, `${keys.size} คีย์ — ทุกสำนวนต้องนับเป็นเรื่องเดียวกัน`);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+    delete process.env.TAM_DAILIES_PATH;
+  }
+});

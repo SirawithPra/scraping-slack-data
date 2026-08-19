@@ -371,7 +371,7 @@ npm run ledger     # จัดเป็น work item + สถานะ + หล�
 
 ```bash
 npm run typecheck              # ตรวจ type ทั้งโปรเจกต์
-npm test                       # ชุดทดสอบฝั่งบอท — 74 ผ่าน (รวม tests/gate.test.ts)
+npm test                       # ชุดทดสอบฝั่งบอท — 120 ผ่าน (รวม tests/gate.test.ts)
 npm run preview                # เรนเดอร์ทุกหน้าจอออฟไลน์ + ตรวจ Slack limits
 npm run preview -- digest      # ดัมพ์ payload เดียวไปวางใน Block Kit Builder
 ```

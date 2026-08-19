@@ -27,7 +27,7 @@ import { driftBlocks, silentBlocks } from './blocks/tracker.js';
 import { linkResultBlocks, pastePreviewBlocks, ticketOption, type LinkResult } from './blocks/link.js';
 import { staleBlocks } from './blocks/stale.js';
 import { staleItems, staleKey } from './stale.js';
-import { clearSimulated, seedPendingStreak, showSimulatedLabels, todaysSimulatedAnswers } from './demo.js';
+import { clearSimulated, seedPendingStreak, seededSummary, showSimulatedLabels, todaysSimulatedAnswers } from './demo.js';
 import { channelsOf, describeProjects, labelOf, projectMap, projectOf } from './projects.js';
 import { TrackerOff, addComment, describeTracker, searchTickets, trackerConfig } from './youtrack.js';
 import { COMMANDS, CMD, bodyText, context, section, esc, clamp, who } from './blocks/common.js';
@@ -1332,6 +1332,15 @@ interface Beat {
   when: string;
   /** Which screen it lands on — a channel, a DM, a thread, or nobody but the caller. */
   where: string;
+  /**
+   * What is fabricated here, in the presenter's own words.
+   *
+   * Every beat carries one, including the eight that fabricate nothing, because "this
+   * part is real" is the sentence a judge most wants and a presenter most often
+   * forgets to say. Beats 1 and 4 replace it at runtime with what they actually
+   * seeded — counts, names, and the line that repeats.
+   */
+  fake: string;
 }
 
 /** `<#C0…>` renders as the channel's name client-side; an unset channel says so. */
@@ -1340,20 +1349,20 @@ const DAILY_ROOM = roomOf(DAILY_CHANNEL || DIGEST_CHANNEL);
 const DIGEST_ROOM = roomOf(DIGEST_CHANNEL);
 
 const BEATS: Beat[] = [
-  { title: 'เตรียมเช้าที่ผ่านมา — เขียนประวัติ daily ย้อนหลัง (จำลอง)', real: 'ไม่มี — ของจริงคือเช้าที่ผ่านไปเองจริง ๆ', when: 'ไม่ต้องยิง — เช้าพวกนั้นผ่านไปเองอยู่แล้ว', where: 'ไฟล์ dailies.json ไม่ได้ลง Slack' },
-  { title: '08:45 · standup DM — ผมร่างของเมื่อวานให้ ไม่ได้ถาม', real: 'ยิงเอง 08:45 (ENABLE_SCHEDULE=1) · ในการ์ดกดปุ่ม “ส่ง” หรือ “ข้ามวันนี้”', when: 'ทุกเช้า 08:45', where: 'DM ของแต่ละคนใน STANDUP_USERS' },
+  { title: 'เตรียมเช้าที่ผ่านมา — เขียนประวัติ daily ย้อนหลัง (จำลอง)', real: 'ไม่มี — ของจริงคือเช้าที่ผ่านไปเองจริง ๆ', when: 'ไม่ต้องยิง — เช้าพวกนั้นผ่านไปเองอยู่แล้ว', where: 'ไฟล์ dailies.json ไม่ได้ลง Slack', fake: 'ทั้ง beat นี้คือการจำลอง' },
+  { title: '08:45 · standup DM — ผมร่างของเมื่อวานให้ ไม่ได้ถาม', real: 'ยิงเอง 08:45 (ENABLE_SCHEDULE=1) · ในการ์ดกดปุ่ม “ส่ง” หรือ “ข้ามวันนี้”', when: 'ทุกเช้า 08:45', where: 'DM ของแต่ละคนใน STANDUP_USERS', fake: 'ไม่จำลอง — draft มาจาก work item จริงที่คนนั้นมีชื่ออยู่' },
   // The two configurable times are read, not typed: `TAM_DAILY_AT` moves the post
   // and the beat list has to move with it, or the demo announces a time the bot
   // does not keep.
-  { title: `${hhmm(DAILY_AT)} · โพสต์ daily ในห้อง — ยกยอดที่ค้างขึ้นหัว`, real: `${CMD} daily post`, when: `ทุกเช้า ${hhmm(DAILY_AT)}`, where: DAILY_ROOM },
-  { title: 'ทีมตอบในเธรด daily (จำลอง)', real: `${CMD} daily → ได้ฟอร์มเห็นคนเดียว แล้วตอบในเธรด`, when: 'ระหว่างเช้า ทีมพิมพ์กันเอง', where: 'เธรดของโพสต์ daily' },
-  { title: '09:25 · digest ลงห้อง — ที่ติดขึ้นก่อน', real: `${CMD} digest`, when: 'ทุกเช้า 09:25', where: DIGEST_ROOM },
-  { title: `09:30 · งานที่ไม่มีใครแตะเกิน ${STALE_WORKDAYS} วันทำการ → ประกาศในห้อง`, real: `${CMD} stale post (ดูเงียบ ๆ ก่อน: ${CMD} stale)`, when: 'ทุกเช้า 09:30 หลัง digest', where: DIGEST_ROOM },
-  { title: `${hhmm(DAILY_SUMMARY_AT)} · สรุปเธรด + ประกาศเรื่องที่ค้างติดกัน ${PENDING_DAYS} เช้า`, real: `${CMD} daily summary`, when: `ทุกเช้า ${hhmm(DAILY_SUMMARY_AT)}`, where: `ในเธรด daily · ถ้ามีเรื่องค้างครบ ${PENDING_DAYS} เช้า ประกาศอีกข้อความใน ${DAILY_ROOM}` },
-  { title: 'แชทจาก DM → ผูกเข้า ticket → build ใหม่', real: `${CMD} paste (หรือเมนู ⋯ ที่ข้อความ → ผูกกับ ticket)`, when: 'ตอนไหนก็ได้ ที่มีบทสนทนาใน DM ต้องเก็บ', where: 'ฟอร์มกับผลลัพธ์เห็นคนเดียว · ของที่เขียนจริงคือ corpus + link override + คอมเมนต์บน ticket' },
-  { title: 'สโคปเปลี่ยนแต่ ticket ไม่เปลี่ยน → เขียนคอมเมนต์ลง ticket', real: `${CMD} drift แล้วกด “ดูร่างที่เสนอ” ในการ์ด`, when: 'ตอนไหนก็ได้ · ทุกครั้งที่เทียบ Slack กับ ticket', where: `${DIGEST_ROOM} · คอมเมนต์ไปโผล่บน ticket จริงเมื่อ YOUTRACK_WRITE=1` },
-  { title: 'recall — ค้นด้วยความหมาย พร้อมสายการตัดสินใจ', real: `${CMD} recall <คำถาม> (พิมพ์อะไรที่ไม่ใช่คำสั่งก็ถือเป็น recall)`, when: 'ตอนไหนก็ได้ ตอนนึกไม่ออกว่าสรุปกันไว้ว่าอะไร', where: `${DIGEST_ROOM} (ถ้าพิมพ์เอง จะเห็นคนเดียว)` },
-  { title: 'บอร์ดรวม', real: `${CMD} (ของตัวเอง) · ${CMD} @ชื่อ · ${CMD} <TICKET-123> · ${CMD} blocked`, when: 'ตอนไหนก็ได้', where: 'เห็นคนเดียว ไม่รบกวนห้อง' },
+  { title: `${hhmm(DAILY_AT)} · โพสต์ daily ในห้อง — ยกยอดที่ค้างขึ้นหัว`, real: `${CMD} daily post`, when: `ทุกเช้า ${hhmm(DAILY_AT)}`, where: DAILY_ROOM, fake: 'โพสต์เป็นของจริง · บรรทัด “ค้างจากเมื่อวาน” นับจากเช้าที่ beat 1 จำลองไว้' },
+  { title: 'ทีมตอบในเธรด daily (จำลอง)', real: `${CMD} daily → ได้ฟอร์มเห็นคนเดียว แล้วตอบในเธรด`, when: 'ระหว่างเช้า ทีมพิมพ์กันเอง', where: 'เธรดของโพสต์ daily', fake: 'คำตอบของวันนี้ทั้งหมด' },
+  { title: '09:25 · digest ลงห้อง — ที่ติดขึ้นก่อน', real: `${CMD} digest`, when: 'ทุกเช้า 09:25', where: DIGEST_ROOM, fake: 'ไม่จำลอง — อ่านจาก pipeline ตรง ๆ ทั้งการ์ด' },
+  { title: `09:30 · งานที่ไม่มีใครแตะเกิน ${STALE_WORKDAYS} วันทำการ → ประกาศในห้อง`, real: `${CMD} stale post (ดูเงียบ ๆ ก่อน: ${CMD} stale)`, when: 'ทุกเช้า 09:30 หลัง digest', where: DIGEST_ROOM, fake: 'ไม่จำลอง — นับจากวันที่ของข้อความล่าสุดจริง ไม่มีงานเงียบพอก็ไม่ประกาศ' },
+  { title: `${hhmm(DAILY_SUMMARY_AT)} · สรุปเธรด + ประกาศเรื่องที่ค้างติดกัน ${PENDING_DAYS} เช้า`, real: `${CMD} daily summary`, when: `ทุกเช้า ${hhmm(DAILY_SUMMARY_AT)}`, where: `ในเธรด daily · ถ้ามีเรื่องค้างครบ ${PENDING_DAYS} เช้า ประกาศอีกข้อความใน ${DAILY_ROOM}`, fake: 'การสรุปกับการนับเป็นของจริง · สิ่งที่ถูกสรุปคือคำตอบจาก beat 1 กับ beat 4' },
+  { title: 'แชทจาก DM → ผูกเข้า ticket → build ใหม่', real: `${CMD} paste (หรือเมนู ⋯ ที่ข้อความ → ผูกกับ ticket)`, when: 'ตอนไหนก็ได้ ที่มีบทสนทนาใน DM ต้องเก็บ', where: 'ฟอร์มกับผลลัพธ์เห็นคนเดียว · ของที่เขียนจริงคือ corpus + link override + คอมเมนต์บน ticket', fake: 'แชทที่ใส่มาให้ในฟอร์มเป็นตัวอย่าง (ลบแล้ววางของจริงได้) · การเก็บเข้า corpus เป็นของจริง' },
+  { title: 'สโคปเปลี่ยนแต่ ticket ไม่เปลี่ยน → เขียนคอมเมนต์ลง ticket', real: `${CMD} drift แล้วกด “ดูร่างที่เสนอ” ในการ์ด`, when: 'ตอนไหนก็ได้ · ทุกครั้งที่เทียบ Slack กับ ticket', where: `${DIGEST_ROOM} · คอมเมนต์ไปโผล่บน ticket จริงเมื่อ YOUTRACK_WRITE=1`, fake: 'ไม่จำลอง — เทียบกับ ticket จริง (ถ้าเป็น drift จาก fixture การ์ดจะติดป้ายบอกเอง)' },
+  { title: 'recall — ค้นด้วยความหมาย พร้อมสายการตัดสินใจ', real: `${CMD} recall <คำถาม> (พิมพ์อะไรที่ไม่ใช่คำสั่งก็ถือเป็น recall)`, when: 'ตอนไหนก็ได้ ตอนนึกไม่ออกว่าสรุปกันไว้ว่าอะไร', where: `${DIGEST_ROOM} (ถ้าพิมพ์เอง จะเห็นคนเดียว)`, fake: 'ไม่จำลอง — ค้นจาก corpus จริง คำถามเป็นตัวที่ตั้งไว้ให้' },
+  { title: 'บอร์ดรวม', real: `${CMD} (ของตัวเอง) · ${CMD} @ชื่อ · ${CMD} <TICKET-123> · ${CMD} blocked`, when: 'ตอนไหนก็ได้', where: 'เห็นคนเดียว ไม่รบกวนห้อง', fake: 'ไม่จำลอง — งานจริงทั้งหมด' },
 ];
 
 /**
@@ -1395,17 +1404,21 @@ async function runDemo(
    * instead of leaving them to memory.
    */
   let firing = 0;
+  let seeded = '';
   const respond = async (msg: any) => {
     const current = firing ? BEATS[firing - 1] : undefined;
     if (!current) return ctx.respond(msg);
-    const tail =
-      `━━ ถ้าไม่ได้เดโม อันนี้คือ
-` +
-      `เกิดตอน: ${current.when}
-` +
-      `ขึ้นที่: ${current.where}
-` +
-      `สั่งเอง: ${current.real}`;
+    const tail = [
+      '━━ ถ้าไม่ได้เดโม อันนี้คือ',
+      `เกิดตอน: ${current.when}`,
+      `ขึ้นที่: ${current.where}`,
+      `สั่งเอง: ${current.real}`,
+      // Last line and the one a judge's question lands on. `seeded` is what the beat
+      // actually fabricated this run — counts, names, the line that repeats — and the
+      // static `fake` is the fallback, which for eight of the eleven beats is the
+      // sentence "nothing here is fabricated".
+      `จำลองอะไร: ${seeded || current.fake}`,
+    ].join('\n');
     if (Array.isArray(msg?.blocks)) {
       return ctx.respond({ ...msg, blocks: [...msg.blocks, context(tail)] });
     }
@@ -1449,6 +1462,7 @@ async function runDemo(
   }
   beat = n;
   firing = n;
+  seeded = '';
 
   switch (n) {
     case 1: {
@@ -1465,6 +1479,7 @@ async function runDemo(
         await respond({ text: 'ไม่มีคนให้จำลอง — ตั้ง STANDUP_USERS ก่อน' });
         return;
       }
+      seeded = seededSummary(dates.length, Math.min(roster.length, 3));
       await respond({
         text:
           `▶ beat 1 — เขียนประวัติ daily ${dates.length} เช้าไว้แล้ว (${dates.join(', ')})\n` +
@@ -1567,6 +1582,13 @@ async function runDemo(
           ] as any,
         });
       }
+      // The lines themselves, not a count: the presenter is about to be asked what
+      // exactly was made up, and reading it off the screen beats remembering it.
+      seeded =
+        `คำตอบของวันนี้ ${answers.length} คน — ` +
+        answers
+          .map((a) => `${mentionOf(a.user)}: ${a.focus[0] ?? '-'}${a.blockers[0] ? ` ⛔ ${a.blockers[0].text}` : ''}`)
+          .join(' · ');
       await respond({
         text:
           `▶ beat 4 — ใส่คำตอบจำลอง ${answers.length} คนเข้า daily ของวันนี้แล้ว · ` +

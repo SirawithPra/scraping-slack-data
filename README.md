@@ -21,13 +21,71 @@ own `data/`.
 
 | You want | Go to |
 | --- | --- |
+| To see it before installing anything | [What it looks like](#what-it-looks-like) — four screenshots off the committed sample |
 | Install it and use it | [docs/USER_MANUAL.md](docs/USER_MANUAL.md) — Thai, every command tested |
 | Use it day to day — standup, meeting notes, correcting it | [docs/DAILY_USE.md](docs/DAILY_USE.md) — Thai |
-| See how it works | [docs/architecture.html](docs/architecture.html) — five flow diagrams plus the folder layout |
+| See how it works | [docs/architecture.html](docs/architecture.html) — five flow diagrams plus the folder layout · [PDF](docs/pdf/architecture.pdf) |
 | The reasoning and the measurements | [pipeline/README.md](pipeline/README.md) |
 | Which model was chosen and why the fine-tunes lost | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) — Thai, every number re-measured |
-| A ten-slide summary | [docs/deck.html](docs/deck.html) |
+| A ten-slide summary | [docs/deck.html](docs/deck.html) · [PDF](docs/pdf/deck.pdf) |
 | Demo it | [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) — Thai; `./demo.sh` drives the whole thing |
+
+The `.html` documents are self-contained — no CDN, no external font — so they open
+from a `file://` path with no network. GitHub shows them as source rather than
+rendering them, which is what the PDF links are for.
+
+## What it looks like
+
+Every screenshot below is the committed synthetic sample, not a client's
+workspace — reproduce them with the three commands under each set. Nothing here
+is a mockup: it is the FastAPI dashboard rendering
+`data/sample/synthetic_work_chat.json` merged with `data/sample/standup.vtt`.
+
+```bash
+cd pipeline
+python3 -m tam.ingest.prepare_messages --raw data/sample/synthetic_work_chat.json \
+        --out data/processed/syn.json
+python3 -m tam.ingest.meetings --transcript data/sample/standup.vtt \
+        --title "Daily standup" --started 2026-08-14T09:30 \
+        --merge-into data/processed/syn.json
+python3 -m tam.web.server --records data/processed/syn.json --days 3650 --port 8899
+```
+
+It prints `Ready: 938 record(s), 76 topic(s), 2 blocked, summariser template`
+before serving. `summariser template` is the point: with no model key set the
+summary sentence comes from a template, and every number on the screens below is
+still there — because the numbers were never the model's job.
+
+**The daily digest.** Counts first, each one a link to the list behind it. The
+state chip on each item (`ติดอยู่` / `กำลังทำ` / `เสร็จแล้ว`) is computed by rule,
+and `ทำไมถึงเป็นสถานะนี้` expands into the rule that fired.
+
+![The daily digest: four counts, then every work item that moved, newest blocker first](docs/screenshots/dashboard-digest.png)
+
+**What is stuck, and the message that proves it.** Sorted by how long it has been
+stuck. Each card quotes the exact message the state rests on, with who said it and
+when — not a paraphrase of it.
+
+![Blockers: two stuck items, each quoting the message its state rests on](docs/screenshots/dashboard-blockers.png)
+
+**One work item, both sources, one timeline.** The `Slack` and `ประชุม` tags are
+the whole argument for the merge: thirteen events on one item, twelve typed in
+Slack across two days in May and June, one said out loud in the August standup,
+ordered together by time.
+
+![One item's timeline: twelve Slack messages and one meeting utterance, interleaved by date](docs/screenshots/item-timeline.png)
+
+**Search that shows its work.** Matched terms are highlighted in the message, each
+result says which item it belongs to, and `ทำไมถึงเจออันนี้` opens the reason it
+scored. `ความมั่นใจ: สูง` is read from two absolute numbers the search endpoint
+returns, not from a similarity threshold — see
+[the relevance gate](#the-relevance-gate-two-signals-not-a-threshold) below.
+
+![Search for display_status: ten results with matched terms highlighted and a why-it-matched expander](docs/screenshots/search-why.png)
+
+The Slack side is not shown here because a screenshot cannot prove a bot is
+running. `/mt demo` drives it live — see
+[docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md).
 
 ## Demo day
 
