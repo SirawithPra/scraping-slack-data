@@ -3,6 +3,10 @@
 # slack-bot/, and anything added later. Only *.example files are tracked.
 .env
 *.env
+# A backup of a filled-in .env is still a filled-in .env. The two lines above match
+# `.env` and `*.env` only, so `pipeline/.env.bak-demo` — a real copy with real tokens —
+# sat untracked and one `git add -A` away from being published.
+.env.*
 !.env.example
 !**/.env.example
 
@@ -58,6 +62,18 @@ tam-proposal.md
 # same contents, same workspace, and neither was covered before.
 pipeline/data/link_overrides.json*
 slack-bot/data/decisions.json*
+
+# The daily thread's answers, verbatim, from real people — and the record of which
+# escalations have already been posted. Same reasoning as the two above: this is what
+# colleagues typed about their own work, and it is only rebuildable by re-reading their
+# threads. The `*` covers the `.bak` and `.tmp` that store.ts writes beside them.
+slack-bot/data/dailies.json*
+slack-bot/data/announcements.json*
+
+# The pre-demo snapshot: copies of the four files above, taken before a rehearsal so
+# it can be put back afterwards (docs/DEMO_RUNBOOK.md §1). Same real content as the
+# originals, so it inherits the same rule.
+.demo-snapshot/
 
 # `npm run ledger` writes data/ledger.json from a real Slack export — verbatim
 # message text, user ids, channel names and permalinks. It used to be a *tracked*

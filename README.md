@@ -27,6 +27,24 @@ own `data/`.
 | The reasoning and the measurements | [pipeline/README.md](pipeline/README.md) |
 | Which model was chosen and why the fine-tunes lost | [docs/EXPERIMENTS.md](docs/EXPERIMENTS.md) — Thai, every number re-measured |
 | A ten-slide summary | [docs/deck.html](docs/deck.html) |
+| Demo it | [docs/DEMO_RUNBOOK.md](docs/DEMO_RUNBOOK.md) — Thai; `./demo.sh` drives the whole thing |
+
+## Demo day
+
+Both halves already run as login-time jobs on the demo machine
+([deploy/](deploy/README.md)), so demo day is three commands rather than two
+terminals kept alive by hand:
+
+```bash
+./demo.sh reset      # clear what a rehearsal left behind (snapshots it first)
+./demo.sh up         # make sure the dashboard and the bot are running
+./demo.sh share      # optional: a public URL so the room can open the dashboard itself
+```
+
+`./demo.sh` on its own prints one screen: is the dashboard answering, is the bot
+running, is it reading the pipeline or its own fixture, are the scheduled jobs off,
+how much rehearsal data is left, and which URLs are live. The beats themselves are
+driven from Slack with `/mt demo` — see the runbook.
 
 ## Run it in two minutes, with no Slack access
 
