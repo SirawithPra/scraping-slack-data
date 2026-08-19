@@ -14,6 +14,7 @@
 #   ./demo.sh share      เปิด URL สาธารณะให้คนอื่นเข้าดู dashboard
 #   ./demo.sh unshare    ปิด URL นั้น
 #   ./demo.sh restore    เอาข้อมูลก่อน reset กลับมา
+#   ./demo.sh snapshot [--fresh]        เก็บสถานะตอนนี้ (ปกติ reset เก็บให้อยู่แล้ว)
 #   ./demo.sh logs [dashboard|bot|tunnel]
 set -uo pipefail
 
@@ -103,18 +104,53 @@ cmd_status() {
   echo
 }
 
-cmd_reset() {
-  title "สำรองก่อน"
+# The snapshot is taken once and then left alone. Reset runs more than once — before
+# a rehearsal, then again between rehearsals — and every run after the first has
+# nothing worth keeping in front of it: the files hold seeded mornings by then. Copying
+# those over the snapshot replaces the one thing it exists for, the state from before
+# any of this started, with the state this script just created. That happened once at
+# 05:44 on 20 Aug 2026 and cost the real dailies; `--fresh` is now the only way to
+# overwrite, and it keeps the old one beside it rather than dropping it.
+take_snapshot() {
   mkdir -p "$SNAP"
   cp "$BOT"/data/dailies.json "$BOT"/data/announcements.json "$BOT"/data/decisions.json "$SNAP/" 2>/dev/null
   cp "$PIPELINE"/data/link_overrides.json "$SNAP/" 2>/dev/null
   cp "$PIPELINE/$RECORDS" "$SNAP/" 2>/dev/null
-  ok "คัดลอกไว้ที่ .demo-snapshot/ (gitignored) — เอากลับด้วย ./demo.sh restore"
+}
+
+cmd_snapshot() {
+  if [ -f "$SNAP/dailies.json" ] && [ "${1:-}" != "--fresh" ]; then
+    warn "มี snapshot อยู่แล้ว (เก็บเมื่อ $(stat -f '%Sm' -t '%d %b %H:%M' "$SNAP/dailies.json"))"
+    echo "     ตัวนั้นคือสถานะ 'ก่อนเริ่มซ้อม' ซึ่งเป็นตัวที่อยากได้กลับ จึงไม่ทับให้"
+    echo "     จะเก็บของตอนนี้แทนจริง ๆ: ./demo.sh snapshot --fresh (ของเดิมย้ายไป .demo-snapshot/prev/)"
+    return 0
+  fi
+  if [ -f "$SNAP/dailies.json" ]; then
+    rm -rf "$SNAP/prev"
+    mkdir -p "$SNAP/prev"
+    cp "$SNAP"/*.json "$SNAP/prev/" 2>/dev/null
+    ok "ย้าย snapshot เดิมไป .demo-snapshot/prev/"
+  fi
+  take_snapshot
+  ok "เก็บ snapshot ใหม่แล้วที่ .demo-snapshot/"
+}
+
+cmd_reset() {
+  title "สำรองก่อน"
+  if [ -f "$SNAP/dailies.json" ]; then
+    ok "ใช้ snapshot เดิมที่มีอยู่ (เก็บเมื่อ $(stat -f '%Sm' -t '%d %b %H:%M' "$SNAP/dailies.json")) — ไม่ทับ"
+    echo "     นั่นคือของก่อนเริ่มซ้อม · ถ้าอยากเก็บของตอนนี้แทน: ./demo.sh snapshot --fresh"
+  else
+    take_snapshot
+    ok "คัดลอกไว้ที่ .demo-snapshot/ (gitignored) — เอากลับด้วย ./demo.sh restore"
+  fi
 
   title "ล้าง"
   for f in dailies announcements decisions; do
+    local before
+    before=$(count_of "$BOT/data/$f.json")
     printf '[]\n' > "$BOT/data/$f.json"
-    ok "$f.json → []"
+    ok "$f.json: $before → 0"
   done
   echo
   echo "  เหลืออีกสองอย่างที่สั่งจากตรงนี้ไม่ได้ ต้องพิมพ์ใน Slack:"
@@ -266,6 +302,7 @@ case "${1:-status}" in
   status|check) cmd_status ;;
   reset)        cmd_reset ;;
   restore)      cmd_restore ;;
+  snapshot)     cmd_snapshot "${2:-}" ;;
   up|start)     cmd_up ;;
   restart)      cmd_restart "${2:-all}" ;;
   share)        cmd_share ;;
