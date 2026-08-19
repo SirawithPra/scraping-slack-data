@@ -55,6 +55,24 @@ export function skippedParticipants(): string[] {
   return [...skipped];
 }
 
+/**
+ * The one sentence that made this blocked, out of a message that may be a whole
+ * morning's paste.
+ *
+ * The pipeline detects the state line by line and quotes the line it matched:
+ * `blocked since … — คนกรอกเองว่า "ท่าสองไปท่าหน้าแยก … mkt ต้องรอ"`. That quote is
+ * what belongs in a blocker box. Taking the message instead put a 40-line sprint
+ * recap — headings and all — into a field that is one button press from the channel.
+ *
+ * Falls back to the message's first non-empty line when the evidence carries no
+ * quote, which is the shape a fixture and an older pipeline both produce.
+ */
+function statedBlocker(evidence: string, said: string): string {
+  const quoted = evidence.match(/[“"]([^”"]{4,})[”"]/);
+  if (quoted?.[1]) return quoted[1].trim();
+  return said.split(/\r?\n/).map((l) => l.trim()).find(Boolean) ?? said.trim();
+}
+
 export function buildStandups(items: WorkItem[], opts: StandupOptions): StandupDraft[] {
   const byUser = new Map<string, WorkItem[]>();
   const unaddressable = new Set<string>();
@@ -102,6 +120,21 @@ export function buildStandups(items: WorkItem[], opts: StandupOptions): StandupD
       }))
       .sort((a, b) => b.stale_days - a.stale_days);
 
+    // Only what this person said with their own hands. `evidence_id` resolves inside
+    // the item's own messages, so the author is knowable here without reaching for
+    // the ledger — and an item blocked by somebody else's sentence is dropped rather
+    // than attributed, because this list is what the DM offers to send to the channel.
+    const blocked = theirs
+      .filter((i) => i.state === 'blocked')
+      .map((i) => ({ item: i, said: i.messages.find((m) => m.id === i.evidence_id) }))
+      .filter((pair) => pair.said?.user === userId)
+      .map(({ item, said }) => ({
+        key: item.key,
+        headline: item.headline,
+        text: statedBlocker(item.evidence, said!.text),
+        evidence_id: item.evidence_id || undefined,
+      }));
+
     // Nothing to correct and nothing to chase is not a standup worth sending.
     if (!yesterday.length && !carried.length) continue;
 
@@ -112,6 +145,7 @@ export function buildStandups(items: WorkItem[], opts: StandupOptions): StandupD
       display_name: userId,
       yesterday,
       carried_over: carried,
+      blocked,
     });
   }
 

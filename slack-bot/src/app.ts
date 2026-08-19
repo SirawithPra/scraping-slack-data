@@ -18,7 +18,7 @@ import {
 } from './daily.js';
 import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, dailyTitle, pendingEscalationBlocks } from './blocks/daily.js';
 import { digestBlocks } from './blocks/digest.js';
-import { standupDmBlocks } from './blocks/standupDm.js';
+import { standupDmBlocks, standupPrefill } from './blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from './blocks/drift.js';
 import { recallBlocks } from './blocks/recall.js';
@@ -472,13 +472,20 @@ app.action('standup_submit', async ({ ack, body, client, respond }) => {
   });
 
   if (blocker && DIGEST_CHANNEL) {
+    // "ใหม่" has to be earned. The box arrives prefilled with what this person
+    // already said about an item that has not moved, so a blocker submitted exactly
+    // as proposed is the same obstacle a day older — announcing it as news teaches
+    // the channel to skim past the word.
+    const draft = standupFor(user);
+    const asProposed = draft ? standupPrefill(draft).blocker === blocker : false;
+    const label = asProposed ? 'ยังติดเรื่องเดิม' : 'blocker ใหม่';
     await client.chat.postMessage({
       channel: DIGEST_CHANNEL,
       // `mentionOf`, not `<@id>` written by hand: a real mention renders the
       // person's real name client-side, which would put a real name back on the
       // screen in exactly the mode (TAM_NAMES=pseudonym) that exists to keep it off.
-      text: `blocker ใหม่จาก ${mentionOf(user)}`,
-      blocks: [section(`*⛔ blocker ใหม่* จาก ${mentionOf(user)}\n${esc(blocker)}`)] as any,
+      text: `${label}จาก ${mentionOf(user)}`,
+      blocks: [section(`*⛔ ${label}* จาก ${mentionOf(user)}\n${esc(blocker)}`)] as any,
     });
   }
 });

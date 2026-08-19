@@ -23,6 +23,75 @@ import { CMD, clamp, context, divider, esc, header, section } from './common.js'
  */
 const MAX_YESTERDAY = 5;
 const MAX_CARRIED = 5;
+/** Prefilled lines per box. Three fits without scrolling in a DM. */
+const MAX_PREFILL = 3;
+
+/**
+ * What the two boxes start with.
+ *
+ * The header of this DM says the bot already knows and only wants corrections, and
+ * for a year the boxes under it were empty — so the person read "you don't have to
+ * retype it" and then retyped it. Prefilling is what that sentence promised.
+ *
+ * The shape is the daily template's, not a new one (`DAILY_TEMPLATE` in daily.ts):
+ * `ต่อ KEY — headline` for today, `Pending …` for a blocker. Somebody who fills a
+ * daily thread and somebody who answers this DM are then writing the same lines, and
+ * `parseDailyReply` reads both — a second format would be a second thing to teach.
+ *
+ * Today's box may be a proposal ("carry on with what is still open"); the blocker box
+ * may not. It is prefilled only from sentences this person typed, because pressing
+ * *ส่ง* posts it into the channel under their name — see `blocked` in StandupDraft.
+ */
+/** `REVERAPP-140` — a key a person can look up, as opposed to a cluster id like `c23053d`. */
+const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
+
+/**
+ * One line of the "today" box, or nothing.
+ *
+ * A cluster id is not a name. `ต่อ c5a3d6b — (ยังไม่มีคำร่วมที่ชัดพอจะตั้งชื่อ)` is a
+ * line nobody can act on or even look up, and offering it as a suggestion asks the
+ * reader to delete it — which is more work than the empty box it replaced. So a
+ * ticket keeps its key, a cluster is named by its keywords alone, and a cluster the
+ * pipeline could not name at all is left out.
+ */
+function todayLine(key: string, headline: string): string | undefined {
+  const name = clamp(headline.trim(), 60);
+  if (TICKET_KEY.test(key)) return `ต่อ ${key} — ${name}`;
+  if (!name || name.startsWith('(')) return undefined;
+  return `ต่อ ${name}`;
+}
+
+export function standupPrefill(draft: StandupDraft): { today?: string; blocker?: string } {
+  // Tickets before clusters, then stalest first: the lines a person can act on are
+  // the ones worth the three slots.
+  const open = [...draft.carried_over]
+    .sort((a, b) => {
+      const byKind = Number(TICKET_KEY.test(b.key)) - Number(TICKET_KEY.test(a.key));
+      return byKind || b.stale_days - a.stale_days;
+    })
+    .map((c) => todayLine(c.key, c.headline))
+    .filter((line): line is string => Boolean(line))
+    .slice(0, MAX_PREFILL);
+  // Nothing carried over: offer yesterday's work instead, which is the other honest
+  // guess at "today". Neither is offered when there is nothing at all — an empty box
+  // with its placeholder asks the question; a box holding `-` answers it wrongly.
+  const fallback = draft.yesterday
+    .map((y) => todayLine(y.key, y.headline))
+    .filter((line): line is string => Boolean(line))
+    .slice(0, MAX_PREFILL);
+  const today = open.length ? open : fallback;
+
+  const blocker = (draft.blocked ?? [])
+    .slice(0, MAX_PREFILL)
+    // Same reason as `todayLine`: a ticket key helps whoever reads it in the channel,
+    // a cluster id is noise nobody can look up.
+    .map((b) => `Pending ${clamp(b.text, 120)}${TICKET_KEY.test(b.key) ? ` (${b.key})` : ''}`);
+
+  return {
+    today: today.length ? today.join('\n') : undefined,
+    blocker: blocker.length ? blocker.join('\n') : undefined,
+  };
+}
 
 export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
   const blocks: KnownBlock[] = [
@@ -66,6 +135,7 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
   }
 
   blocks.push(divider());
+  const prefill = standupPrefill(draft);
   blocks.push({
     type: 'input',
     block_id: 'today',
@@ -75,9 +145,20 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
       type: 'plain_text_input',
       action_id: 'value',
       multiline: true,
+      // `initial_value` only when there is something to put in it: Slack renders an
+      // empty string as a filled-in answer of nothing, and the placeholder — which is
+      // the instruction — disappears behind it.
+      ...(prefill.today ? { initial_value: prefill.today } : {}),
       placeholder: { type: 'plain_text', text: 'ต่อจากเมื่อวานได้เลย ไม่ต้องยาว' },
     },
   } as KnownBlock);
+  if (prefill.today) {
+    blocks.push(
+      context(
+        'เติมให้จากงานที่ยังไม่ปิด — *เป็นข้อเสนอ ไม่ใช่คำพูดของคุณ* ลบทิ้งหรือพิมพ์ทับได้เลย',
+      ),
+    );
+  }
   blocks.push({
     type: 'input',
     block_id: 'blocker',
@@ -87,9 +168,18 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
       type: 'plain_text_input',
       action_id: 'value',
       multiline: true,
+      ...(prefill.blocker ? { initial_value: prefill.blocker } : {}),
       placeholder: { type: 'plain_text', text: 'ว่างไว้ได้ถ้าไม่มี' },
     },
   } as KnownBlock);
+  blocks.push(
+    context(
+      prefill.blocker
+        ? 'บรรทัดนี้คือข้อความที่ *คุณเขียนเอง* แล้วงานยังไม่ขยับ — เคลียร์แล้วลบทิ้งได้ · ' +
+            'ถ้ายังติด เติม `@คนที่ต้องทำให้ก่อน` หรือ `PO` ต่อท้าย ผมจะได้รู้ว่ารอใคร'
+        : 'รูปแบบเดียวกับ daily: `Pending [เรื่องที่รออยู่] [@คน หรือ PO]` · ไม่มีก็ว่างไว้',
+    ),
+  );
 
   blocks.push({
     type: 'actions',

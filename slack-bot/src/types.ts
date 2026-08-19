@@ -111,6 +111,19 @@ export interface StandupDraft {
   yesterday: Array<{ key: string; headline: string; note: string; evidence_id?: string }>;
   /** The pain-#1 fix: things still open from before, with how long they've sat. */
   carried_over: Array<{ key: string; headline: string; stale_days: number }>;
+  /**
+   * Blockers this person stated *themselves* — an item in `blocked` state whose
+   * proving message they wrote, carrying that message's text verbatim.
+   *
+   * The author check is not fussiness. Whatever sits in the DM's blocker box is
+   * one button press from being posted into the channel under this person's name,
+   * so it has to be a sentence they typed. An item can be blocked because somebody
+   * else said so, and prefilling that would put the bot's inference about a
+   * colleague into their mouth.
+   *
+   * Optional because a fixture-supplied draft has none.
+   */
+  blocked?: Array<{ key: string; headline: string; text: string; evidence_id?: string }>;
 }
 
 export interface Ledger {
