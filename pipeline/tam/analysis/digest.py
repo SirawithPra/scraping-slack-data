@@ -224,7 +224,7 @@ def apply_declarations(
     "waiting for clearing user on dev because data issues", which nobody had cleared.
     A cluster that wide is a channel, not a work item, and its tail says nothing about
     any one message in it. The same error, in the same shape, once made every drift
-    finding an artifact (see `analysis/drift._mentioning`).
+    finding an artifact (see `analysis/drift.mentioning`).
 
     Whoever wrote a blocker is the one who gets to say it is gone, so each declaration
     is tested against its own author's later "none" — not against the cluster's, and

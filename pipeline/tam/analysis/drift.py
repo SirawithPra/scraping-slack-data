@@ -91,7 +91,7 @@ class Drift:
         }
 
 
-def _mentioning(topic: Any, ticket: str) -> list[dict[str, Any]]:
+def mentioning(topic: Any, ticket: str) -> list[dict[str, Any]]:
     """Messages in this topic that name the ticket.
 
     This is the whole difference between a finding and an artefact. The first version
@@ -138,7 +138,7 @@ def detect(topics: Sequence[Any], issues: Sequence[Any]) -> list[Drift]:
         if issue is None:
             continue
 
-        mentions = _mentioning(topic, issue.key)
+        mentions = mentioning(topic, issue.key)
         last = mentions[-1] if mentions else None
         last_ts = timestamp(last) if last else float("nan")
         last_id = str(last["id"]) if last else ""
