@@ -49,7 +49,7 @@ from dotenv import load_dotenv
 
 from tam.retrieval.embeddings import apply_transform, fit_transform, quiet_third_party_logs, set_model
 from tam.analysis.graph import DEFAULT_RESOLUTION, EdgeWeights, build_graph, cluster_label, detect_communities
-from tam.core import DEFAULT_RECORDS, embed_records, load_records
+from tam.core import DEFAULT_RECORDS, channel_projects, embed_records, load_records, skipped_channels
 from tam.retrieval.signals import ANCHOR_PATTERNS, SignalIndex
 
 # One definition of a ticket key, shared with the anchor extractor. Importing the
@@ -128,6 +128,9 @@ def trusted_prefixes(records: Sequence[dict[str, Any]], *, configured: Sequence[
     itself as the channel grows and needs no list to be complete.
     """
     named = {prefix.strip().upper() for prefix in configured or () if prefix.strip()}
+    # A team that wrote down "this channel is REVERAPP" has named a project key just as
+    # surely as TICKET_PROJECTS does, and having to say it twice is how the two drift.
+    named |= {name.upper() for name in channel_projects().projects()}
     if named:
         return named
     numbers: dict[str, set[str]] = defaultdict(set)
@@ -172,16 +175,28 @@ def corpus_ticket_counts(records: Sequence[dict[str, Any]], trusted: set[str] | 
     return counts
 
 
-def pick_ticket(candidates: Sequence[str], counts: Counter[str]) -> str:
+def pick_ticket(candidates: Sequence[str], counts: Counter[str], prefer: str = "") -> str:
     """The one ticket a message is *about*, when it names several.
 
     A message that mentions two tickets usually belongs to the one the channel is
     already discussing and merely references the other ("blocked by REV-1400").
     Corpus frequency is a decent proxy for that; position breaks the tie, since
     the subject tends to come first.
+
+    `prefer` is the project this channel *is*, from `TAM_CHANNEL_PROJECTS`, and it
+    outranks frequency because it is stated rather than inferred. It fixes the case
+    frequency gets exactly backwards: a channel that says "MOB-12 รอ REV-1421 ก่อน"
+    is about MOB-12, but REV-1421 belongs to the busiest project in the corpus and
+    wins every count. A candidate from the channel's own project is preferred; when
+    none is, nothing changes and frequency decides as before.
     """
     if not candidates:
         return ""
+    wanted = prefer.strip().upper()
+    if wanted:
+        own = [key for key in candidates if ticket_prefix(key) == wanted]
+        if own:
+            candidates = own
     return max(candidates, key=lambda key: (counts.get(key, 0), -candidates.index(key)))
 
 
@@ -212,6 +227,7 @@ def link_records(
     overrides = overrides or {}
     trusted = trusted_prefixes(records, configured=projects)
     counts = corpus_ticket_counts(records, trusted)
+    channels = channel_projects()
     names = cluster_names or {}
 
     keys: list[str] = [""] * len(records)
@@ -241,11 +257,17 @@ def link_records(
         candidates = ticket_keys(str(record.get("text", "")), trusted)
         if not candidates:
             continue
-        ticket = pick_ticket(candidates, counts)
+        own_project = channels.project_for(record.get("channel_id"))
+        ticket = pick_ticket(candidates, counts, prefer=own_project)
         reason = f"ข้อความอ้าง {ticket}"
         if len(candidates) > 1:
             others = ", ".join(key for key in candidates if key != ticket)
-            reason += f" (อ้าง {others} ด้วย แต่ {ticket} ถูกพูดถึงมากกว่าในแชนเนล)"
+            why = (
+                f"แชนเนลนี้คือโปรเจกต์ {channels.label_of(own_project)}"
+                if own_project and ticket_prefix(ticket) == own_project.upper()
+                else f"{ticket} ถูกพูดถึงมากกว่าในแชนเนล"
+            )
+            reason += f" (อ้าง {others} ด้วย แต่{'' if why.startswith('แชนเนล') else ' '}{why})"
         assign(index, f"ticket:{ticket}", "explicit", reason)
 
     # ---- tier: thread -------------------------------------------------------
@@ -389,6 +411,78 @@ def load_overrides(path: Path | None) -> dict[str, str]:
     if dropped:
         log.warning("%s: skipped %d override row(s) with no record_id", path, dropped)
     return overrides
+
+
+def unresolved_overrides(
+    records: Sequence[dict[str, Any]], overrides: dict[str, str]
+) -> list[dict[str, str]]:
+    """The corrections that cannot be honoured, because their record is not here.
+
+    A link is made in Slack against a message the person is looking at, and applied
+    here against the corpus — two sets that are not the same. Measured on the live
+    corrections file, 2 of 8 links pointed at a record no stage could find: one in a
+    channel `read_records` excludes, one not yet exported. Both were a `log.warning`
+    in a file nobody opens, while the person who made them had been told "เชื่อมแล้ว".
+
+    So the mismatch is returned as data. Each row carries `why` in the form a reader
+    can act on — re-including the channel, or running the export — because "ignored"
+    is not a thing anybody can do something about.
+    """
+    present = {str(record["id"]) for record in records}
+    skipped = skipped_channels()
+    rows: list[dict[str, str]] = []
+    for record_id, key in sorted(overrides.items()):
+        if record_id in present or not key:
+            continue
+        # `msg_<CHANNEL>_<ts>` is how prepare_messages names a Slack record, so the
+        # commonest cause is readable straight off the id, with no corpus lookup.
+        parts = record_id.split("_")
+        channel = parts[1] if len(parts) > 2 and parts[0] == "msg" else ""
+        rows.append(
+            {
+                "record_id": record_id,
+                "key": key,
+                "channel": channel,
+                "why": (
+                    f"ข้อความอยู่ใน channel {channel} ซึ่งถูกตั้งค่าให้ข้าม"
+                    if channel and channel in skipped
+                    else "ยังไม่มีข้อความนี้ใน corpus — น่าจะยังไม่ได้ export เข้ามา"
+                ),
+            }
+        )
+    return rows
+
+
+def save_overrides(path: Path, entries: Sequence[dict[str, Any]]) -> int:
+    """Add human corrections to the overrides file, last write per record winning.
+
+    The same file, the same shape and the same "last write wins" rule as the Slack
+    bot's `saveOverride` — the two halves write to one place on purpose, so a link
+    made from Slack and a link made from a paste are the same fact rather than two
+    stores that can disagree.
+
+    Written to a temporary file and renamed, because the reader is a live web server:
+    `load_overrides` raises on a torn read, and a rebuild that fails because somebody
+    linked a ticket at the wrong moment is a bug with no acceptable frequency.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    existing: list[dict[str, Any]] = []
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except json.JSONDecodeError as error:
+            raise ValueError(f"{path} is not valid JSON ({error}) — refusing to overwrite corrections") from error
+        if isinstance(data, dict):
+            existing = [{"record_id": str(k), "key": str(v), "by": "unknown", "at": ""} for k, v in data.items()]
+        else:
+            existing = [row for row in data if isinstance(row, dict) and row.get("record_id")]
+    incoming = {str(row["record_id"]) for row in entries}
+    kept = [row for row in existing if str(row.get("record_id")) not in incoming]
+    kept.extend(dict(row) for row in entries)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(kept, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+    return len(kept)
 
 
 def parse_args() -> argparse.Namespace:

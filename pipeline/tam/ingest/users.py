@@ -26,6 +26,18 @@ the id was the problem. The cache is written by:
 
 which needs SLACK_TOKEN with `users:read`. It writes data/user_names.json, which is
 gitignored: display names are personal data and this repo is public.
+
+That one file is the whole mapping, and the Slack bot reads it too
+(`slack-bot/src/names.ts` mirrors the pools and the sha1 derivation below), so the
+dashboard and Slack never name the same person differently. Two more commands exist
+for the cases a fetch cannot cover:
+
+    python3 -m tam.ingest.users --set U0123ABCDE=ชื่อ    # somebody users.list omits
+    python3 -m tam.ingest.users --check --records …     # ids still rendering as pseudonyms
+
+`--check` matters more than it sounds: in `slack` mode an id with no cached name
+renders as a *pseudonym*, which reads like a real Thai name, and nothing on the
+screen marks it as invented. The list is how you tell which names are real.
 """
 
 from __future__ import annotations
@@ -241,10 +253,34 @@ def save_names(names: dict[str, str], path: Path | None = None) -> Path:
     return path
 
 
+DEFAULT_RECORDS = NAMES_PATH.parent / "processed" / "combined.json"
+
+
+def corpus_ids(records_path: Path) -> dict[str, int]:
+    """Every id-shaped `user` in a processed corpus, with how often it appears.
+
+    Sorted by count when reported, because the id that speaks two hundred times is
+    the one whose missing name ruins a screen.
+    """
+    data = json.loads(records_path.read_text(encoding="utf-8"))
+    records = data.get("records", []) if isinstance(data, dict) else data
+    counts: dict[str, int] = {}
+    for record in records:
+        if not isinstance(record, dict):
+            continue
+        user = str(record.get("user") or "").strip()
+        if user and is_slack_id(user):
+            counts[user] = counts.get(user, 0) + 1
+    return counts
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--fetch", action="store_true", help="Read every display name from Slack into data/user_names.json")
+    parser.add_argument("--fetch", action="store_true", help="Read every display name from Slack into data/user_names.json (merges, never clobbers)")
     parser.add_argument("--show", action="store_true", help="Print the cached names and the active mode")
+    parser.add_argument("--set", action="append", default=[], metavar="ID=NAME", help="Map one id by hand, for someone Slack will not return (deactivated, another workspace)")
+    parser.add_argument("--check", action="store_true", help="List corpus ids that have no name yet — the ones rendering as invented pseudonyms")
+    parser.add_argument("--records", type=Path, default=DEFAULT_RECORDS, help=f"Corpus for --check (default {DEFAULT_RECORDS.name})")
     parser.add_argument("--out", type=Path, default=NAMES_PATH, help=f"Cache path (default {NAMES_PATH.name})")
     return parser.parse_args()
 
@@ -254,16 +290,65 @@ def main() -> None:
     load_dotenv()
     args = parse_args()
 
+    if args.set:
+        names = load_names(args.out)
+        for pair in args.set:
+            user_id, _, name = pair.partition("=")
+            user_id, name = user_id.strip(), name.strip()
+            if not user_id or not name:
+                raise SystemExit(f"--set {pair!r} should look like --set U0123ABCDE=ชื่อ")
+            if not is_slack_id(user_id):
+                raise SystemExit(f"--set {pair!r}: {user_id!r} is not shaped like a Slack user id.")
+            names[user_id] = name
+            print(f"  {user_id:14} {name}")
+        path = save_names(names, args.out)
+        print(f"เขียนลง {path} แล้ว ({len(names)} ชื่อ) — ขึ้นทุกหน้าจอทันที ไม่ต้อง reindex")
+        return
+
     if args.fetch:
         token = os.getenv("SLACK_TOKEN", "").strip()
         if not token:
             raise SystemExit("SLACK_TOKEN is not set. It needs the users:read scope; see pipeline/.env.example.")
-        names = fetch_names(token)
+        fetched = fetch_names(token)
+        # Merge, never clobber. Slack is authoritative for the ids it returns, but it
+        # does not return everyone: a deactivated account, a guest from another
+        # workspace, or a bot posting through a webhook can be missing from
+        # users.list entirely, and those are exactly the ids somebody had to map by
+        # hand with --set. Overwriting the file wiped that work on every re-fetch.
+        existing = load_names(args.out)
+        kept = {user_id: name for user_id, name in existing.items() if user_id not in fetched}
+        names = {**kept, **fetched}
         path = save_names(names, args.out)
         bots = sum(1 for name in names.values() if name.endswith("(bot)"))
-        log.info("Wrote %d name(s) to %s (%d bot(s))", len(names), path, bots)
+        log.info("Wrote %d name(s) to %s (%d from Slack, %d bot(s), %d kept from --set)", len(names), path, len(fetched), bots, len(kept))
         print("\nชื่อจะขึ้นในทุกหน้าจอทันที ไม่ต้อง reindex — การแปลชื่อเกิดตอนแสดงผล")
+        print("Slack bot อ่านไฟล์เดียวกันนี้ ชื่อบนเว็บกับใน Slack จึงตรงกัน")
         print("อยากซ่อนชื่อจริงตอนเดโม: TAM_NAMES=pseudonym")
+        return
+
+    if args.check:
+        if not args.records.exists():
+            candidates = sorted(p.name for p in args.records.parent.glob("*.json")) if args.records.parent.exists() else []
+            hint = ("  ที่มีอยู่: " + ", ".join(candidates)) if candidates else "  (โฟลเดอร์ processed ยังว่าง — รัน tam.ingest.prepare_messages ก่อน)"
+            raise SystemExit(f"ไม่มีไฟล์ {args.records}\n{hint}\n  ระบุเองด้วย: --check --records data/processed/<ไฟล์>.json")
+        counts = corpus_ids(args.records)
+        names = load_names(args.out)
+        missing = sorted(((count, user_id) for user_id, count in counts.items() if user_id not in names), reverse=True)
+        print(f"corpus {args.records.name}: {len(counts)} id · มีชื่อแล้ว {len(counts) - len(missing)} · ยังไม่มีชื่อ {len(missing)}")
+        if not missing:
+            print("ทุก id ในคลังมีชื่อจริงครบ — ไม่มีหน้าจอไหนแสดงชื่อสมมุติ")
+            return
+        # This is the answer to "บางชื่อมันไม่ตรง": in slack mode an id with no cached
+        # name still has to render as *something*, and that something is a pseudonym
+        # that looks exactly like a real Thai name. Nothing on the screen says which
+        # rows are invented, so the list has to be printable on demand.
+        print("id พวกนี้จะแสดงเป็นชื่อสมมุติ (อ่านได้แต่ไม่ใช่ชื่อจริง):")
+        for count, user_id in missing[:40]:
+            print(f"  {user_id:14} {count:>5} ข้อความ  → ตอนนี้แสดงเป็น {pseudonym(user_id)}")
+        if len(missing) > 40:
+            print(f"  … อีก {len(missing) - 40} id")
+        print("\nแก้: python3 -m tam.ingest.users --fetch   (ถ้าเป็นคนที่ยังอยู่ใน workspace)")
+        print(f"หรือ: python3 -m tam.ingest.users --set {missing[0][1]}=ชื่อที่อยากให้แสดง")
         return
 
     resolver = Names()
@@ -274,6 +359,8 @@ def main() -> None:
     elif not NAMES_PATH.exists():
         print("ยังไม่มี cache ชื่อ — ดึงด้วย: python3 -m tam.ingest.users --fetch")
         print("ตอนนี้ทุกหน้าจอจะใช้ชื่อสมมุติที่คงที่ต่อคน เช่น", pseudonym("U0EXAMPLE12"))
+    else:
+        print("ดู id ที่ยังไม่มีชื่อ: python3 -m tam.ingest.users --check --records data/processed/<ไฟล์>.json")
 
 
 if __name__ == "__main__":

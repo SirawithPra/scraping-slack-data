@@ -28,14 +28,24 @@ import re
 from dataclasses import dataclass
 from typing import Any, Iterable, Sequence
 
-from tam.analysis.relations import cue_offset
+from tam.analysis.relations import TYPES_BY_NAME, cue_offset
+from tam.ingest.quoted import asserted_lines
 
 #: Waiting expressions, matched as whole words — Latin with boundaries, Thai by
 #: tokenising both sides (`relations.cue_offset`). `pending` earns its place here and not
 #: in the message-level list precisely because a line is small enough to attribute.
 LINE_CUES: tuple[str, ...] = (
     "pending", "blocked", "waiting on", "waiting for", "on hold", "still waiting",
-    "รออยู่", "ยังรอ", "ต้องรอ", "ยังไม่มา", "ยังทำไม่ได้", "ติดที่",
+    "รออยู่", "ยังรอ", "ต้องรอ", "ยังไม่มา", "ยังทำไม่ได้",
+    # The same declaration with one word inserted. The tokeniser splits
+    # `ยังทำต่อไม่ได้` into `[ยัง, ทำ, ต่อ, ไม่, ได้]`, so the cue above cannot reach it.
+    # Measured on the real corpus it adds exactly one line — `อันนั้นยังติดเรื่อง clearing
+    # user on dev ครับ data ไม่สะอาด รอ ops เคลียร์ให้ก่อน ยังทำต่อไม่ได้` — and that is a
+    # blocker by any reading. §7.11 of docs/EXPERIMENTS.md has the cues measured beside it
+    # and rejected, including bare `รอ`, which is still wrong but no longer for the reason
+    # §7.1 gave.
+    "ยังทำต่อไม่ได้",
+    "ติดที่",
 )
 #: Tried and removed: `ยังไม่ได้` ("hasn't yet"). It fired five times and not one was a
 #: blocker — they were things not started ("fe mobile ผมยังไม่ได้ดู", "address ยังไม่ได้เขียน
@@ -108,6 +118,46 @@ def _named(line: str) -> tuple[str, ...]:
     return tuple(seen)
 
 
+#: Words that turn a sentence around. `เสร็จแล้วครับ แต่ Pending p'choke` finishes one
+#: thing and is stuck on another; without the `แต่` the same two cues mean the opposite.
+#: Completion vocabulary, borrowed from the relation typer rather than restated, so a
+#: cue added there is understood here too.
+DONE_CUES = TYPES_BY_NAME["resolves"].cues
+
+CONTRAST = ("but", "however", "แต่")
+
+
+def completion_governs(line: str, waiting_cue: str) -> bool:
+    """True when the line's leading clause reports completion, not waiting.
+
+    `P'Mos - Done all API pending + support` contains `pending`, and is a report that the
+    pending APIs are done. The signal available is position: a line's first clause governs
+    it, so a completion word ahead of the waiting cue disqualifies the line — unless a
+    contrast word sits between them, which is the sentence turning.
+
+    Stated plainly because it decides how far to trust this: the rule rests on two lines of
+    the real corpus, one in each direction. `Done all API pending + support` is the line it
+    exists to reject, and it was putting a 26-message work item on the blocked list on its
+    own. `ฝั่ง API event ผมต่อเสร็จแล้วครับ แต่ Pending p'choke prepare api อีกตัวนึงอยู่` is
+    the line a bare position rule would have cost, and it is a genuine blocker. That is
+    thin evidence for a heuristic, so both directions are pinned in
+    `tests/test_blocker_lines.py` rather than left to a future reading of this docstring —
+    and the escape clause is deliberately three words long, not a general negation model.
+    """
+    lowered = line.lower()
+    waiting_at = cue_offset(lowered, waiting_cue)
+    if waiting_at < 0:
+        return False
+    done_at = min(
+        (offset for offset in (cue_offset(lowered, cue) for cue in DONE_CUES) if offset >= 0),
+        default=-1,
+    )
+    if done_at < 0 or done_at >= waiting_at:
+        return False
+    between = lowered[done_at:waiting_at]
+    return not any(cue_offset(between, word) >= 0 for word in CONTRAST)
+
+
 def lines_of(text: str) -> list[BlockerLine]:
     """The waiting lines in one message's text, without the record metadata."""
     out: list[BlockerLine] = []
@@ -125,6 +175,9 @@ def lines_of(text: str) -> list[BlockerLine]:
             continue
         lowered = body.lower()
         cue = next((one for one in LINE_CUES if cue_offset(lowered, one) >= 0), "")
+        if cue and completion_governs(body, cue):
+            # The waiting word is real; what it is attached to is finished work.
+            continue
         if cue:
             out.append(BlockerLine("", "", 0.0, body, cue, _named(body), False))
         elif under_waiting_heading:
@@ -137,6 +190,15 @@ def blocker_lines(records: Iterable[dict[str, Any]]) -> list[BlockerLine]:
 
     Tracker records are skipped: an issue's description is not somebody reporting that
     they are stuck, and its own summary would match these cues constantly.
+
+    Read from the author's own lines, not raw `text`. `quoted.py` exists because a cue
+    inside pasted material marked a work item `resolved` when a customer had written the
+    word, and reading `text` here reintroduced that hole one granularity down. It was not
+    hypothetical: `` `/meowtam recall` ,`/meowtam blocked` , `/meowtam silent` ดูสิว่า…``
+    put a work item at the top of the standup as *blocked*, because `blocked` is the name
+    of a slash command somebody was testing. Inline code is exactly the region
+    `asserted_lines` removes. Measured on the 1,517-record corpus the change costs
+    nothing else: 30 lines become 29, and the one that goes is that one.
     """
     found: list[BlockerLine] = []
     for record in records:
@@ -148,7 +210,7 @@ def blocker_lines(records: Iterable[dict[str, Any]]) -> list[BlockerLine]:
             ts = 0.0
         rid = str(record.get("id", ""))
         user = str(record.get("user") or "")
-        for line in lines_of(str(record.get("text", ""))):
+        for line in lines_of("\n".join(asserted_lines(str(record.get("text", ""))))):
             found.append(
                 BlockerLine(rid, user, ts, line.line, line.cue, line.waiting_on, line.from_heading)
             )

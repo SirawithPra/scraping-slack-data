@@ -934,11 +934,95 @@ curl localhost:8899/api/item/1          # the cluster rank still works, but name
 curl "localhost:8899/api/search?q=Android&k=10"   # hits, plus a top-level `relevance`
 curl "localhost:8899/api/search?q=Android&k=1&preset=dense"   # same relevance, any preset
 curl localhost:8899/api/health
+curl localhost:8899/api/tracker         # where Slack and YouTrack disagree
+curl localhost:8899/api/projects        # which channels are which project
 
-# the one write route: re-read records + rebuild, no restart. It needs the token
-# the server printed at startup, because it changes what everyone else is reading.
+# The tracker itself, not the corpus. This is what the Slack ticket picker calls on
+# every keystroke, and the distinction is the point: the corpus only holds tickets
+# somebody already typed into Slack, which is exactly the set that does not need
+# linking. A bare number resolves to a ticket only when one project is in scope.
+curl "localhost:8899/api/tickets/search?q=redemption&project=REVERAPP"
+curl "localhost:8899/api/tickets/search?q=140&project=REVERAPP"
+
+# the write routes. All three need the token the server printed at startup, because
+# they change what everyone else is reading — or, for the comment, what the whole
+# team sees on a ticket.
 curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" localhost:8899/api/reindex
+
+# One comment on one ticket. 503 with a reason when YOUTRACK_WRITE is not set: "this
+# deployment does not write" is a state of the server, not a fault in the request, and
+# the caller shows the reason rather than reporting a write that did not happen.
+curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"text":"ผูกกับเธรดใน Slack: https://…"}' \
+  localhost:8899/api/ticket/REVERAPP-140/comment
+
+# A chat somebody copied out of a DM, ingested and attached to a ticket in one call.
+# `dry_run` parses and returns the messages without storing anything — the paste
+# format is a heuristic and a misread paste looks exactly like a short conversation,
+# so the caller shows the parse to a person first.
+curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"chat":"Aim  [2:21 PM]\nข้อความ","title":"DM พี่ Natta","day":"2026-08-19","dry_run":true}' \
+  localhost:8899/api/paste
+
+# Without dry_run, and with link_key, it does four things under one lock and in this
+# order: merge into the corpus, write the link overrides, rebuild, then report what the
+# *rebuilt* digest holds. `item_key` and `in_item` are the answer to "is it really
+# attached now" — and `in_item: 0` is a real, reportable answer.
+curl -X POST -H "X-TAM-Token: $TAM_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"chat":"…","title":"DM พี่ Natta","day":"2026-08-19","link_key":"REVERAPP-140","by":"U0…"}' \
+  localhost:8899/api/paste
 ```
+
+### Writing to YouTrack
+
+Off until two variables are set, and they are two on purpose. `YOUTRACK_WRITE=1` is
+"may this deployment write at all" — a decision somebody makes once and can revoke
+without touching a token. `YOUTRACK_WRITE_TOKEN` is "with whose permissions", and it
+falls back to `YOUTRACK_TOKEN` only once the first is on. One combined variable would
+mean turning writing on hands write access to every read in the codebase.
+
+One token is normally enough — `YOUTRACK_WRITE_TOKEN` exists for the day the read and
+write identities should differ, and is not something to fill in by default.
+
+```bash
+python3 -m tam.ingest.youtrack --search "redemption" --limit 10
+
+# Prove the token may comment, before finding out during a demo. It writes a comment
+# that says what it is and deletes it again, reporting both steps — and if the delete
+# fails it says so with the id rather than leaving a probe nobody knows about.
+YOUTRACK_WRITE=1 python3 -m tam.ingest.youtrack --check-write REVERAPP-140
+
+YOUTRACK_WRITE=1 python3 -m tam.ingest.youtrack --comment REVERAPP-140 --text "ผูกกับ Slack: …"
+```
+
+There is no read-only way to ask YouTrack "may I comment": permissions live behind admin
+endpoints an ordinary token cannot see, so the only honest test of a write is a write.
+
+What gets written is a **comment**, never a description. Overwriting a ticket's
+description from a Slack modal destroys whatever the PO wrote there, with no undo and
+no record of what was lost; a comment sits beside the original where the owner can read
+both and apply it themselves.
+
+### `TAM_CHANNEL_PROJECTS`: which channels are which project
+
+    TAM_CHANNEL_PROJECTS=REVERAPP (Rever App)=C0ABC,C0DEF; MOB=C0GHI
+
+The one structural fact nothing here can infer. Everything else is derived from the
+text — but that `#reverapp-dev` and `#rvr-qa` are one project while `#mobile` is another
+is knowledge only the team has, and their names not matching means nothing.
+
+Grouped by project rather than keyed by channel, because that is the direction the fact
+runs: "these channels are the same project". The bracketed label is optional and is what
+the UI prints.
+
+It changes two things. The linker prefers the channel's own project when a message names
+two tickets — "MOB-12 รอ REV-1421 ก่อน" is *about* MOB-12, but in a corpus where REV is
+the busy project, frequency picks REV-1421 every time and the work item ends up named
+after the ticket the message was merely waiting on. And a project named here counts as a
+real ticket prefix, so it does not also have to be repeated in `TICKET_PROJECTS`.
+
+Set the same value in `slack-bot/.env` — same variable, same syntax — and the bot's
+ticket picker opens on that channel's project instead of the whole tracker.
 
 Startup cost is embedding the corpus. It reuses `data/processed/embeddings_*.npz`
 when the model and texts match, so a second start is seconds rather than minutes
@@ -994,6 +1078,13 @@ python3 -m tam.web.server --records data/processed/messages.json
 # Every Slack refresh after that merges too, or it would drop the meetings:
 python3 -m tam.ingest.export_slack
 python3 -m tam.ingest.prepare_messages --merge-into data/processed/messages.json
+
+# A room the token cannot reach — a DM, a private group, a customer's workspace.
+# Select the messages in Slack, copy, and paste. --dry-run prints what was read
+# and writes nothing, which is the only honest way to check a heuristic parser.
+pbpaste | python3 -m tam.ingest.slack_paste --title "DM Natta" --date 2026-08-19 --dry-run
+pbpaste | python3 -m tam.ingest.slack_paste --title "DM Natta" --date 2026-08-19 \
+                    --merge-into data/processed/messages.json
 ```
 
 With no Slack access at all, the committed sample runs the whole thing — see
@@ -1230,6 +1321,8 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 | [finetune.py](tam/evaluation/finetune.py) | Contrastive fine-tune on same-thread pairs |
 | **Standup / meetings** | |
 | [meetings.py](tam/ingest/meetings.py) | Transcript (VTT / SRT / `Name:` lines / JSON) → the same records Slack produces |
+| [notes.py](tam/ingest/notes.py) | A note somebody typed, pasted whole → one record, id hashed from its content |
+| [slack_paste.py](tam/ingest/slack_paste.py) | A conversation copied out of the Slack app → one record per message, for the DMs and private groups no token reaches |
 | [digest.py](tam/analysis/digest.py) | Work items, blocked/resolved state, blockers, timelines — all derived, no LLM |
 | [summarize.py](tam/analysis/summarize.py) | Prose for a work item; `SUMMARIZER=template` (offline) or `claude` |
 | [server.py](tam/web/server.py) | FastAPI prototype: digest, blockers, item timeline, grounding search with `relevance`, upload |
@@ -1251,6 +1344,22 @@ with 8 labels pulls the micro figure around and the macro one not at all.
 | [slack-app-manifest.json](slack-app-manifest.json) | Read-only Slack app for the exporter — history scopes only |
 
 ## Known limitations
+
+- **A pasted Slack conversation is read by heuristic, and the format is undocumented.**
+  `tam.ingest.slack_paste` reads what the Slack app puts on the clipboard: a name and a
+  clock open a run, a bare clock continues it, and furniture (`6 replies`, an
+  attachment's file name, `(edited)`, reaction rows) arrives welded to the line in front
+  of it. The safeguard against mis-reading is that **only a bracket that parses as a
+  clock opens a message** — `REVERAPP-228 [BUG][View redemption result]…` stays one
+  sentence rather than becoming three messages by an invented speaker. What it cannot
+  recover is what the clipboard never carried: the date (so the day is asked for, and
+  clocks running backwards are read as crossing midnight), the message ids (so there is
+  no permalink back to the original), and the thread replies a `6 replies` marker refers
+  to. Records are stamped `source: slack_paste`, never `slack`, and the dashboard and
+  the bot label them apart — an exported message is whole, a pasted one is whatever
+  somebody happened to select. Both the web form and `--dry-run` show the parse before
+  anything is stored, because the failure mode of a heuristic parser is a silent one: a
+  mis-read paste looks exactly like a short conversation.
 
 - **Recall's relevance gate needs two signals, and still has one known hole.**
   Nothing in a ranking can express "nothing matched": the fused score is

@@ -523,10 +523,19 @@ def timeline(topic: Topic, records: Sequence[dict[str, Any]]) -> list[dict[str, 
             "from_ts": timestamp(source),
             "from_id": str(source["id"]),
             "from_text": " ".join(str(source["text"]).split())[:160],
-            "from_user": names().of(source.get("user")) or "-",
+            # Both, and in this order: the id is what a caller joins on, the name is
+            # what it prints. This used to send only the resolved name under the
+            # `_user` key, which made the field unusable twice over — the Slack bot
+            # could not resolve it under *its own* TAM_NAMES (so a bot in pseudonym
+            # mode rendered whatever the server had already decided, real names
+            # included), and nothing downstream could match the value against a
+            # user id. `_user` is the id now; `_user_name` is the rendering of it.
+            "from_user": str(source.get("user") or ""),
+            "from_user_name": names().of(source.get("user")) or "-",
             "to_id": str(target["id"]),
             "to_text": " ".join(str(target["text"]).split())[:160],
-            "to_user": names().of(target.get("user")) or "-",
+            "to_user": str(target.get("user") or ""),
+            "to_user_name": names().of(target.get("user")) or "-",
             "evidence": relation.evidence,
             "also_answers": existing["also_answers"] + 1 if existing else 0,
         }
@@ -590,8 +599,8 @@ def main() -> None:
             print("  (no typed relation in this topic — only same_topic edges)")
         for event in events:
             print(f"  {event['when']}  {event['relation']}")
-            print(f"     from [{event['from_user']}] {names().in_text(event['from_text'])[:88]}")
-            print(f"       to [{event['to_user']}] {names().in_text(event['to_text'])[:88]}")
+            print(f"     from [{event['from_user_name']}] {names().in_text(event['from_text'])[:88]}")
+            print(f"       to [{event['to_user_name']}] {names().in_text(event['to_text'])[:88]}")
         return
 
     topics = digest.blocked if args.blockers else digest.topics
@@ -614,7 +623,10 @@ def main() -> None:
         if topic.evidence:
             print(f"   {topic.evidence}")
         for record in topic.recent(digest.since)[-3:]:
-            tag = "meeting" if record.get("source") == "meeting" else "slack"
+            # The source as stamped, not a two-way guess: a pasted chat and a typed
+            # note are neither Slack exports nor transcripts, and printing them as
+            # "slack" claims an origin they do not have.
+            tag = str(record.get("source") or "slack")
             body = names().in_text(" ".join(str(record["text"]).split()))
             print(f"     [{tag}] {names().of(record.get('user')) or '-'}: {body[:92]}")
 

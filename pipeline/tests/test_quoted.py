@@ -10,7 +10,7 @@ text back to the cue matcher.
 
 from __future__ import annotations
 
-from tam.ingest.quoted import analysis_text, annotate, bot_ids, for_analysis, is_pasted
+from tam.ingest.quoted import analysis_text, annotate, asserted_lines, bot_ids, for_analysis, is_pasted
 
 
 def test_a_cue_inside_a_fenced_block_does_not_survive() -> None:
@@ -81,3 +81,41 @@ def test_annotate_never_edits_the_displayed_text() -> None:
     annotated = annotate([{"id": "a", "text": original}])[0]
     assert annotated["text"] == original
     assert annotated["analysis_text"] == "ดูนี่"
+
+
+def test_asserted_lines_keeps_the_line_structure_analysis_text_collapses() -> None:
+    """The field cue matching needed and did not have.
+
+    `analysis_text` collapses every run of whitespace, so on the real corpus 201 posts
+    with four or more lines each read as a single line — which is why a cue anywhere in a
+    twelve-line daily update used to type the whole update. See
+    `tests/test_line_level_cues.py` for what reads them.
+    """
+    post = "• update\n\n◦ fixed the sorting API  \n◦ waiting for dev"
+    assert asserted_lines(post) == ["• update", "◦ fixed the sorting API", "◦ waiting for dev"]
+    assert len(asserted_lines("one line only")) == 1
+    assert asserted_lines("   \n\n  ") == []
+
+
+def test_asserted_lines_applies_the_same_removals() -> None:
+    """Line structure must not become a way back in for text nobody asserted."""
+    assert asserted_lines("ดูนี่\n```log: fix เสร็จแล้ว```") == ["ดูนี่"]
+    assert asserted_lines("> เขาบอกว่าเสร็จแล้ว\nจริงเหรอ") == ["จริงเหรอ"]
+    assert asserted_lines("~fix แล้ว~\nยังไม่ได้ทำ") == ["ยังไม่ได้ทำ"]
+
+
+def test_analysis_text_is_exactly_the_asserted_lines_joined() -> None:
+    """The invariant that let the refactor land without changing any existing caller.
+
+    Embedding, BM25 and the state gate all read `analysis_text`; every one of them must
+    see the byte-identical string it saw before lines became visible.
+    """
+    for text in (
+        "",
+        "one line",
+        "a  b\n\n  c  ",
+        "• update\n◦ fixed\n◦ waiting for dev",
+        "ดูนี่\n```pasted```\nต่อ",
+        "> quoted\nreal line\n~struck~ kept",
+    ):
+        assert analysis_text(text) == " ".join(asserted_lines(text))

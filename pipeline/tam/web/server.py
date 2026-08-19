@@ -65,7 +65,7 @@ import tempfile
 import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator, Sequence
 from urllib.parse import quote, quote_plus, urlsplit
@@ -74,18 +74,21 @@ import numpy as np
 import uvicorn
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from tam.analysis.digest import DEFAULT_WINDOW_DAYS, Digest, Topic, build_digest, timeline, window_start
-from tam.analysis.linker import load_overrides
+from tam.analysis.linker import load_overrides, save_overrides, unresolved_overrides
 from tam.analysis.digest import names
 from tam.retrieval.embeddings import model_name, quiet_third_party_logs
 from tam.ingest.meetings import merge_into, merge_utterances, parse_iso, parse_transcript, to_records
 from tam.retrieval.retrieve import DEFAULT_PRESET, build_retriever
-from tam.core import DEFAULT_RECORDS, TamDataError, format_timestamp, read_records
+from tam.core import DEFAULT_RECORDS, TamDataError, channel_projects, format_timestamp, read_records
 from tam.analysis.summarize import TopicSummary, backend_name, summarize_digest
 from tam.ingest.notes import merge_into as merge_note
 from tam.ingest.notes import to_record as note_record
+from tam.ingest.slack_paste import PasteParse
+from tam.ingest.slack_paste import merge_into as merge_paste
+from tam.ingest.slack_paste import read_paste
 from tam.retrieval.signals import timestamp
 from tam.report.visualize import build_page, cat, section, stat_tile
 
@@ -142,6 +145,16 @@ class State:
     tickets: dict[str, dict[str, Any]] = field(default_factory=dict)
     tracker_coverage: dict[str, int] = field(default_factory=dict)
     tracker_error: str = ""
+    #: Human ticket links this build could not honour, because the record they name
+    #: is not in the corpus. Carried on the build rather than logged, so the page can
+    #: show the person who made them that they did nothing. See
+    #: `linker.unresolved_overrides` for what puts a row here.
+    unresolved_links: list[dict[str, str]] = field(default_factory=list)
+    #: The corrections this build read, `{record_id: work_item_key}`. Kept beside the
+    #: digest because a page has to be able to compare what a person asked for with
+    #: what the clustering did — those two are not the same, and only one of them is
+    #: visible anywhere else.
+    link_overrides: dict[str, str] = field(default_factory=dict)
 
     def summary_for(self, key: int) -> TopicSummary | None:
         return next((summary for summary in self.summaries if summary.key == key), None)
@@ -301,7 +314,11 @@ def read_tracker(digest: Digest, records: list[dict[str, Any]]) -> dict[str, Any
     try:
         keys = [topic.item_id for topic in digest.topics if not str(topic.item_id).startswith("c")]
         issues = fetch_by_keys(keys) if keys else []
-        every = fetch_project(projects[0]) if projects else []
+        # Every configured project, not just the first. `YOUTRACK_PROJECTS` is plural and
+        # a team with two of them was having the second silently excluded from "open
+        # tickets" and from the silent-ticket list — which reads as a tracker where those
+        # tickets do not exist, rather than as one this never looked at.
+        every = [issue for project in projects for issue in fetch_project(project)]
         return {
             "drifts": [drift.as_dict() for drift in detect(digest.topics, issues)],
             "silent": [quiet.as_dict() for quiet in silent_tickets(every, records)],
@@ -336,7 +353,19 @@ def rebuild() -> State:
             # The corrections the bot writes are the linker's top tier. Without this
             # they are written, confirmed to the person who filed them, and then
             # ignored by every path that person can actually see.
-            digest = build_digest(records, since=window_start(previous.days), overrides=read_overrides())
+            overrides = read_overrides()
+            # Search is one of those paths. It ranks text, so until the link is in the
+            # index the message somebody linked to REV-250 is not findable by "REV-250"
+            # — which is the state that made a correct link indistinguishable from none.
+            retriever.index_links({
+                record_id: key.split(":", 1)[1]
+                for record_id, key in overrides.items()
+                if key.startswith("ticket:")
+            })
+            unresolved = unresolved_overrides(records, overrides)
+            if unresolved:
+                log.warning("%d human link(s) name a record this corpus does not have", len(unresolved))
+            digest = build_digest(records, since=window_start(previous.days), overrides=overrides)
             summaries = summarize_digest(digest, language=previous.language)
             tracker = read_tracker(digest, records)
         except BaseException as error:  # summarize_digest and build_retriever still exit like CLIs
@@ -357,6 +386,8 @@ def rebuild() -> State:
             tickets=tracker["tickets"],
             tracker_coverage=tracker["coverage"],
             tracker_error=tracker["error"],
+            unresolved_links=unresolved,
+            link_overrides=overrides,
             last_attempt_at=stamp,
             last_error="",
         )
@@ -426,7 +457,16 @@ ENTITY_NAMES = frozenset({"amp", "lt", "gt", "quot", "x27", "39"})
 
 #: What each source is called to a reader. "youtrack" is the tool's name, not the
 #: thing — the people reading this page call it a ticket, so the page does too.
-SOURCE_LABEL = {"slack": "Slack", "meeting": "ประชุม", "youtrack": "ทิกเก็ต", "slack_thread": "เธรด"}
+SOURCE_LABEL = {
+    "slack": "Slack",
+    "meeting": "ประชุม",
+    "youtrack": "youtrack",
+    "slack_thread": "เธรด",
+    # Pasted out of a DM or a private group. Named apart from "Slack" because the reader
+    # should know the difference: an exported message is whole, a pasted one is whatever
+    # somebody selected.
+    "slack_paste": "แชทที่วาง",
+}
 
 
 def highlight(text: str, terms: Sequence[str]) -> str:
@@ -1194,6 +1234,56 @@ def require_build() -> tuple[State, Digest]:
     return build, build.digest
 
 
+def item_key(key: str) -> str:
+    """The bare work-item id from any of the three spellings in circulation.
+
+    The linker's keys are namespaced — ``ticket:REVERAPP-250`` — and that is the form
+    the bot writes into the corrections file and the form a person copies out of it.
+    `item_id` is the bare ``REVERAPP-250``. The two were never reconciled, so
+    ``/item/ticket:REVERAPP-250`` answered 404 while listing REVERAPP-250 among the
+    available items, which reads as "the link did nothing".
+    """
+    bare = key.split(":", 1)[1] if key.lower().startswith("ticket:") else key
+    return bare.strip()
+
+
+#: A word that could be a work item id: a ticket key, or the seven-hex content id
+#: `digest.content_id` mints for work nobody filed. Hyphens stay inside the token so
+#: `REVERAPP-250` is one word rather than two.
+ITEM_TOKEN_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9\-]*")
+
+
+def items_named(digest: Digest, query: str) -> list[Topic]:
+    """The work items this query asks for by name, if any.
+
+    Search ranks message text, and a work item's *name* is frequently in none of its
+    messages: a ticket key is typed once in a thread of twenty, and when a human
+    supplied the link it may be typed nowhere at all. Searching "REVERAPP-250" then
+    returns the messages that happen to quote the string and not the item itself,
+    which reads as the item not existing.
+
+    Matching is by whole token against `item_id`, not substring: `REVERAPP-25` must
+    not answer for `REVERAPP-250`. A bare number is accepted as a suffix — people
+    type "250", not "REVERAPP-250" — but only while exactly one item can mean it,
+    since answering an ambiguous number with one confident item is the failure this
+    function exists to fix, pointed the other way.
+    """
+    tokens = {token.upper() for token in ITEM_TOKEN_RE.findall(query)}
+    if not tokens:
+        return []
+    named = [topic for topic in digest.topics if str(topic.item_id).upper() in tokens]
+    if named:
+        return named
+    for token in sorted(tokens):
+        if not token.isdigit():
+            continue
+        suffix = f"-{token}"
+        matches = [topic for topic in digest.topics if str(topic.item_id).upper().endswith(suffix)]
+        if len(matches) == 1:
+            return matches
+    return []
+
+
 def find_topic(digest: Digest, key: str) -> Topic:
     """Resolve a work item by its stable id first, by cluster rank only as a fallback.
 
@@ -1202,13 +1292,22 @@ def find_topic(digest: Digest, key: str) -> Topic:
     mention, or a hash of its earliest message — stable across builds, and therefore
     the thing a bookmark, a Slack card or a human correction may point at. The int
     fallback stays because /blockers links and older bookmarks still carry it.
+
+    Matched case-insensitively and through `item_key`, because the id travels by
+    being pasted: out of a Slack card, out of the corrections file, out of a URL
+    somebody lower-cased. None of those are a different work item.
     """
+    bare = item_key(key)
     for candidate in digest.topics:
-        if candidate.item_id == key:
+        if candidate.item_id == bare:
             return candidate
-    if key.isdigit():
+    folded = bare.upper()
+    for candidate in digest.topics:
+        if str(candidate.item_id).upper() == folded:
+            return candidate
+    if bare.isdigit():
         for candidate in digest.topics:
-            if candidate.key == int(key):
+            if candidate.key == int(bare):
                 return candidate
     known = ", ".join(f"{topic.item_id} (#{topic.key})" for topic in digest.topics)
     raise HTTPException(status_code=404, detail=f"No active work item {key}. Available: {known or '(none)'}")
@@ -1221,7 +1320,7 @@ def find_topic(digest: Digest, key: str) -> Topic:
 def digest_page() -> HTMLResponse:
     build, digest = require_build()
     tiles = [
-        stat_tile("ติดอยู่", str(len(digest.blocked)), "ต้องมีคนมาเคลียร์"),
+        stat_tile("ติดอยู่", str(len(digest.blocked)), "รอให้มีคนมาแก้"),
         stat_tile("เสร็จแล้ว", str(len(digest.resolved)), f"ใน {build.days:g} วันที่ผ่านมา"),
         stat_tile("เรื่องที่ขยับ", str(len(digest.topics)), f"จาก {digest.corpus_size} ข้อความ"),
         stat_tile("คนที่เกี่ยวข้อง", str(len(people_rows(digest))), "มีชื่ออยู่ในเรื่องใดเรื่องหนึ่ง"),
@@ -1480,7 +1579,7 @@ def person_page(user: str) -> HTMLResponse:
 
     tiles = [
         stat_tile("เรื่องที่เกี่ยวข้อง", str(len(person["topics"])), f"จาก {len(digest.topics)} เรื่องที่ขยับ"),
-        stat_tile("ที่ติดอยู่", str(len(person["blocked"])), "รอให้มีคนมาเคลียร์"),
+        stat_tile("ที่ติดอยู่", str(len(person["blocked"])), "รอให้มีคนมาแก้"),
         stat_tile(
             "ข้อความ",
             str(len(person["messages"])),
@@ -1760,6 +1859,30 @@ def drift_card(drift: dict[str, Any]) -> str:
     return "".join(parts)
 
 
+def unresolved_block(build: State) -> str:
+    """The human links this build could not apply, or a line saying there are none.
+
+    Rendered even when empty. A person who linked something wants to know the link is
+    live, and a section that only appears on failure cannot answer that — it is
+    indistinguishable from a section that does not exist.
+    """
+    if not build.unresolved_links:
+        return f'<div class="empty">{nothing("การกดเชื่อมทุกครั้งมีผลกับ build นี้ครบ")}</div>'
+    rows = "".join(
+        f'<tr data-text="{row_text(row["record_id"], row["key"], row["why"])}">'
+        f'<td><code>{esc(row["record_id"])}</code></td>'
+        f'<td>{esc(item_key(row["key"]))}</td>'
+        f'<td>{esc(row["why"])}</td>'
+        "</tr>"
+        for row in build.unresolved_links
+    )
+    return (
+        '<div class="alert"><b>มีการเชื่อมที่ไม่ได้ทำอะไรเลย</b><br>'
+        "ทิกเก็ตในตารางนี้ไม่ได้รับข้อความที่คนตั้งใจจะยกให้ และหน้าอื่นก็นับไม่ครบตามไปด้วย</div>"
+        + wide_table("<th>ข้อความ</th><th>ตั้งใจจะเชื่อมกับ</th><th>ทำไมถึงไม่มีผล</th>", rows)
+    )
+
+
 @app.get("/tracker", response_class=HTMLResponse)
 def tracker_page() -> HTMLResponse:
     """Where the ticket board and the conversation disagree, and what nobody is discussing.
@@ -1777,6 +1900,12 @@ def tracker_page() -> HTMLResponse:
         stat_tile("ทิกเก็ตที่เปิดอยู่", str(coverage.get("tracker_open", 0)), f'จากทั้งหมด {coverage.get("tracker_issues", 0)}'),
         stat_tile("เรื่องที่จับคู่ได้", str(coverage.get("matched_in_youtrack", 0)), f'จาก {coverage.get("with_ticket_key", 0)} เรื่องที่อ้างเลขทิกเก็ต'),
     ]
+    # Only when there are some. A permanent "0 broken links" tile spends a quarter of
+    # the row on the absence of a rare fault; the section below still says so in words.
+    if build.unresolved_links:
+        tiles.append(
+            stat_tile("เชื่อมแล้วไม่มีผล", str(len(build.unresolved_links)), "คนกดเชื่อม แต่หาข้อความไม่เจอ")
+        )
     if build.tracker_error:
         sections = [
             section(
@@ -1822,6 +1951,12 @@ def tracker_page() -> HTMLResponse:
 
     sections = [
         section(
+            unresolved_block(build),
+            title=f"การกดเชื่อมที่ยังไม่มีผล ({len(build.unresolved_links)})",
+            note="คนกดเชื่อมข้อความกับทิกเก็ตไว้ แต่ build นี้หาข้อความนั้นไม่เจอ จึงไม่ได้ทำอะไรเลย "
+            "ก่อนหน้านี้มันเป็นแค่บรรทัดใน log ที่ไม่มีใครเปิด ส่วนคนกดเห็นคำว่า “เชื่อมแล้ว”",
+        ),
+        section(
             drift_rows or f'<div class="empty">{nothing("ในบรรดาเรื่องที่เทียบได้ ไม่มีอันไหนขัดกับบอร์ด")}</div>',
             title=f"ที่ทิกเก็ตกับ Slack ไม่ตรงกัน ({len(build.drifts)})",
             note="ทิกเก็ตบอกอย่างหนึ่ง แต่คนในแชทพูดอีกอย่าง — ปกติแปลว่ามีคนลืมอัปเดตบอร์ด "
@@ -1830,9 +1965,9 @@ def tracker_page() -> HTMLResponse:
             "ถ้าสองประโยคนี้ไม่ใช่ข้อความเดียวกัน การ์ดจะบอกไว้ให้เห็น",
         ),
         section(
-            (row_filter("พิมพ์เพื่อกรอง — เลขทิกเก็ต ชื่อเรื่อง หรือสถานะ", "ทิกเก็ต")
+            (row_filter("พิมพ์เพื่อกรอง — เลขทิกเก็ต ชื่อเรื่อง หรือสถานะ", "youtrack")
              + wide_table(
-                 "<th>ทิกเก็ต</th><th>เรื่อง</th><th>สถานะ</th><th>เงียบมา</th><th>ใน Slack</th>", silent_rows
+                 "<th>youtrack</th><th>เรื่อง</th><th>สถานะ</th><th>เงียบมา</th><th>ใน Slack</th>", silent_rows
              ))
             if silent_rows
             else f'<div class="empty">{nothing("ไม่มีทิกเก็ตที่เงียบเกินเกณฑ์")}</div>',
@@ -1841,9 +1976,9 @@ def tracker_page() -> HTMLResponse:
             "ต้องดูจากบอร์ดเท่านั้น นี่คือส่วนที่ Slack มองไม่เห็น",
         ),
         section(
-            (row_filter("พิมพ์เพื่อกรอง — เลขทิกเก็ต ชื่อเรื่อง หรือสถานะ", "ทิกเก็ต")
+            (row_filter("พิมพ์เพื่อกรอง — เลขทิกเก็ต ชื่อเรื่อง หรือสถานะ", "youtrack")
              + wide_table(
-                 "<th>ทิกเก็ต</th><th>เรื่อง</th><th>สถานะในบอร์ด</th><th>แตะล่าสุด</th><th>ใน Slack</th>", open_rows
+                 "<th>youtrack</th><th>เรื่อง</th><th>สถานะในบอร์ด</th><th>แตะล่าสุด</th><th>ใน Slack</th>", open_rows
              ))
             if open_rows
             else f'<div class="empty">{nothing("ไม่มีทิกเก็ตที่เปิดอยู่ในบอร์ด")}</div>',
@@ -1855,7 +1990,7 @@ def tracker_page() -> HTMLResponse:
         section(
             (row_filter("พิมพ์เพื่อกรอง — ชื่อเรื่อง หรือเลขทิกเก็ต", "เรื่อง")
              + wide_table(
-                 "<th>เรื่องใน Slack</th><th>Slack ว่า</th><th>ทิกเก็ต</th><th>บอร์ดว่า</th>"
+                 "<th>เรื่องใน Slack</th><th>Slack ว่า</th><th>youtrack</th><th>บอร์ดว่า</th>"
                  "<th>ผลเทียบ</th><th>ข้อความที่อ้างเลข</th><th>ข้อความทั้งเรื่อง</th>",
                  matched_rows,
                  least=780,
@@ -1897,6 +2032,41 @@ def ticket_link(record: dict[str, Any]) -> str:
     return f' <a href="{esc(url)}" target="_blank" rel="noopener">{key}{tail} ↗</a>'
 
 
+def linked_elsewhere(build: State, digest: Digest, topic: Topic) -> list[dict[str, str]]:
+    """Messages a person linked to this ticket that the clustering put somewhere else.
+
+    An override tells the linker what a message's work item is; it does not move the
+    message, because membership is Louvain's and this page does not re-cluster. So a
+    person can link five messages to a ticket and find two of them here — which is
+    what happened, and which looked exactly like the link having failed.
+
+    Naming where each one did land is the part that makes it actionable rather than
+    alarming: "in another item" is a thing to go and read, "missing" is not.
+    """
+    ticket = str(topic.item_id or "").upper()
+    if not ticket:
+        return []
+    mine = {str(record["id"]) for record in topic.records}
+    home = {
+        str(record["id"]): other
+        for other in digest.topics
+        for record in other.records
+    }
+    texts = {str(record["id"]): str(record.get("text", "")) for record in build.records}
+    strays: list[dict[str, str]] = []
+    for record_id, key in sorted(build.link_overrides.items()):
+        if item_key(key).upper() != ticket or record_id in mine or record_id not in texts:
+            continue
+        other = home.get(record_id)
+        strays.append({
+            "record_id": record_id,
+            "text": clean(texts[record_id], 200),
+            "where": other.item_id if other else "",
+            "where_key": str(other.item_id or other.key) if other else "",
+        })
+    return strays
+
+
 @app.get("/item/{key}", response_class=HTMLResponse)
 def item_page(key: str) -> HTMLResponse:
     build, digest = require_build()
@@ -1907,9 +2077,9 @@ def item_page(key: str) -> HTMLResponse:
     rows = "".join(
         f'<div class="ev"><div class="head"><span class="rel">{esc(RELATION_LABEL.get(event["relation"], event["relation"]))}</span>'
         f'<span class="when">{esc(event["when"])}</span></div>'
-        f'<div class="msg"><span class="who">{esc(event["from_user"])}</span>'
+        f'<div class="msg"><span class="who">{esc(event["from_user_name"])}</span>'
         f'<span>{esc(names().in_text(event["from_text"]))}</span></div>'
-        f'<div class="msg"><span class="who">↳ {esc(event["to_user"])}</span>'
+        f'<div class="msg"><span class="who">↳ {esc(event["to_user_name"])}</span>'
         f'<span>{esc(names().in_text(event["to_text"]))}</span></div>'
         f'<p class="meta">{esc(event["evidence"])}'
         + (f' · ตอบข้อความก่อนหน้าอีก {event["also_answers"]} ข้อความ' if event.get("also_answers") else "")
@@ -1963,6 +2133,28 @@ def item_page(key: str) -> HTMLResponse:
         ),
         section(every, title=f"ทุกข้อความในเรื่องนี้ ({len(topic.records)})", note="เรียงตามเวลา แบ่งตามวัน"),
     ]
+    strays = linked_elsewhere(build, digest, topic)
+    if strays:
+        rows_out = "".join(
+            f'<div class="msg"><span class="who">{esc(stray["record_id"][:28])}</span>'
+            f'<span>{esc(stray["text"])}'
+            + (
+                f' <a href="/item/{esc(stray["where_key"])}">อยู่ในเรื่อง: {esc(stray["where"])}</a>'
+                if stray["where_key"]
+                else " <i>ตอนนี้ไม่ได้อยู่ในเรื่องไหนเลย</i>"
+            )
+            + "</span></div>"
+            for stray in strays
+        )
+        sections.append(
+            section(
+                '<div class="alert"><b>ข้อความพวกนี้ถูกกดเชื่อมกับทิกเก็ตนี้ แต่ไม่ได้ถูกนับรวมข้างบน</b><br>'
+                "การกดเชื่อมบอกระบบว่าข้อความนี้เป็นของงานไหน แต่ไม่ได้ย้ายมันออกจากกลุ่มที่การจัดกลุ่มวางไว้ "
+                "ตัวเลข “ข้อความ” ด้านบนจึงยังไม่รวมพวกนี้</div>" + rows_out,
+                title=f"เชื่อมไว้กับทิกเก็ตนี้ แต่ไปอยู่เรื่องอื่น ({len(strays)})",
+                note="ถ้าอันไหนควรอยู่ในเรื่องนี้จริง ๆ ให้ดูว่ามันไปอยู่เรื่องไหน แล้วตัดสินว่าสองเรื่องนั้นคือเรื่องเดียวกันไหม",
+            )
+        )
     actions = f'<a class="ghost" href="/search?q={quote_plus(title[:80])}" style="text-decoration:none">ค้นหาเรื่องคล้ายกัน</a>'
     return render(
         title[:80],
@@ -2012,9 +2204,18 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
 
     body = form
     tiles = [
-        stat_tile("ข้อความที่ค้นได้", f"{len(build.records):,}", "Slack + ประชุม + ทิกเก็ต"),
+        stat_tile("ข้อความที่ค้นได้", f"{len(build.records):,}", "Slack + ประชุม + youtrack"),
         stat_tile("ผลลัพธ์", "-", "ยังไม่ได้ค้น"),
     ]
+    # Answered before the ranking, because it is a different question. "REVERAPP-250"
+    # asks whether that work item exists, and the ranker can only answer which message
+    # is most like the string — so on an item whose key nobody typed, a perfectly
+    # correct search reported nothing while the item sat in the digest.
+    named = items_named(build.digest, q) if q.strip() and build.digest else []
+    named_block = "".join(
+        topic_card(topic, build.summary_for(topic.key), window_start(build.days), rank, show_messages=3)
+        for rank, topic in enumerate(named, start=1)
+    )
     if q.strip():
         if build.retriever is None:
             raise HTTPException(status_code=503, detail="Index is still building.")
@@ -2042,10 +2243,12 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
         }[(lexical_hit, dense_hit)]
         tiles = [
             stat_tile("ผลลัพธ์", str(len(hits)), "เรียงจากตรงที่สุด"),
-            stat_tile("ความมั่นใจว่ามีเรื่องนี้จริง", confidence, why_confident),
-            stat_tile("ข้อความที่ค้นได้", f"{len(build.records):,}", "Slack + ประชุม + ทิกเก็ต"),
+            stat_tile("ความมั่นใจ", confidence, why_confident),
+            stat_tile("ข้อความที่ค้นได้", f"{len(build.records):,}", "Slack + ประชุม + youtrack"),
         ]
-        if not lexical_hit:
+        # `named` is a whole-token match on a work item id, so it is direct evidence
+        # the corpus holds this — which outranks a BM25 score of zero on the same words.
+        if not lexical_hit and not named:
             body += (
                 '<div class="alert"><b>น่าจะไม่มีเรื่องนี้ในข้อมูลที่เก็บไว้</b><br>'
                 "ไม่มีคำไหนในคำค้นตรงกับข้อความจริงสักคำ ระบบจึงเดาจากความหมายอย่างเดียว "
@@ -2068,6 +2271,17 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
                 score_bar(SCORE_LABEL.get(name, name), value, dim=name not in ("dense", "bm25"))
                 for name, value in sorted(hit.parts.items())
             )
+            # A message reachable by a ticket key it never types is reachable because a
+            # person said so. Saying which person's act put it here keeps the promise
+            # that every result can be checked — otherwise the matched term is a word
+            # the reader will look for in the text and not find.
+            linked_by = build.retriever.linked_ticket.get(hit.record_id, "")
+            link_note = (
+                f'<p class="meta">เจอได้เพราะมีคนกดเชื่อมข้อความนี้ไว้กับ {esc(linked_by)} '
+                "— ตัวข้อความเองไม่ได้พิมพ์รหัสนี้</p>"
+                if linked_by and linked_by.lower() not in str(hit.record.get("text", "")).lower()
+                else ""
+            )
             body += (
                 f'<div class="hit"><div class="n">{hit.rank}</div><div>'
                 f'<div class="head"><span class="tag">{esc(SOURCE_LABEL.get(str(hit.record.get("source") or "slack"), "Slack"))}</span>'
@@ -2078,7 +2292,7 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
                 f'<details class="more"><summary>ทำไมถึงเจออันนี้</summary>'
                 f'<p class="meta">คะแนนรวม {hit.score:.3f}'
                 + (f' · คำที่ตรง: {esc(", ".join(hit.terms[:8]))}' if hit.terms else " · ไม่มีคำตรง เจอจากความหมายล้วน ๆ")
-                + f'</p><div class="why">{parts}</div></details>'
+                + f'</p>{link_note}<div class="why">{parts}</div></details>'
                 "</div></div>"
             )
         if not hits:
@@ -2091,6 +2305,17 @@ def search_page(q: str = Query(default=""), k: int = Query(default=10, ge=1, le=
             note="วางบันทึกประชุมหรือพิมพ์สิ่งที่อยากหาลงไป แล้วระบบจะหาข้อความจริงที่พูดเรื่องเดียวกัน "
             "พิมพ์ไทยหรืออังกฤษก็ได้ และไม่ต้องใช้คำเดียวกับต้นฉบับ",
         ),
+    ]
+    if named_block:
+        sections.insert(
+            0,
+            section(
+                named_block,
+                title=f"ตรงกับเรื่องที่มีอยู่แล้ว ({len(named)})",
+                note="คำที่พิมพ์มาเป็นรหัสเรื่อง จึงเปิดเรื่องนั้นให้เลย ไม่ต้องรอว่าจะมีข้อความไหนพิมพ์รหัสนี้ไว้บ้าง",
+            ),
+        )
+    sections += [
         section(
             how(
                 "ระบบค้นสองแบบพร้อมกันแล้วรวมผล — แบบแรกหาคำที่ตรงกันตรง ๆ แบบที่สองเทียบความหมายของประโยค "
@@ -2109,8 +2334,19 @@ SCORE_LABEL = {"dense": "ความหมายใกล้กัน", "bm25":
 
 @app.get("/upload", response_class=HTMLResponse)
 def upload_page() -> HTMLResponse:
+    return upload_screen()
+
+
+def upload_screen(preview: str = "") -> HTMLResponse:
+    """The three ways something that was not exported gets into the corpus.
+
+    `preview` is the pasted chat read back before it is stored, and it is the reason
+    this is a function rather than a route: the paste parser is heuristic, so the
+    person pasting has to see what it made of their text while they can still fix it.
+    """
     build = live()
     now = datetime.now().strftime("%Y-%m-%dT%H:%M")
+    today = datetime.now().strftime("%Y-%m-%d")
     # Notes first and transcript second, in that order on purpose: this team rarely has a
     # recording. What actually happens is that somebody writes the notes by hand and posts
     # them into Slack, so the paste box is the common path and the file picker is the
@@ -2133,6 +2369,27 @@ def upload_page() -> HTMLResponse:
         "และจะอ้างบรรทัดนั้นเป็นหลักฐานให้เอง</p>"
         '<p class="meta">วางข้อความเดิมซ้ำในวันเดียวกัน = <strong>แทนที่ของเดิม</strong> ไม่ได้เพิ่มอันใหม่ — แก้แล้ววางใหม่ได้เลย</p>'
     )
+    # Copy out of Slack and paste. The conversations that decide things happen in DMs and
+    # private groups the export token never reaches, and this is the only way in.
+    chat = (
+        '<form method="post" action="/upload/slack">'
+        '<textarea name="chat" rows="9" required '
+        'placeholder="เปิดแชทใน Slack → ลากเลือกข้อความ → copy → วางตรงนี้ เช่น&#10;&#10;'
+        'Aim Sirawith  [2:21 PM]&#10;พี่มอสเคยแก้ให้ผมที่ dev&#10;[2:22 PM]ของผมสุดท้ายคือแตก&#10;'
+        'jah natta  [2:22 PM]&#10;ของพี่ไม่แตกหวะ"></textarea>'
+        '<div class="row">'
+        '<label class="field">คุยที่ไหน<input type="text" name="title" required placeholder="เช่น DM พี่ Natta"></label>'
+        f'<label class="field">วันแรกของบทสนทนา<input type="date" name="day" value="{esc(today)}"></label>'
+        f'<input type="hidden" name="token" value="{esc(admin_token)}">'
+        '<button type="submit" name="action" value="preview">ดูก่อนว่าอ่านถูกไหม</button>'
+        "</div></form>"
+        '<p class="meta">Slack copy มาเป็น <code>ชื่อ  [2:21 PM]</code> แล้วขึ้นบรรทัดใหม่เป็นเนื้อความ '
+        'ระบบอ่านรูปแบบนี้ได้ตรง ๆ — ของแถมที่ติดมาอย่าง <code>6 replies</code> ชื่อไฟล์รูป หรือ <code>(edited)</code> ถูกตัดให้เอง</p>'
+        '<p class="meta">ข้อความที่คนเดียวกันพิมพ์ติด ๆ กันภายใน 2 นาที = <strong>หนึ่งบันทึก</strong> '
+        'เพราะ "ของผมสุดท้ายคือแตก" แล้วต่อด้วย "400" คือประโยคเดียวที่กด Enter คั่น</p>'
+        '<p class="meta">ในคลิปบอร์ดมีแต่เวลา ไม่มีวันที่ จึงต้องบอกว่าเป็นวันไหน · '
+        'วางซ้ำข้อความเดิม = <strong>แทนที่ของเดิม</strong> วางทับกันได้ ไม่ต้องจำว่าวางถึงไหนแล้ว</p>'
+    )
     transcript = (
         '<form method="post" action="/upload" enctype="multipart/form-data">'
         '<div class="row">'
@@ -2152,9 +2409,17 @@ def upload_page() -> HTMLResponse:
             note="ทางที่ใช้กันจริงคือทางนี้ — โน้ตที่วางจะกลายเป็นข้อมูลแบบเดียวกับข้อความ Slack "
             "แล้วถูกจัดกลุ่ม ค้นหา และเชื่อมกับบทสนทนาเดิมได้ทันที ระบบจะอ่านใหม่ทั้งชุดให้เอง (ใช้เวลาสักครู่)",
         ),
+        section(
+            chat,
+            title="หรือ copy แชทจาก Slack มาวาง",
+            note="สำหรับห้องที่ดึงอัตโนมัติไม่ได้ — DM, กลุ่มส่วนตัว, workspace อื่น "
+            "วางแล้วจะกลายเป็นข้อความรายอันเหมือนที่ export มา ไม่ใช่ก้อนเดียว",
+        ),
         section(transcript, title="หรือถ้ามีไฟล์ถอดเสียงจากการประชุม"),
     ]
-    return render("เพิ่มโน้ต", [], sections, "โน้ต / ประชุม → เข้าระบบ", current="/upload", build=build, hero=cat("note", eyes="open"))
+    if preview:
+        sections.insert(0, preview)
+    return render("เพิ่มโน้ต", [], sections, "โน้ต / แชท / ประชุม → เข้าระบบ", current="/upload", build=build, hero=cat("note", eyes="open"))
 
 
 @app.get("/api/people")
@@ -2245,6 +2510,114 @@ def parse_started(value: str) -> datetime:
         raise HTTPException(
             status_code=400, detail=f"{value!r} is not an ISO timestamp (try 2026-08-14T09:30)."
         ) from error
+
+
+def paste_day(value: str) -> date:
+    """The day the pasted conversation starts.
+
+    Slack's clipboard carries clocks and no dates, so this is not a nicety: without it
+    every paste would land on the day it was pasted, and a chat copied on Monday about
+    Friday's outage would sit a weekend away from the messages it belongs with.
+    """
+    try:
+        return date.fromisoformat(value.strip())
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=f"{value!r} ไม่ใช่วันที่ (ต้องเป็นแบบ 2026-08-19)") from error
+
+
+def paste_preview(
+    parse: PasteParse, records: Sequence[dict[str, Any]], *, chat: str, title: str, day: date
+) -> str:
+    """What the parser made of a paste, before any of it is stored.
+
+    The paste parser is a heuristic over a format nobody documents, so the failure that
+    matters is a silent one: a mis-read paste looks exactly like a short conversation.
+    Everything it did is shown — including what it could not attribute to anyone — and
+    the corpus is not touched until somebody looks at this and says yes.
+    """
+    rows = "".join(
+        "<tr><td>{when}</td><td>{who}</td><td>{text}</td></tr>".format(
+            when=esc(format_timestamp(str(record.get("ts", "")))),
+            who=esc(names().of(record.get("user")) or "-"),
+            text=esc(clean(record.get("text"), 220)),
+        )
+        for record in records
+    )
+    table = wide_table("<th>เมื่อไหร่</th><th>ใคร</th><th>ข้อความ</th>", rows, least=520)
+    skipped = ""
+    if parse.skipped:
+        items = "".join(f"<li>{esc(clean(line, 160))}</li>" for line in parse.skipped[:5])
+        skipped = (
+            f'<p class="meta">ข้าม {len(parse.skipped)} ก้อนที่ไม่รู้ว่าใครพูด '
+            "(อยู่ก่อนข้อความแรก หรืออ่านหัวข้อความไม่ออก) — ถ้าอันไหนสำคัญ ให้ copy ใหม่โดยเริ่มที่ชื่อคนพูด</p>"
+            f'<ul class="meta">{items}</ul>'
+        )
+    confirm = (
+        '<form method="post" action="/upload/slack">'
+        f'<textarea name="chat" hidden>{esc(chat)}</textarea>'
+        f'<input type="hidden" name="title" value="{esc(title)}">'
+        f'<input type="hidden" name="day" value="{esc(day.isoformat())}">'
+        f'<input type="hidden" name="token" value="{esc(admin_token)}">'
+        '<button type="submit" name="action" value="add">ใช่ เพิ่มเข้าระบบเลย</button>'
+        "</form>"
+    )
+    note = (
+        f"อ่านได้ {len(parse.messages)} ข้อความ จาก {len(parse.speakers)} คน → เก็บเป็น {len(records)} บันทึก "
+        f"({', '.join(parse.speakers)}) · ยังไม่ได้เขียนอะไรลง corpus จนกว่าจะกดยืนยัน"
+    )
+    return section(table + skipped + confirm, title=f"อ่าน “{title}” ได้แบบนี้", note=note)
+
+
+@app.post("/upload/slack")
+def upload_slack(
+    request: Request,
+    chat: str = Form(...),
+    title: str = Form(default=""),
+    day: str = Form(default=""),
+    action: str = Form(default="preview"),
+    token: str = Form(default=""),
+    x_tam_token: str = Header(default=""),
+) -> Response:
+    """Read a conversation copied out of Slack, show it back, and on a second press store it.
+
+    Annotated as the base `Response` and not as the union it really returns: FastAPI
+    builds a response model out of the annotation, and a union of two response classes
+    is not something it can build one from.
+
+    Sync for the same reason as the two routes around it: the rebuild blocks for seconds
+    and would stall the event loop for every other request.
+    """
+    check_origin(request)
+    check_token(token or x_tam_token)
+    conversation = title.strip() or "แชทที่วาง"
+    started = paste_day(day) if day.strip() else datetime.now().astimezone().date()
+    # The operator's own wall clock, as with a meeting's datetime-local field: the times
+    # in the paste are what their Slack showed them, not UTC.
+    zone = datetime.now().astimezone().tzinfo or timezone.utc
+    parse, records = read_paste(chat, title=conversation, day=started, tz=zone)
+    if not parse.messages:
+        raise HTTPException(
+            status_code=400,
+            detail="อ่านไม่เจอข้อความสักอัน — รูปแบบที่รองรับคือ 'ชื่อ  [2:21 PM]' แล้วขึ้นบรรทัดใหม่เป็นเนื้อความ",
+        )
+    if action != "add":
+        return upload_screen(paste_preview(parse, records, chat=chat, title=conversation, day=started))
+    if not records:
+        raise HTTPException(status_code=400, detail="ทุกข้อความถูกกรองว่าไม่มีเนื้อหา (เช่น มีแต่ ok / อีโมจิ)")
+    try:
+        with building():  # held across the write and the rebuild, as the routes above do
+            total, replaced = merge_paste(records, live().records_path)
+            log.info(
+                "Pasted chat %r: %d record(s), %d replaced — corpus holds %d",
+                conversation, len(records), replaced, total,
+            )
+            try:
+                rebuild()
+            except (TamDataError, SystemExit) as error:
+                raise HTTPException(status_code=500, detail=f"Ingested, but the rebuild failed: {error}") from error
+    except TamDataError as error:
+        raise HTTPException(status_code=500, detail=f"Cannot update the corpus: {error}") from error
+    return RedirectResponse(url="/", status_code=303)
 
 
 @app.post("/upload")
@@ -2352,6 +2725,11 @@ def api_item(key: str) -> JSONResponse:
                 }
                 for record in topic.records
             ],
+            # Messages a person linked to this ticket that the clustering left in
+            # another item. Not in `messages`, because they are not in the item — and
+            # reported beside it, because a caller counting `messages` as "everything
+            # anybody attached to this ticket" would be undercounting silently.
+            "linked_elsewhere": linked_elsewhere(build, digest, topic),
         }
     )
 
@@ -2380,6 +2758,20 @@ def api_search(q: str = Query(...), k: int = Query(default=10, ge=1, le=50), pre
             # the result set. A caller deciding whether to report *nothing* has to
             # read these: see Retriever.relevance for why it takes both.
             "relevance": retriever.relevance(q),
+            # Work items the query named outright. A caller that reports "nothing
+            # found" on an empty `hits` would be wrong whenever this is non-empty:
+            # the item is here, it is just not spelled inside any of its messages.
+            "items": [
+                {
+                    "item_id": topic.item_id,
+                    "key": topic.key,
+                    "state": topic.state,
+                    "messages": len(topic.records),
+                    "last": format_timestamp(str(topic.last_ts)),
+                    "last_ts": topic.last_ts,
+                }
+                for topic in (items_named(build.digest, q) if build.digest else [])
+            ],
             "hits": [
                 {
                     "rank": hit.rank,
@@ -2392,6 +2784,9 @@ def api_search(q: str = Query(...), k: int = Query(default=10, ge=1, le=50), pre
                     "text": hit.record["text"],
                     "why": hit.parts,
                     "terms": hit.terms,
+                    # Non-empty when this message matched through a human's ticket
+                    # link rather than its own words — see Retriever.index_links.
+                    "linked_ticket": retriever.linked_ticket.get(hit.record_id, ""),
                 }
                 for hit in retriever.rank(q, top_k=k)
             ],
@@ -2418,7 +2813,201 @@ def api_tracker() -> JSONResponse:
         "open_tickets": build.open_tickets,
         "matched": matched,
         "unmatched": missing,
+        # Human ticket links naming a record this corpus does not have. Reported here
+        # because they change how the counts above should be read: a link that did
+        # nothing leaves a pair uncounted, and nothing else on this endpoint says so.
+        "unresolved_links": build.unresolved_links,
         "error": build.tracker_error,
+        "built_at": build.built_at,
+    })
+
+
+@app.get("/api/projects")
+def api_projects() -> JSONResponse:
+    """What each channel is a project of, as `TAM_CHANNEL_PROJECTS` states it.
+
+    Served rather than left to each half's own environment so that the bot, the
+    dashboard and the linker cannot end up with three different answers to "is
+    #reverapp-qa the same project as #reverapp-dev". The bot reads the same variable
+    as a fallback when the pipeline is not configured, and this route is how the two
+    are compared when they disagree.
+    """
+    mapping = channel_projects()
+    return JSONResponse({
+        "channels": mapping.by_channel,
+        "names": mapping.by_name,
+        "labels": mapping.labels,
+        "projects": mapping.projects(),
+    })
+
+
+@app.get("/api/tickets/search")
+def api_ticket_search(
+    q: str = Query(default=""),
+    project: str = Query(default=""),
+    limit: int = Query(default=25, ge=1, le=100),
+) -> JSONResponse:
+    """Search the tracker itself, which is a different set from the corpus.
+
+    The Slack ticket picker used to offer work items — tickets the corpus had already
+    seen somebody mention. That is precisely the wrong set: a ticket already named in
+    Slack is already linked, and the one a person is reaching for is the one nobody
+    has typed yet. So this goes to YouTrack live rather than to `build.records`, and
+    it stays honest about a tracker that is not configured instead of answering with
+    an empty list that reads as "no such ticket".
+    """
+    from tam.ingest.youtrack import YouTrackError, search_issues
+
+    wanted = [part.strip() for part in project.split(",") if part.strip()]
+    try:
+        issues = search_issues(q, projects=wanted or None, limit=limit)
+    except YouTrackError as error:
+        return JSONResponse({"issues": [], "error": str(error)}, status_code=503)
+    return JSONResponse({
+        "query": q,
+        "project": wanted,
+        "error": "",
+        "issues": [
+            {
+                "key": issue.key,
+                "summary": issue.summary,
+                "state": issue.state,
+                "resolved": issue.resolved,
+                "url": issue.url,
+                "updated": issue.updated,
+            }
+            for issue in issues
+        ],
+    })
+
+
+@app.post("/api/ticket/{key}/comment", dependencies=[Depends(require_admin)])
+def api_ticket_comment(key: str, body: dict[str, Any]) -> JSONResponse:
+    """Write one comment on one ticket. Admin-token'd, and off unless YOUTRACK_WRITE=1.
+
+    Behind the admin token for the same reason `/api/reindex` is: this leaves the
+    machine and changes something other people can see. The 503 on a refusal is
+    deliberate — "this deployment is not configured to write" is a state of the
+    server, not a fault in the request, and the caller shows the reason verbatim
+    rather than reporting a write that did not happen.
+    """
+    from tam.ingest.youtrack import YouTrackError, add_comment
+
+    try:
+        written = add_comment(key, str(body.get("text") or ""))
+    except YouTrackError as error:
+        # An empty body is the caller's mistake; everything else is configuration.
+        status = 400 if "ว่างเปล่า" in str(error) or "ticket ไหน" in str(error) else 503
+        return JSONResponse({"written": False, "error": str(error)}, status_code=status)
+    return JSONResponse({"written": True, **written})
+
+
+@app.post("/api/paste", dependencies=[Depends(require_admin)])
+def api_paste(body: dict[str, Any]) -> JSONResponse:
+    """Ingest a chat somebody pasted, optionally attaching all of it to one ticket.
+
+    The JSON twin of `/upload/paste`, for the Slack bot. Two differences, and both
+    are the point:
+
+    `dry_run` returns what the parser made of the paste without touching the corpus.
+    The paste format is a heuristic, and the browser path answers that with a preview
+    screen; a modal has no second screen, so the bot previews through this and shows
+    the person the parsed messages before anything is stored.
+
+    `link_key` writes the corrections *before* the rebuild, not after. The linker only
+    reads overrides when it runs, so writing them afterwards would leave the person
+    told their chat is attached to a ticket while the built ledger still says it is
+    not — until some later reindex. Ordering it this way means the response can state
+    what actually landed.
+    """
+    chat = str(body.get("chat") or "")
+    if not chat.strip():
+        raise HTTPException(status_code=400, detail="ไม่มีข้อความที่วางมา")
+    title = str(body.get("title") or "").strip() or "แชทที่วาง"
+    day = str(body.get("day") or "").strip()
+    started = paste_day(day) if day else datetime.now().astimezone().date()
+    zone = datetime.now().astimezone().tzinfo or timezone.utc
+    parse, records = read_paste(chat, title=title, day=started, tz=zone)
+    parsed = [
+        {
+            "id": str(record["id"]),
+            "user": record.get("speaker_name") or names().of(record.get("user")) or record.get("user"),
+            "when": format_timestamp(str(record.get("ts", ""))),
+            "text": str(record.get("text", "")),
+        }
+        for record in records
+    ]
+    if not parse.messages:
+        raise HTTPException(
+            status_code=400,
+            detail="อ่านไม่เจอข้อความสักอัน — รูปแบบที่รองรับคือ 'ชื่อ  [2:21 PM]' แล้วขึ้นบรรทัดใหม่เป็นเนื้อความ",
+        )
+    if body.get("dry_run"):
+        return JSONResponse({
+            "stored": False, "channel_id": records[0]["channel_id"] if records else "",
+            "records": parsed, "skipped": parse.skipped[:5], "title": title, "day": started.isoformat(),
+        })
+    if not records:
+        raise HTTPException(status_code=400, detail="ทุกข้อความถูกกรองว่าไม่มีเนื้อหา (เช่น มีแต่ ok / อีโมจิ)")
+
+    link_key = str(body.get("link_key") or "").strip().upper()
+    linked = 0
+    try:
+        with building():  # held across both writes and the rebuild, as /upload/paste does
+            total, replaced = merge_paste(records, live().records_path)
+            if link_key:
+                linked = len(records)
+                save_overrides(
+                    overrides_path(),
+                    [
+                        {
+                            "record_id": str(record["id"]),
+                            "key": f"ticket:{link_key}",
+                            "by": str(body.get("by") or "slack"),
+                            "at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M"),
+                        }
+                        for record in records
+                    ],
+                )
+            log.info(
+                "Pasted chat %r via API: %d record(s), %d replaced, %d linked to %s — corpus holds %d",
+                title, len(records), replaced, linked, link_key or "-", total,
+            )
+            try:
+                rebuild()
+            except (TamDataError, SystemExit) as error:
+                raise HTTPException(status_code=500, detail=f"เก็บข้อความแล้ว แต่ build ใหม่ไม่ผ่าน: {error}") from error
+    except ValueError as error:  # save_overrides on a corrupt corrections file
+        raise HTTPException(status_code=500, detail=str(error)) from error
+    except TamDataError as error:
+        raise HTTPException(status_code=500, detail=f"เขียน corpus ไม่ได้: {error}") from error
+
+    # What the *built* ledger says now, which is the only claim worth making: the
+    # override file agreeing with itself proves nothing a person can check.
+    build = live()
+    landed = ""
+    counted = 0
+    if link_key and build.digest is not None:
+        for topic in build.digest.topics:
+            if str(topic.item_id).upper() == link_key:
+                landed = topic.item_id
+                counted = sum(1 for record in topic.records if str(record.get("id")) in {r["id"] for r in parsed})
+                break
+    return JSONResponse({
+        "stored": True,
+        "title": title,
+        "day": started.isoformat(),
+        "channel_id": records[0]["channel_id"],
+        "records": parsed,
+        "skipped": parse.skipped[:5],
+        "replaced": replaced,
+        "corpus_size": total,
+        "link_key": link_key,
+        "linked": linked,
+        # Non-empty only when the rebuilt digest really does hold a work item by that
+        # key, with that many of these messages in it.
+        "item_key": landed,
+        "in_item": counted,
         "built_at": build.built_at,
     })
 
@@ -2466,6 +3055,10 @@ def api_health() -> JSONResponse:
             "rebuilding": _building,
             "last_attempt_at": build.last_attempt_at,
             "last_error": build.last_error or None,
+            # Not a failure of the build, so it does not touch `ok` — but a monitor
+            # watching only `ok` would never learn that people's corrections stopped
+            # landing, which is silent and permanent until somebody looks.
+            "unresolved_links": len(build.unresolved_links),
         },
         status_code=200 if healthy else 503,
     )

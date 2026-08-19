@@ -157,6 +157,14 @@ class Retriever:
         # its author never made a claim in. Display still uses `record["text"]`.
         self.texts = [for_analysis(record) or str(record["text"]) for record in self.records]
         self.index_of = {record_id: index for index, record_id in enumerate(self.ids)}
+        # What BM25 actually indexes. Starts as `texts` and stays that way unless
+        # `index_links` is called: a human's ticket link is knowledge about a message
+        # that the message itself does not contain, so it belongs in the index and
+        # never in `texts`, which the reranker and the display both read.
+        self.index_texts = list(self.texts)
+        #: record id -> ticket key, for the links added by `index_links`. Read by
+        #: callers that need to say *why* a message with no matching word matched.
+        self.linked_ticket: dict[str, str] = {}
 
         raw = embed_records(self.records, use_cache=use_cache) if matrix is None else matrix
         self.transform: SpaceTransform = fit_transform(
@@ -165,7 +173,7 @@ class Retriever:
         self.matrix = apply_transform(raw, self.transform)
         self.raw_matrix = raw
 
-        self.bm25 = Bm25Index(self.texts) if self._needs_lexical() else None
+        self.bm25 = Bm25Index(self.index_texts) if self._needs_lexical() else None
         self._relevance_bm25: Bm25Index | None = None  # lazy; see _relevance_lexical
         self.signals = SignalIndex(self.records) if self._needs_signals() else None
         self.hubness = (
@@ -185,6 +193,45 @@ class Retriever:
         embedding pass rather than ten.
         """
         return Retriever(self.records, config, matrix=self.raw_matrix)
+
+    def index_links(self, tickets: dict[str, str]) -> None:
+        """Make a human-linked message findable by the ticket key it never mentions.
+
+        Somebody who links a message to REV-250 has stated a fact about that message.
+        Until this existed, the fact went into the digest and nowhere else: search
+        ranks the text, so the linked message stayed unreachable by the only word its
+        owner would search for, and "I linked it and still cannot find it" was the
+        correct description of the system.
+
+        The key is appended to the *index* copy of the document, never to `texts`.
+        The reranker reads `texts`, and a cross-encoder scoring a ticket key nobody
+        wrote would be judging our own annotation; the display reads
+        ``record["text"]``, where an appended key would read as words the author
+        typed. `linked_ticket` is kept so a caller can label the match honestly
+        rather than showing a matched term the message does not contain.
+
+        Deliberately fed only human links, not every ticket the digest inferred:
+        one override is one message somebody vouched for, while a work item's key
+        covers everything Louvain put in the cluster, and indexing the latter would
+        return a whole topic for every ticket search.
+        """
+        wanted = {
+            record_id: key.strip().upper()
+            for record_id, key in tickets.items()
+            if key.strip() and record_id in self.index_of
+        }
+        if wanted == self.linked_ticket:
+            return
+        self.linked_ticket = wanted
+        self.index_texts = [
+            f"{text} {wanted[record_id]}" if record_id in wanted else text
+            for record_id, text in zip(self.ids, self.texts)
+        ]
+        # Both indexes are derived from index_texts, so both have to go. Rebuilding
+        # is a tokenise pass over a chat-sized corpus, not an embedding pass.
+        if self.bm25 is not None:
+            self.bm25 = Bm25Index(self.index_texts)
+        self._relevance_bm25 = None
 
     # ---- individual stages -------------------------------------------------
 
@@ -250,7 +297,7 @@ class Retriever:
         if self.bm25 is not None:
             return self.bm25
         if self._relevance_bm25 is None:
-            self._relevance_bm25 = Bm25Index(self.texts)
+            self._relevance_bm25 = Bm25Index(self.index_texts)
         return self._relevance_bm25
 
     # ---- composition -------------------------------------------------------

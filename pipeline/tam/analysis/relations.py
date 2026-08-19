@@ -47,10 +47,10 @@ import plotly.graph_objects as go
 from dotenv import load_dotenv
 
 from tam.retrieval.embeddings import apply_transform, fit_transform, model_name, quiet_third_party_logs, set_model
-from tam.ingest.quoted import for_analysis
+from tam.ingest.quoted import asserted_lines, for_analysis
 from tam.analysis.graph import EdgeWeights, build_graph
 from tam.core import DEFAULT_RECORDS, embed_records, format_timestamp, load_records
-from tam.retrieval.signals import SignalIndex
+from tam.retrieval.signals import SignalIndex, anchors
 from tam.report.visualize import INK_MUTED, INK_SECONDARY, SERIES_1, SURFACE, base_layout, build_page, shorten, stat_tile
 
 DEFAULT_OUTPUT = Path("output/relations.html")
@@ -271,27 +271,114 @@ def matched_cue(text: str, relation: RelationType) -> str:
     return ""
 
 
+def cue_line(lines: Sequence[str], relation: RelationType) -> tuple[int, str, str]:
+    """(index, the line, the cue) of the first asserted line carrying one of `relation`'s cues.
+
+    `(-1, "", "")` when no line carries one. Matching per line rather than per message is
+    what makes `cue_window` mean what its docstring says — "an answer opens with its
+    answer word" is a fact about a line, and a twelve-line daily update collapsed into
+    one string has no openings to speak of except the first.
+    """
+    for index, line in enumerate(lines):
+        cue = matched_cue(line.lower(), relation)
+        if cue:
+            return index, line, cue
+    return -1, "", ""
+
+
+def line_speaks_for_pair(line: str, opening: str, earlier: dict[str, Any]) -> str:
+    """Why this line may type a relation to `earlier`, or "" if nothing connects them.
+
+    A cue on a post's *opening* line speaks for the post: that is what the post leads
+    with. Eight lines down it speaks for its own line, and the other eleven lines of a
+    daily update are about other work — so something has to tie that one line to the
+    message it is supposed to be answering.
+
+    Three things count. A shared anchor is the strong one: a ticket key, a path, an
+    identifier, a product name that both the line and the earlier message name. A mention
+    of the earlier message's author counts too, and this team makes that link carry real
+    weight — they write `Pending Mild - list all field`, where the person waited on *is*
+    the subject. It is accepted from the post's `opening` line as well as from the cue's
+    own line, because a bare `@somebody` on line one is how a person addresses a reply,
+    and it scopes everything underneath it.
+
+    Measured on the frozen 1,324-record corpus, this is why the rule exists: `blocked_by`
+    was 11 relations of which 7 rested on a line nothing connected to its partner —
+    `waiting for clearing user on dev` attached to three other people's daily posts and to
+    the `Daily _ Please share an update` prompt itself. `resolves` had 37 such, including
+    `Waiting for the bug to be fixed and retested` (a blocker, read as a resolution),
+    `estimate time p'mos to fix is within 6th Aug` (a date in the future), and
+    `Reward Redeemed คุณได้แลกรางวัลเรียบร้อย`, which is UI copy being specified rather
+    than anybody reporting that work is done.
+
+    The opening-line clause is not decoration: without it the gate also cut a real
+    resolution — a post opening `@U0BGWS0ASN5` and continuing `1.แก้แล้ว`, `6.แก้ละ`,
+    `7.สร้างแล้ว`, which answers that person's numbered list of API problems point by
+    point. Its cue line is four characters long and can carry no anchor at all. With the
+    clause, that pair is kept and none of the 18 wrong cases returns.
+    """
+    shared = anchors(line) & anchors(for_analysis(earlier))
+    if shared:
+        return f"ทั้งสองข้อความอ้าง “{sorted(shared)[0]}”"
+    author = str(earlier.get("user") or "")
+    if author and author in line:
+        return "บรรทัดนี้เอ่ยถึงคนที่เขียนข้อความก่อนหน้า"
+    if author and author in opening:
+        return "โพสต์นี้เปิดด้วยการเรียกคนที่เขียนข้อความก่อนหน้า"
+    return ""
+
+
 def classify_by_rules(records: Sequence[dict[str, Any]], source: int, target: int) -> Relation:
     """Type a pair from cue phrases in the later message plus question shape.
 
     Cheap, explainable, and no model. The cost is coverage: a cue list cannot see
     a paraphrase it does not contain, which is what `--method nli` is for.
+
+    Cues are read line by line, and a cue below the opening line has to earn the pair —
+    see `line_speaks_for_pair`. A one-line message is its own opening line, so the short
+    conversational traffic that is most of this corpus is unaffected: of 472 typed
+    relations the rule changes 59, and all 59 are wrong today.
     """
     # The asserted part only. A cue inside a fenced block of quoted app-store reviews
     # marked a real work item `resolved`; the customer wrote the word, not the team.
     later = for_analysis(records[target])
+    lines = asserted_lines(str(records[target].get("text", "")))
     earlier = str(records[source]["text"])
     asked = bool(QUESTION_RE.search(earlier))
 
     for relation in TYPED_RELATIONS:
-        cue = matched_cue(later, relation)
+        # A windowed type is already confined to the message opening, which is the same
+        # protection the line gate gives — so it keeps the whole-message match it always
+        # had. Widening the window to every line's opening was measured and was wrong in
+        # both directions: it invented five `follows_up` where the cue `any status` sat
+        # inside `reward of any status (DRAFT/PAUSED/EXPIRED included) is returned`, a
+        # line of an API specification and not a soul chasing anything, and it dropped a
+        # real answer — `3.4.0(352) เทสลิ้ง uat ที่ใช้อยู่ได้เลย` — for being on line two.
+        if relation.cue_window is not None:
+            cue = matched_cue(later, relation)
+            if not cue:
+                continue
+            # "answers" is the weakest cue set — a bare "ได้เลย" is only an answer if
+            # something was actually asked first.
+            if relation.name == "answers" and not asked:
+                continue
+            return Relation(source, target, relation.name, relation.confidence, f"cue “{cue}”")
+
+        index, line, cue = cue_line(lines, relation)
         if not cue:
             continue
-        # "answers" is the weakest cue set — a bare "ได้เลย" is only an answer if
-        # something was actually asked first.
-        if relation.name == "answers" and not asked:
+        if index == 0 or len(lines) == 1:
+            return Relation(source, target, relation.name, relation.confidence, f"cue “{cue}”")
+        why = line_speaks_for_pair(line, lines[0], records[source])
+        if not why:
             continue
-        return Relation(source, target, relation.name, relation.confidence, f"cue “{cue}”")
+        return Relation(
+            source,
+            target,
+            relation.name,
+            relation.confidence,
+            f"cue “{cue}” ที่บรรทัด {index + 1}/{len(lines)} — {why}",
+        )
     return Relation(source, target, "same_topic", 0.5, "graph edge, no cue matched")
 
 

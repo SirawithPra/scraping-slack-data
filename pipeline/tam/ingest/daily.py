@@ -41,13 +41,13 @@ from dotenv import load_dotenv
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
-from tam.core import DEFAULT_RECORDS, format_timestamp, read_records, TamDataError
+from tam.core import DEFAULT_RECORDS, format_timestamp, read_records, skipped_channels, TamDataError
 from tam.ingest.export_slack import ERROR_HINTS, check_token_shape, export_channel, member_channels, merge_exports, newest_ts, verify_auth
 from tam.ingest.prepare_messages import load_export, merge_records, prepare
 from tam.ingest.youtrack import MIN_TICKET_CHARS, YouTrackError, fetch_tickets
 from tam.core import write_records
 from tam.ingest.quoted import annotate, bot_ids
-from tam.ingest.users import load_names
+from tam.ingest.users import fetch_names, load_names, save_names
 
 log = logging.getLogger("daily")
 
@@ -111,6 +111,16 @@ def main() -> None:
         code = str((error.response or {}).get("error", "unknown_error"))
         raise SystemExit(f"Slack API error '{code}': {ERROR_HINTS.get(code, 'see https://api.slack.com/methods')}") from error
 
+    # Channels that exist to try the bot out are not work, and there is no reason to spend
+    # a rate-limited Slack call on them every morning. `core.read_records` filters them out
+    # of the corpus regardless; this just stops fetching what will be discarded.
+    skip = skipped_channels()
+    if skip:
+        ignored = [name for cid, name in channels if cid in skip]
+        channels = [(cid, name) for cid, name in channels if cid not in skip]
+        if ignored:
+            log.info("Skipping %d channel(s) named in TAM_SKIP_CHANNELS: %s", len(ignored), ", ".join(f"#{n}" for n in ignored))
+
     log.info("Bot is a member of %d channel(s)", len(channels))
     if args.dry_run:
         print("\nแผนที่จะทำ (ยังไม่เรียก Slack เพิ่ม):")
@@ -140,6 +150,28 @@ def main() -> None:
         out.write_text(json.dumps(combined, ensure_ascii=False, indent=2), encoding="utf-8")
         log.info("#%s: +%d new, %d total", name, added, len(combined))
 
+    # ---- step 1b: refresh who is who --------------------------------------
+    # Cheap (one paginated users.list) and it fixes two things at once: a person who
+    # joined since the last fetch would otherwise render under an *invented* name on
+    # every screen, and `bot_ids` below reads this same cache to tell an integration
+    # from a colleague. Never fatal — a token without users:read still has a useful
+    # morning, it just keeps yesterday's names.
+    try:
+        fetched = fetch_names(token)
+        existing = load_names()
+        # Merge, so ids mapped by hand with `--set` (people users.list omits) survive.
+        kept = {uid: name for uid, name in existing.items() if uid not in fetched}
+        added = len(set(fetched) - set(existing))
+        save_names({**kept, **fetched})
+        log.info("names: %d from Slack (+%d new), %d kept by hand", len(fetched), added, len(kept))
+    except (SystemExit, OSError, ValueError) as error:
+        # SystemExit is how fetch_names reports a Slack-level error (missing_scope,
+        # mostly); OSError covers the network being down (URLError subclasses it) and
+        # ValueError a cache file somebody hand-edited into invalid JSON. None of the
+        # three is a reason to skip the morning's export, so none of them may escape:
+        # this refresh is a convenience on top of the run, not the run.
+        print(f"\n  ข้ามการดึงชื่อ: {error} — จะใช้ชื่อเดิมที่ cache ไว้")
+
     # ---- step 2: the tickets ----------------------------------------------
     # Deliberately before the quiet-morning check and not inside it. A ticket moving
     # from "In progress" to "Ready for test" is news even on a morning when nobody
@@ -153,7 +185,13 @@ def main() -> None:
             if issues:
                 records = [issue.as_record() for issue in issues]
                 records = [r for r in records if len(str(r.get("text", "")).strip()) >= MIN_TICKET_CHARS]
-                existing = read_records(args.records, include_threads=True) if args.records.exists() else []
+                # Both flags off the filters: this is a read in order to write, so anything
+                # dropped here is dropped from the corpus file. See core.read_records.
+                existing = (
+                    read_records(args.records, include_threads=True, skip_channels=False)
+                    if args.records.exists()
+                    else []
+                )
                 combined, replaced = merge_records(existing, records)
                 write_records(args.records, combined)
                 ticket_count = len(records)

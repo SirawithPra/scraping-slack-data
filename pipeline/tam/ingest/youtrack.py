@@ -10,6 +10,16 @@ Slack.
     python3 -m tam.ingest.youtrack --check
     python3 -m tam.ingest.youtrack --keys PROJ-87,PROJ-148
     python3 -m tam.ingest.youtrack --project PROJ --out data/processed/issues.json
+    python3 -m tam.ingest.youtrack --search "redemption" --limit 10
+    python3 -m tam.ingest.youtrack --comment PROJ-87 --text "ผูกกับเธรดใน Slack: <url>"
+
+**One function writes, and it is off unless somebody turned it on.** `add_comment` is
+the only path here that changes YouTrack, and it refuses unless `YOUTRACK_WRITE=1`. A
+comment on a ticket is visible to the whole team and cannot be taken back quietly, so
+the read path and the write path do not share a switch: reading needs a token, writing
+needs a token *and* a decision. `YOUTRACK_WRITE_TOKEN` exists so the read path can keep
+a read-only token — if the two were the same variable, turning writing on would hand
+write access to every read in this file.
 
 **The state field is found by type, never by name.** YouTrack's default is called
 `State`, and on the project this was built against it is called `Status new new`.
@@ -166,29 +176,78 @@ def config() -> tuple[str, str, list[str]]:
         missing = " and ".join(n for n, v in (("YOUTRACK_URL", base), ("YOUTRACK_TOKEN", token)) if not v)
         raise YouTrackError(
             f"{missing} not set — drift detection stays off. See pipeline/.env.example; "
-            "a read-only token is enough, nothing here writes to YouTrack."
+            "a read-only token is enough for everything but `add_comment`, which is off "
+            "until YOUTRACK_WRITE=1."
         )
     return base, token, projects
 
 
-def _get(base: str, token: str, path: str) -> Any:
+def write_config() -> tuple[str, str]:
+    """(base url, token) for the one path that changes YouTrack — or a refusal.
+
+    Two separate gates, because they answer different questions. `YOUTRACK_WRITE`
+    is "may this deployment write at all", which is a decision somebody makes once
+    and can revoke without touching a token. `YOUTRACK_WRITE_TOKEN` is "with whose
+    permissions", and it falls back to the read token only when the operator has
+    already said yes to writing — so the default posture stays: a read-only token,
+    and nothing in this file can post with it.
+    """
+    base, read_token, _ = config()
+    if os.getenv("YOUTRACK_WRITE", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        raise YouTrackError(
+            "YOUTRACK_WRITE ยังไม่ได้เปิด — คอมเมนต์จะไม่ถูกเขียนลง ticket จริง "
+            "(ตั้ง YOUTRACK_WRITE=1 และใส่ YOUTRACK_WRITE_TOKEN ที่มีสิทธิ์คอมเมนต์)"
+        )
+    token = os.getenv("YOUTRACK_WRITE_TOKEN", "").strip() or read_token
+    return base, token
+
+
+def allowed_issues() -> set[str]:
+    """The issues this deployment may comment on — empty meaning "any of them".
+
+    A third gate, because `YOUTRACK_WRITE` answers "may this deployment write at
+    all" and not "onto what". A demo runs against the real tracker, with the team's
+    real tickets one row away in the same picker, and the distance between those two
+    questions is a single mis-click — after which somebody has to go and delete a
+    comment from their own work item. Naming the ticket up front costs nothing and
+    makes that mis-click a refusal instead of a cleanup.
+    """
+    raw = os.getenv("YOUTRACK_WRITE_ONLY", "")
+    return {key.strip().upper() for key in raw.replace(",", " ").split() if key.strip()}
+
+
+def _request(base: str, token: str, path: str, *, payload: Any = None, method: str = "") -> Any:
+    body = None if payload is None else json.dumps(payload).encode("utf-8")
+    headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+    if body is not None:
+        headers["Content-Type"] = "application/json"
     request = urllib.request.Request(
-        base + path,
-        headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
+        base + path, data=body, headers=headers, method=method or ("POST" if body is not None else "GET")
     )
     try:
         with urllib.request.urlopen(request, timeout=60) as response:
-            return json.load(response)
+            raw = response.read()
+            return json.loads(raw) if raw else {}
     except urllib.error.HTTPError as error:
         detail = error.read().decode("utf-8", "replace")[:200]
         hint = {
             401: "the token is wrong, expired, or revoked",
-            403: "the token authenticates but lacks read access to that project",
+            # A write path reaches this for a different reason than a read path does, and
+            # "lacks read access" sends the operator to check the wrong permission.
+            403: (
+                "the token authenticates but may not comment on that issue"
+                if body is not None
+                else "the token authenticates but lacks read access to that project"
+            ),
             404: "no such issue or project, or the token cannot see it",
         }.get(error.code, "see https://www.jetbrains.com/help/youtrack/devportal/api-getting-started.html")
         raise YouTrackError(f"HTTP {error.code} on {path.split('?')[0]} — {hint}. {detail}") from error
     except OSError as error:
         raise YouTrackError(f"cannot reach {base}: {error}") from error
+
+
+def _get(base: str, token: str, path: str) -> Any:
+    return _request(base, token, path)
 
 
 def state_of(issue: dict[str, Any]) -> tuple[str, str]:
@@ -284,6 +343,139 @@ def fetch_project(project: str, limit: int = 1000) -> list[Issue]:
     return out[:limit]
 
 
+#: `REV-1421` as somebody would type it into a search box. Recognised on its own so a
+#: person who knows the number gets that issue rather than a text match on the digits.
+KEY_QUERY = re.compile(r"^\s*#?([A-Za-z][A-Za-z0-9_]{0,9}-\d+)\s*$")
+#: A bare number, which is what people actually type when the project is obvious from
+#: the channel they are in. Only usable when the caller supplied exactly one project.
+NUMBER_QUERY = re.compile(r"^\s*#?(\d{1,7})\s*$")
+#: How many hits a search returns. A picker shows a screenful; asking for a thousand to
+#: display twenty is latency the person typing pays for.
+SEARCH_LIMIT = 50
+
+
+def search_query(text: str, projects: Sequence[str] = ()) -> str:
+    """The YouTrack query for what somebody typed into a ticket picker.
+
+    Three shapes, because people type three different things and only one of them is
+    prose. `REV-1421` and a bare `1421` are *identities* — the person already knows
+    which ticket they want, and a text search for those digits buries it under every
+    issue whose description happens to contain them. Anything else is handed to
+    YouTrack as free text, scoped to the configured projects.
+
+    An empty query is not an error: a picker opens before anyone types, and the useful
+    thing to show then is the project's most recently touched issues.
+    """
+    scope = f"project: {', '.join(projects)}" if projects else ""
+    key = KEY_QUERY.match(text or "")
+    if key:
+        return f"issue id: {key.group(1).upper()}"
+    number = NUMBER_QUERY.match(text or "")
+    if number and len(projects) == 1:
+        return f"issue id: {projects[0].upper()}-{number.group(1)}"
+    term = (text or "").strip()
+    return " ".join(part for part in (scope, term, "sort by: updated desc") if part)
+
+
+def search_issues(text: str, *, projects: Sequence[str] | None = None, limit: int = SEARCH_LIMIT) -> list[Issue]:
+    """Issues matching what somebody typed, newest activity first.
+
+    This is the whole tracker, not the corpus. A picker built from the corpus can only
+    offer tickets somebody already mentioned in Slack, which is exactly the set that
+    does *not* need linking — the ticket nobody has typed yet is the one the person is
+    reaching for.
+
+    A query that matches nothing returns an empty list. YouTrack answers `issue id:`
+    for a non-existent key with HTTP 400, and a picker must show "no match", not an
+    error, when somebody is still halfway through typing a number.
+    """
+    base, token, configured = config()
+    wanted = list(projects) if projects is not None else configured
+    query = search_query(text, wanted)
+    try:
+        rows = _get(base, token, f"/api/issues?query={urllib.parse.quote(query)}&fields={FIELDS}&$top={limit}")
+    except YouTrackError as error:
+        if "HTTP 400" in str(error):
+            return []
+        raise
+    return [to_issue(row, base) for row in rows]
+
+
+def delete_comment(key: str, comment_id: str) -> None:
+    """Remove a comment this module wrote. Exists for `check_write` and nothing else.
+
+    Not exposed anywhere a person can reach it. Deleting somebody's comment from a
+    chat command is a destructive action with no undo and no audit trail the team
+    would see; the one caller below deletes only a comment it created a second
+    earlier, whose id it is still holding.
+    """
+    base, token = write_config()
+    _request(
+        base, token,
+        f"/api/issues/{urllib.parse.quote(key)}/comments/{urllib.parse.quote(comment_id)}",
+        method="DELETE",
+    )
+
+
+def check_write(key: str) -> dict[str, Any]:
+    """Prove the token can comment on this project, and leave nothing behind.
+
+    "The token can probably comment" is a guess, and the place nobody wants to find
+    out is halfway through a demo — a 403 there looks like the feature is broken
+    rather than like a permission nobody granted. There is no read-only way to ask
+    YouTrack this: permissions live behind admin endpoints an ordinary token cannot
+    see, and the only honest test of "may I write" is writing.
+
+    So it writes a comment that says what it is, deletes it, and reports both steps
+    separately. If the delete fails the comment stays and this says so with the id —
+    a probe that cleans up silently on failure would be worse than one that does not
+    clean up at all, because nobody would go and remove it.
+    """
+    marker = "🐾 Meowtam permission check — คอมเมนต์ทดสอบสิทธิ์ ระบบจะลบทิ้งทันที"
+    written = add_comment(key, marker)
+    result = {"key": written["key"], "wrote": True, "id": written["id"], "removed": False, "error": ""}
+    try:
+        delete_comment(written["key"], written["id"])
+        result["removed"] = True
+    except YouTrackError as error:
+        result["error"] = str(error)
+    return result
+
+
+def add_comment(key: str, text: str) -> dict[str, Any]:
+    """Write one comment on one issue, and return what YouTrack stored.
+
+    The return value is the point. A write whose only evidence is that no exception was
+    raised is indistinguishable from the mock this replaced, so the comment's own id
+    comes back and the caller shows it — the reader can open the ticket and find that
+    id there. Empty text is refused rather than posted: a blank comment on a ticket is
+    noise somebody has to delete by hand.
+    """
+    issue = str(key or "").strip().upper()
+    body = str(text or "").strip()
+    if not issue:
+        raise YouTrackError("ไม่ได้บอกว่า ticket ไหน")
+    if not body:
+        raise YouTrackError("คอมเมนต์ว่างเปล่า — ไม่เขียนลง ticket")
+    allowed = allowed_issues()
+    if allowed and issue not in allowed:
+        raise YouTrackError(
+            f"YOUTRACK_WRITE_ONLY เปิดให้เขียนเฉพาะ {', '.join(sorted(allowed))} — {issue} ไม่อยู่ในนั้น จึงไม่เขียน"
+        )
+    base, token = write_config()
+    created = _request(
+        base, token, f"/api/issues/{urllib.parse.quote(issue)}/comments?fields=id,text,created",
+        payload={"text": body},
+    )
+    log.info("Commented on %s (comment %s)", issue, created.get("id"))
+    return {
+        "key": issue,
+        "id": str(created.get("id") or ""),
+        "url": f"{base}/issue/{issue}",
+        "text": body,
+    }
+
+
 #: A ticket whose title and opening lines together say almost nothing — no description
 #: and a title like "fix" — would join clusters on nothing but its own emptiness. Measured:
 #: exactly one issue of 195 falls under this on the real project.
@@ -361,6 +553,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--check", action="store_true", help="Verify the token and print what it can see")
     parser.add_argument("--keys", help="Comma-separated issue ids to fetch, e.g. PROJ-1,PROJ-2")
     parser.add_argument("--project", help="Fetch a whole project by short name")
+    parser.add_argument("--search", help="Search the tracker the way the Slack ticket picker does")
+    parser.add_argument("--limit", type=int, default=SEARCH_LIMIT, help=f"Cap on --search hits (default {SEARCH_LIMIT})")
+    parser.add_argument("--comment", help="Issue id to comment on, e.g. PROJ-87. Needs YOUTRACK_WRITE=1")
+    parser.add_argument(
+        "--check-write",
+        metavar="ISSUE",
+        help="Prove the token may comment on this issue: writes a marked comment and deletes it again",
+    )
+    parser.add_argument("--text", default="", help="The comment body, used with --comment")
     parser.add_argument("--out", type=Path, help="Write the issues as corpus records here")
     return parser.parse_args()
 
@@ -379,6 +580,32 @@ def main() -> None:
             print(f"  เห็น {len(live)} โปรเจกต์: {', '.join(p['shortName'] for p in live[:12])}")
             if configured:
                 print(f"  ตั้งไว้ให้อ่าน: {', '.join(configured)}")
+            return
+
+        if args.check_write:
+            probe = check_write(args.check_write)
+            print(f"  เขียนคอมเมนต์ลง {probe['key']} ได้ (comment {probe['id']})")
+            if probe["removed"]:
+                print("  ลบคอมเมนต์ทดสอบออกแล้ว — ไม่เหลืออะไรบน ticket")
+                print("\n  ✓ token นี้คอมเมนต์ได้จริง ตั้ง YOUTRACK_WRITE=1 แล้วใช้ได้เลย")
+            else:
+                # Said loudly, with the id, because nobody will go looking for a comment
+                # they were told was cleaned up.
+                print(f"  ⚠ ลบไม่ออก: {probe['error']}")
+                print(f"  ⚠ คอมเมนต์ทดสอบยังค้างอยู่บน {probe['key']} — ต้องเข้าไปลบเอง (comment {probe['id']})")
+                print("\n  ✓ เขียนได้ แต่ token นี้ลบคอมเมนต์ไม่ได้ ซึ่งไม่กระทบการใช้งานจริง")
+            return
+
+        if args.comment:
+            written = add_comment(args.comment, args.text)
+            print(f"  เขียนคอมเมนต์ลง {written['key']} แล้ว (comment {written['id']}) → {written['url']}")
+            return
+
+        if args.search is not None:
+            hits = search_issues(args.search, limit=args.limit)
+            print(f"  ค้น “{args.search}” ใน {', '.join(configured) or 'ทุกโปรเจกต์'} เจอ {len(hits)} ใบ")
+            for issue in hits:
+                print(f"  {issue.key:16} {issue.state:18} {'ปิดแล้ว' if issue.resolved else 'ยังเปิด':9} {issue.summary[:50]}")
             return
 
         issues = fetch_by_keys(args.keys.split(",")) if args.keys else fetch_project(args.project or (configured[0] if configured else ""))

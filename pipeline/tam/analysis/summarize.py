@@ -203,7 +203,7 @@ def _template_summary(brief: dict[str, Any], language: str) -> TopicSummary:
             if latest
             else f"ยังไม่มีข้อความใหม่ในช่วงนี้ ({brief['total_messages']} ข้อความทั้งหมด จาก {people})"
         )
-        next_step = "ต้องมีคนไล่ให้ก่อน ถึงจะไปต่อได้" if brief["state"] == "blocked" else ""
+        next_step = "ต้องมีคนมาแก้เรื่องที่ติดอยู่ก่อน ถึงจะเดินต่อได้" if brief["state"] == "blocked" else ""
     else:
         detail = (
             f"Last word, {latest['when']}, {latest['who']}: “{latest['text'][:220]}”"

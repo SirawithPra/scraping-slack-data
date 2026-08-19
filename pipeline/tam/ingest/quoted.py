@@ -55,8 +55,23 @@ QUOTE_LINE = re.compile(r"^[ \t]*(?:&gt;|>)[ \t]?.*$", re.M)
 INLINE_CODE = re.compile(r"`[^`\n]+`")
 
 
-def analysis_text(text: str) -> str:
-    """The part of a message its author is asserting, for cue matching and embedding.
+def asserted_lines(text: str) -> list[str]:
+    """The lines its author is asserting, in order, each with its whitespace collapsed.
+
+    The same removals as `analysis_text` — fences, quoted lines, struck text, inline
+    code — except that the line boundaries survive. `analysis_text` is these lines
+    joined by a space, which is where every existing caller's behaviour comes from and
+    why that function is now defined in terms of this one.
+
+    The distinction is not cosmetic, and it is the one this module was missing. Cue
+    matching is told to read `analysis_text`, and on the real corpus 120 posts carry
+    four or more lines while `analysis_text` renders every one of the 120 as a single
+    line. A reader looking at that cannot tell "I am blocked on the sorting API" from a
+    twelve-line daily update whose ninth line mentions waiting for something unrelated —
+    the two are the same string to it. `docs/EXPERIMENTS.md` §7.1 measured that
+    granularity as the bottleneck and `ingest/blockers.py` already works this way; it
+    just had to read raw `text` to do it, which reintroduces the pasted-material bug
+    this module exists to prevent. This is the field both of them needed.
 
     Order matters: fences first, because a fence can contain `>` and `~` that are
     part of the pasted content rather than Slack markup.
@@ -65,7 +80,18 @@ def analysis_text(text: str) -> str:
     stripped = QUOTE_LINE.sub(" ", stripped)
     stripped = STRIKE.sub(" ", stripped)
     stripped = INLINE_CODE.sub(" ", stripped)
-    return re.sub(r"\s+", " ", stripped).strip()
+    lines = (re.sub(r"\s+", " ", line).strip() for line in stripped.splitlines())
+    return [line for line in lines if line]
+
+
+def analysis_text(text: str) -> str:
+    """The part of a message its author is asserting, for cue matching and embedding.
+
+    One string, so a caller that wants the whole assertion — embedding, BM25 — gets
+    what it always got. A caller that needs to know which *line* said something wants
+    `asserted_lines` instead.
+    """
+    return " ".join(asserted_lines(text))
 
 
 def is_pasted(text: str) -> bool:
