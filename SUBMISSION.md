@@ -85,7 +85,7 @@ python3 -m tam.web.server --records data/processed/syn.json --days 3650 --port 8
 | คำสั่ง | ได้ (วัด 20 ส.ค. 2569) |
 |---|---|
 | `cd pipeline && python3 -m pytest` | **178 passed** |
-| `cd slack-bot && npm test` | **120 pass · 0 fail** |
+| `cd slack-bot && npm test` | **158 pass · 0 fail** |
 | `cd slack-bot && npm run typecheck` | ไม่มี error |
 
 ทั้งสามคำสั่งรันได้โดยไม่ต้องมี Slack token · ฝั่งบอทเชื่อมกับ pipeline จริงได้ด้วย

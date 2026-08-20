@@ -48,6 +48,10 @@ oauth_config:
       # slash command + emoji-as-input
       - commands
       - reactions:read
+      # put 🧠 back on a message filed through the menu, so the mark on a decision
+      # is the same whichever way it was filed. Without this the write still lands;
+      # only the visible marker is missing, and the confirmation stops claiming it.
+      - reactions:write
 settings:
   event_subscriptions:
     bot_events:

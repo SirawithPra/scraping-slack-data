@@ -463,9 +463,12 @@ SOURCE_LABEL = {
     "youtrack": "youtrack",
     "slack_thread": "เธรด",
     # Pasted out of a DM or a private group. Named apart from "Slack" because the reader
-    # should know the difference: an exported message is whole, a pasted one is whatever
-    # somebody selected.
-    "slack_paste": "แชทที่วาง",
+    # should know the difference, and named for the *provenance* rather than the gesture:
+    # "แชทที่วาง" described what somebody's hands did, which tells a reader nothing about
+    # how far to trust the quote. What matters is that no token reaches this conversation,
+    # so there is no permalink to check it against and what arrived is only as complete as
+    # whatever somebody happened to highlight.
+    "slack_paste": "Slack (แชทปิด)",
 }
 
 

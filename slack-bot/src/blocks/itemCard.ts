@@ -1,6 +1,6 @@
 import type { KnownBlock } from '@slack/types';
 import type { WorkItem } from '../types.js';
-import { findMessage, ledgerOrigin, refreshStatus } from '../data.js';
+import { decisionChain, decisionsFor, findMessage, ledgerOrigin, refreshStatus } from '../data.js';
 import {
   CMD, STATE_LABEL, bodyText, clamp, context, days, divider, esc,
   evidenceButton, header, people, quote, section, sourceCounts, sourceIcon, ticketButton, who,
@@ -15,6 +15,15 @@ const KIND_ICON: Record<string, string> = {
   decision: '🧠',
   commit: '⌗',
 };
+
+/**
+ * How many filed decisions the card shows before pointing at recall.
+ *
+ * Three is the point past which the card stops being "what was decided" and turns
+ * into a second timeline. The rest are not hidden — the count and the command to
+ * see them are printed.
+ */
+const MAX_DECISIONS = 3;
 
 /**
  * How the summary line is labelled.
@@ -85,6 +94,38 @@ export function itemCardBlocks(item: WorkItem): KnownBlock[] {
           `${KIND_ICON[t.kind] ?? '•'} *${t.when}*  ${sourceIcon(t.source)} ${who(t.user)} — ${bodyText(t.text, 200)}${link}`,
         ),
       );
+    }
+  }
+
+  // What was *decided*, as opposed to what happened. These are filed by a human
+  // through 🧠 or the message menu; until now the only way to read one back was to
+  // guess a recall query close enough to its wording, so a decision attached to this
+  // exact item was invisible on the card describing that item.
+  const decisions = decisionsFor(item.key);
+  if (decisions.length) {
+    blocks.push(divider());
+    blocks.push(section('*🧠 การตัดสินใจที่บันทึกไว้*'));
+    for (const d of decisions.slice(0, MAX_DECISIONS)) {
+      const src = findMessage(d.evidence_id);
+      blocks.push(
+        section(
+          `*${esc(d.when)}* · ${sourceIcon(d.source)} ${who(d.user)}\n“${bodyText(d.statement, 240)}”`,
+          src?.permalink
+            ? { type: 'button', text: { type: 'plain_text', text: 'ที่มา' }, url: src.permalink }
+            : undefined,
+        ),
+      );
+      // Say an older version exists rather than printing it. The card is the current
+      // answer; recall is the surface built to show the chain, and duplicating it here
+      // would put a superseded statement back on screen next to the live one.
+      const chain = decisionChain(d);
+      if (chain.length > 1) {
+        blocks.push(context(`เปลี่ยนมาแล้ว ${chain.length} ครั้ง — ดูของเดิมด้วย \`${CMD} recall\``));
+      }
+    }
+    const omitted = decisions.length - MAX_DECISIONS;
+    if (omitted > 0) {
+      blocks.push(context(`…อีก ${omitted} รายการที่ไม่ได้แสดง — \`${CMD} recall\``));
     }
   }
 

@@ -148,6 +148,22 @@ function mergeDecisions(base: Decision[], local: Decision[]): Decision[] {
 }
 
 /**
+ * Re-merge the bot's own decision file into the ledger held in memory, after a write.
+ *
+ * `ledger().decisions = readDecisions()` looked like the cheap version of this and
+ * was not the same thing: it *replaced* the merged list with the local file, so
+ * every decision the pipeline itself carried vanished from recall — and now from
+ * every item card — the moment somebody filed their first one, and stayed gone
+ * until the next reload. Merging the merged list against the file again is
+ * idempotent (same ids, the file winning), so this is safe after every write.
+ */
+export function refreshDecisions(): Decision[] {
+  const current = ledger();
+  current.decisions = mergeDecisions(current.decisions, readDecisions());
+  return current.decisions;
+}
+
+/**
  * A drift claims a specific message changed the scope of a specific item. Keep
  * only the ones whose two halves are actually in the ledger: with fixture drifts
  * next to pipeline items neither resolves, and a nudge nobody can click through
@@ -242,6 +258,27 @@ export function standupFor(slackUserId: string) {
 
 export function driftFor(itemKey: string) {
   return ledger().drifts.find((d) => d.item_key.toUpperCase() === itemKey.toUpperCase());
+}
+
+/**
+ * The decisions filed against a work item — the live ones only, oldest first.
+ *
+ * A superseded decision is not what the team decided, it is what they *used to*
+ * decide, and printing it on the card beside the current one is how somebody ends
+ * up shipping the May answer in August. `decisionChain` is still where the
+ * history is read; this is where the answer is read.
+ *
+ * Matching is on `related_items`, which app.ts fills from `itemKeyForMessage` at
+ * the moment of filing. A decision on a message no work item claims carries no
+ * `related_items`, so it lands on no card and stays reachable only through
+ * recall — that is the existing behaviour, stated here because it is the one
+ * thing this function silently cannot show.
+ */
+export function decisionsFor(itemKey: string): Decision[] {
+  const key = itemKey.trim().toUpperCase();
+  return ledger()
+    .decisions.filter((d) => !d.superseded_by && d.related_items?.some((r) => r.toUpperCase() === key))
+    .sort((a, b) => a.when.localeCompare(b.when));
 }
 
 /**

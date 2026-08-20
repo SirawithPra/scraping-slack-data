@@ -529,10 +529,10 @@ $ curl -s http://127.0.0.1:8899/api/blockers        # ชื่อถูกแ�
       <div class="grid g3">
         <div class="stat"><div class="v">8</div><div class="l">work item ใน ledger ตัวอย่าง</div></div>
         <div class="stat"><div class="v">128</div><div class="l">ข้อความใน corpus ตัวอย่างที่ ledger นั้นสร้างมาจาก</div></div>
-        <div class="stat"><div class="v">8</div><div class="l">หน้าจอเรนเดอร์ออฟไลน์ — ทุก payload ผ่าน Slack limits</div></div>
+        <div class="stat"><div class="v">19</div><div class="l">หน้าจอเรนเดอร์ออฟไลน์ — ทุก payload ผ่าน Slack limits</div></div>
       </div>
-      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>npm run typecheck</code> ไม่มี error · <code>npm test</code> ผ่าน <strong>120/120</strong> (ในนั้นมี <code>tests/gate.test.ts</code> 6 ข้อ ที่คุมเกณฑ์ตัดความเกี่ยวข้อง และ <code>tests/postguard.test.ts</code> 8 ข้อ ที่คุมว่าโพสต์ออก Slack ได้เฉพาะปลายทางที่อนุญาต ไว้ไม่ให้เพี้ยนเงียบ ๆ) · <code>npm run preview</code> เรนเดอร์ทั้ง 8 หน้าจอ<em>บวกเคสที่ยาวสุดของสี่หน้าที่มีลิสต์</em> ออฟไลน์ ผ่านทั้งหมด</p>
-      <div class="rail"><span><b>DM 08:45 · digest 09:25</b> ปิดไว้เป็น default เปิดด้วย ENABLE_SCHEDULE=1</span></div>
+      <p><span class="pill ok">✓ ทดสอบแล้ว</span> <code>npm install</code> · <code>npm run typecheck</code> ไม่มี error · <code>npm test</code> ผ่าน <strong>158/158</strong> (ในนั้นมี <code>tests/gate.test.ts</code> 6 ข้อ ที่คุมเกณฑ์ตัดความเกี่ยวข้อง และ <code>tests/postguard.test.ts</code> 8 ข้อ ที่คุมว่าโพสต์ออก Slack ได้เฉพาะปลายทางที่อนุญาต ไว้ไม่ให้เพี้ยนเงียบ ๆ) · <code>npm run preview</code> เรนเดอร์ทั้ง 19 หน้าจอ<em>บวกเคสที่ยาวสุดของเก้าหน้าที่มีลิสต์</em> ออฟไลน์ ผ่านทั้งหมด</p>
+      <div class="rail"><span><b>DM 08:45 · digest 09:25</b> ปิดไว้เป็น default เปิดด้วย ENABLE_SCHEDULE=1 · กด <b>ส่ง</b> ใน DM เช้านั้นนับเป็นคำตอบ daily ของวันนั้นเลย คนที่แก้ร่างในที่ส่วนตัวจึงไม่ถูกทวงให้พิมพ์ซ้ำในเธรด</span></div>
     </div>
   </section>
 
@@ -575,7 +575,7 @@ $ curl -s http://127.0.0.1:8899/api/blockers        # ชื่อถูกแ�
         <table>
           <thead><tr><th>รายการ</th><th>สถานะ</th><th>หลักฐาน</th></tr></thead>
           <tbody>
-            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 16 endpoint ที่อ่านข้อมูลคืน 200 · bot typecheck สะอาด, <code>npm test</code> ผ่าน 120/120, ทุก payload ผ่าน Slack limits · 26 CLI Python ตอบ <code>--help</code> ครบทุกตัว และ <code>pytest</code> ผ่าน 178/178</td></tr>
+            <tr><td><strong>Working Prototype</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>Dashboard 16 endpoint ที่อ่านข้อมูลคืน 200 · bot typecheck สะอาด, <code>npm test</code> ผ่าน 158/158, ทุก payload ผ่าน Slack limits · 26 CLI Python ตอบ <code>--help</code> ครบทุกตัว และ <code>pytest</code> ผ่าน 178/178</td></tr>
             <tr><td><strong>User Manual</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><code>docs/USER_MANUAL.md</code> — ติดตั้ง ใช้งาน ต่อ Slack แก้ปัญหา ทุกคำสั่งรันผ่านจริง</td></tr>
             <tr><td><strong>Draft Presentation</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td>สไลด์นี้ 10 แผ่น · ตัวเลขทุกตัวมีบันทึกการวัดอยู่ใน <a href="EXPERIMENTS.md">docs/EXPERIMENTS.md</a></td></tr>
             <tr><td><strong>Source Code</strong></td><td><span class="pill ok">✓ พร้อม</span></td><td><a href="https://github.com/SirawithPra/scraping-slack-data">github.com/SirawithPra/scraping-slack-data</a> — public</td></tr>

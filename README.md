@@ -156,9 +156,9 @@ TAM_API_URL=http://127.0.0.1:8899 npm run check-api
 ```
 
 `check-api` exercises the bot's whole boot path with no Slack in the loop and
-prints what came back: four work items, every evidence id and citation resolved
+prints what came back: eleven work items, every evidence id and citation resolved
 inside its own item, permalinks rebuilt for the 18 Slack messages and correctly
-none for the 9 meeting utterances. With `TAM_API_URL` set there is **no
+none for the 11 meeting utterances. With `TAM_API_URL` set there is **no
 fallback**: if the pipeline cannot answer, the bot refuses to start rather than
 serve stale fixture data that looks identical to live.
 

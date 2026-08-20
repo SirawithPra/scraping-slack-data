@@ -13,6 +13,9 @@
  */
 import { test, before } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 
 import { hydrate, findItem, findMessage, ledger, sortedItems } from '../src/data.js';
 import { digestBlocks } from '../src/blocks/digest.js';
@@ -35,6 +38,14 @@ before(async () => {
   // No TAM_API_URL: the fixture is the declared source and hydrate() reads it
   // from disk, which is the same ledger the offline demo renders.
   delete process.env.TAM_API_URL;
+  // The bot's own stores must not be read from a test run — same rule as
+  // provenance.test.ts, and for the reason this file cares about: `data/decisions.json`
+  // is whatever the operator's live bot has filed, its evidence lives in a corpus the
+  // fixture has never seen, and the evidence-resolves assertion below then fails on
+  // the machine of anyone who has actually used the product.
+  const store = mkdtempSync(join(tmpdir(), 'meowtam-blocks-'));
+  process.env.TAM_DECISIONS_PATH = join(store, 'decisions.json');
+  process.env.TAM_OVERRIDES_PATH = join(store, 'link_overrides.json');
   await hydrate();
 });
 

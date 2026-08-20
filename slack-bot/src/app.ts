@@ -4,7 +4,7 @@ import { App, LogLevel } from '@slack/bolt';
 
 import {
   ledger, hydrate, reload, ledgerOrigin, demoFixtures, sortedItems, itemsByState, findItem,
-  findMessage, itemKeyForMessage, itemsFor, standupFor, driftFor,
+  findMessage, itemKeyForMessage, itemsFor, refreshDecisions, standupFor, driftFor,
 } from './data.js';
 import { apiConfig, fetchTracker } from './tam-api.js';
 import { PostRefused, describePolicy, guardPosting, readPolicy } from './postguard.js';
@@ -31,7 +31,8 @@ import { staleItems, staleKey } from './stale.js';
 import { clearSimulated, seedPendingStreak, seededSummary, showSimulatedLabels, todaysSimulatedAnswers } from './demo.js';
 import { channelsOf, describeProjects, labelOf, projectMap, projectOf } from './projects.js';
 import { TrackerOff, addComment, describeTracker, searchTickets, trackerConfig } from './youtrack.js';
-import { COMMANDS, CMD, bodyText, context, section, esc, clamp, who } from './blocks/common.js';
+import { driftComment, linkComment, pasteComment, sharableUrl, type Said } from './comment.js';
+import { COMMANDS, CMD, bodyText, context, fromMarkdown, section, esc, clamp, who } from './blocks/common.js';
 import { describeNames, mentionOf, resetNames } from './names.js';
 import type { DailyAnswer, DailyRecord } from './types.js';
 import { pasteChat, reindex } from './tam-api.js';
@@ -204,7 +205,7 @@ app.command(new RegExp(`^/(${COMMANDS.join('|')})$`), async ({ command, ack, res
       return;
     }
 
-    // /meowtam paste   → attach a DM or a private group to a ticket
+    // /meowtam paste   → keep a DM or a private group, with a ticket or without one
     if (lower === 'paste' || lower === 'แนบแชท' || lower.startsWith('paste ')) {
       await openPasteModal(client, (body as any).trigger_id, {
         channel: command.channel_id,
@@ -419,14 +420,16 @@ app.view('drift_save', async ({ ack, view, client, body }) => {
   // Slack modal destroys whatever a PO wrote there, with no undo and no record of
   // what was lost; the proposed text goes in as a comment where the ticket's owner
   // can read it beside the original and apply it themselves.
-  const proposal = [
-    comment.trim() || 'สโคปในเธรดกับ ticket ไม่ตรงกัน',
-    '',
-    'สโคปที่คุยกันใน Slack (ข้อเสนอ ยังไม่ได้แก้ description ให้):',
-    desc.trim(),
-    '',
-    `— เสนอจาก Slack โดย ${who} เมื่อ ${stamp()}`,
-  ].join('\n');
+  const at = stamp();
+  const cfg = apiConfig();
+  const proposal = driftComment({
+    key,
+    by: who,
+    at,
+    note: comment,
+    scope: desc,
+    boardUrl: sharableUrl(cfg ? `${cfg.baseUrl}/item/${encodeURIComponent(key)}` : undefined),
+  });
 
   let blocks;
   try {
@@ -434,10 +437,15 @@ app.view('drift_save', async ({ ack, view, client, body }) => {
     blocks = [
       section(`*✅ เขียนลง ${esc(key)} แล้ว*`),
       section(
-        `เขียนเป็น *คอมเมนต์* ไม่ได้ทับ description เดิม — comment id \`${esc(written.id)}\`\n` +
-          'เจ้าของ ticket อ่านเทียบกับของเดิมแล้วค่อยแก้เองได้',
+        `เขียนเป็น *คอมเมนต์* ไม่ได้ทับ description เดิม — comment id \`${esc(written.id)}\` ` +
+          `เมื่อ ${esc(at)}\nเจ้าของ ticket อ่านเทียบกับของเดิมแล้วค่อยแก้เองได้`,
       ),
+      // Same reason the link report grew one: the person pressing 'บันทึกลง YouTrack'
+      // is entitled to see the sentence that now stands on the ticket in their name.
+      section(`*ข้อความที่เขียนลง ${esc(key)}*`),
+      section(fromMarkdown(proposal, 2400)),
       { type: 'actions', elements: [
+        { type: 'button', style: 'primary', text: { type: 'plain_text', text: 'เปิดคอมเมนต์ที่เพิ่งเขียน' }, url: written.commentUrl || written.url },
         { type: 'button', text: { type: 'plain_text', text: 'เปิด ticket' }, url: written.url },
       ] },
     ];
@@ -684,16 +692,36 @@ interface LinkMeta {
   record?: string;
   channel?: string;
   project?: string;
+  /**
+   * The message itself, carried across the modal so the ticket comment can quote it.
+   *
+   * Slack does not give the view submission the message the shortcut fired on, and the
+   * corpus id alone is not something to write on a ticket. Clamped hard: `private_metadata`
+   * is capped at 3000 characters and losing the whole modal to a long message would be a
+   * worse bug than a shortened quote.
+   */
+  text?: string;
+  user?: string;
+  when?: string;
   /** The paste flow's own fields, carried the same way. */
   paste?: boolean;
 }
 
-/** The picker block, shared by "ผูกกับ ticket" and the paste modal. */
-function ticketPicker(project: string) {
+/**
+ * The picker block, shared by "ผูกกับ ticket" and the paste modal.
+ *
+ * `optional` is not a convenience. The shortcut exists to put one message on one
+ * ticket, so a submission without a ticket is a mistake and Slack should refuse it.
+ * The paste modal is the other case: a chat worth keeping often arrives before
+ * anybody knows which ticket it belongs to — sometimes before the ticket exists —
+ * and forcing a choice there buys a wrong link or a chat nobody keeps at all.
+ */
+function ticketPicker(project: string, opts: { optional?: boolean } = {}) {
   return {
     type: 'input',
     block_id: 'key',
-    label: { type: 'plain_text', text: 'Ticket' },
+    optional: Boolean(opts.optional),
+    label: { type: 'plain_text', text: opts.optional ? 'Ticket (ไม่เลือกก็ได้)' : 'Ticket' },
     element: {
       type: 'external_select',
       action_id: 'ticket_lookup',
@@ -736,7 +764,14 @@ app.shortcut('link_to_ticket', async ({ ack, shortcut, client }) => {
   }
 
   const project = projectOf({ id: s.channel?.id, name: s.channel?.name });
-  const meta: LinkMeta = { record: recordId, channel: s.channel?.id, project };
+  const meta: LinkMeta = {
+    record: recordId,
+    channel: s.channel?.id,
+    project,
+    text: clamp(String(s.message?.text ?? ''), 700),
+    user: s.message?.user ?? s.user?.id,
+    when: stampOfMessage(s.message?.ts) ?? stamp(),
+  };
 
   await client.views.open({
     trigger_id: s.trigger_id,
@@ -792,9 +827,12 @@ async function performLink(input: {
   by: string;
   comment: string;
   permalink?: string;
+  /** The message being linked, so the ticket comment can quote it rather than count it. */
+  records?: Said[];
 }): Promise<LinkResult> {
   const { recordIds, key, by, comment } = input;
-  const result: LinkResult = { key, messages: recordIds.length };
+  const at = stamp();
+  const result: LinkResult = { key, messages: recordIds.length, sourceType: 'slack', at };
 
   try {
     let total = 0;
@@ -806,23 +844,37 @@ async function performLink(input: {
     result.overridesError = (err as Error).message;
   }
 
+  const cfg = apiConfig();
+
   if (comment.trim()) {
+    // The permalink is the whole point of writing to the tracker: it makes the link
+    // two-way, so somebody reading the ticket can reach the conversation. It used to be
+    // the only structure the comment had — a bare url on its own line under whatever the
+    // person typed. `linkComment` gives the same facts a shape and a heading.
+    const body = linkComment({
+      key,
+      by,
+      at,
+      note: comment,
+      messages: recordIds.length,
+      source: 'slack',
+      records: input.records,
+      permalink: input.permalink,
+      boardUrl: sharableUrl(cfg ? `${cfg.baseUrl}/item/${encodeURIComponent(key)}` : undefined),
+    });
+    result.commentBody = body;
     try {
-      const written = await addComment(
-        key,
-        // The permalink is the whole point of writing to the tracker: it makes the
-        // link two-way, so somebody reading the ticket can reach the conversation.
-        `${comment.trim()}${input.permalink ? `\n\n${input.permalink}` : ''}\n\n— ผูกจาก Slack โดย ${by} เมื่อ ${stamp()}`,
-      );
+      const written = await addComment(key, body);
       result.commentId = written.id;
-      result.commentUrl = written.url;
+      result.commentUrl = written.commentUrl || written.url;
       result.ticketUrl = written.url;
     } catch (err) {
       result.commentError = err instanceof TrackerOff ? err.message : (err as Error).message;
+      // Nothing was written, so nothing may be shown as written.
+      result.commentBody = undefined;
     }
   }
 
-  const cfg = apiConfig();
   if (cfg) {
     try {
       await reindex(cfg);
@@ -884,7 +936,14 @@ app.view('link_save', async ({ ack, view, client, body }) => {
   const permalink = meta.channel
     ? await permalinkFor(client, meta.channel, meta.record.replace(/^msg_[A-Z0-9]+_/, ''))
     : undefined;
-  const result = await performLink({ recordIds: [meta.record], key, by: who, comment, permalink });
+  const result = await performLink({
+    recordIds: [meta.record],
+    key,
+    by: who,
+    comment,
+    permalink,
+    records: meta.text ? [{ user: meta.user ?? who, when: meta.when ?? stamp(), text: meta.text }] : undefined,
+  });
 
   await replyTo(client, who, { text: `ผูกกับ ${key} แล้ว`, blocks: linkResultBlocks(result) as any });
 });
@@ -942,8 +1001,18 @@ async function openPasteModal(
           '*วางแชทจาก DM หรือห้องที่บอทเข้าไม่ถึง*\n' +
             'เลือกข้อความใน Slack แล้ว ⌘C มาวางตรงนี้ได้เลย — ผมอ่านชื่อคนกับเวลาออกเอง',
         ),
-        ticketPicker(project),
+        ticketPicker(project, { optional: true }),
         scopeContext(project),
+        // The trade, before the choice rather than after it. Keeping without a ticket
+        // is a real option here, and the difference that matters is not where the
+        // messages are stored — both paths store the same corpus records — it is
+        // whether anybody who is not in this modal ever hears about them.
+        context(
+          'ไม่เลือก ticket ก็ได้ — แชทจะเข้า corpus ไว้ก่อน หา `' +
+            CMD +
+            ' recall` เจอ แต่จะไม่มีคอมเมนต์ไปโผล่บน ticket และคนที่ตาม ticket อยู่จะไม่รู้ · ' +
+            'เลือกได้เมื่อไหร่ก็ได้เปรียบกว่า เพราะคนอ่าน ticket จะกดย้อนมาอ่านบทสนทนาได้',
+        ),
         {
           type: 'input',
           block_id: 'title',
@@ -985,21 +1054,14 @@ async function openPasteModal(
 
 app.view('paste_save', async ({ ack, view, client, body }) => {
   const who = (body as any).user.id as string;
-  const key = view.state.values['key']?.['ticket_lookup']?.selected_option?.value ?? '';
+  const picked = view.state.values['key']?.['ticket_lookup']?.selected_option?.value ?? '';
+  // `__none__` is the disabled-looking row that says which project was searched. It is
+  // not a ticket, so it means the same thing as choosing nothing: keep it in the lake.
+  const key = picked === '__none__' ? '' : picked;
   const chat = view.state.values['chat']?.['value']?.value ?? '';
   const title = view.state.values['title']?.['value']?.value ?? '';
   const day = view.state.values['day']?.['value']?.selected_date ?? localNow().date;
 
-  if (!key || key === '__none__') {
-    // Answering inside the modal rather than closing it and DMing: the person still
-    // has their paste in the box, and losing it to a validation error would be the
-    // kind of thing nobody tries twice.
-    await ack({
-      response_action: 'errors',
-      errors: { key: 'เลือก ticket ก่อนครับ (แถวที่ขึ้นว่า “ไม่เจอ” เลือกไม่ได้)' },
-    } as any);
-    return;
-  }
   const cfg = apiConfig();
   if (!cfg) {
     await ack({
@@ -1043,6 +1105,26 @@ app.action('paste_cancel', async ({ ack, respond, action }) => {
   await respond({ replace_original: true, text: 'ยกเลิกแล้ว — ยังไม่ได้เก็บอะไรลง corpus' });
 });
 
+/**
+ * Which work items the rebuilt ledger actually put these records in, biggest first.
+ *
+ * Only used for a chat kept without a ticket. It answers the one question that screen
+ * leaves open — "so where did my chat go?" — with what the build says rather than with
+ * a promise, and the records it finds nowhere are simply the ones it does not count:
+ * the caller states the remainder, so a change in the linker cannot turn a missing
+ * message into a silently claimed one.
+ */
+function placementOf(ids: string[]): Array<{ key: string; count: number }> {
+  const counts = new Map<string, number>();
+  for (const id of ids) {
+    const key = itemKeyForMessage(id);
+    if (key) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return [...counts.entries()]
+    .map(([key, count]) => ({ key, count }))
+    .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+}
+
 app.action('paste_confirm', async ({ ack, respond, action, body }) => {
   await ack();
   const id = String((action as any).value ?? '');
@@ -1064,19 +1146,47 @@ app.action('paste_confirm', async ({ ack, respond, action, body }) => {
 
   await respond({ replace_original: true, text: 'กำลังเก็บเข้า corpus แล้ว build ใหม่ — สักครู่ครับ' });
 
-  const result: LinkResult = { key: held.key, messages: 0 };
+  const at = stamp();
+  let quoted: Said[] = [];
+  const result: LinkResult = {
+    key: held.key,
+    messages: 0,
+    // The classification the report was missing. This chat did not come out of a channel
+    // the bot can read — it came out of a DM or a closed group somebody had to select by
+    // hand — and every screen and every ticket comment downstream should say so.
+    sourceType: 'slack_paste',
+    title: held.title,
+    day: held.day,
+    at,
+  };
   try {
     // One call does the corpus write, the link overrides and the rebuild, in that
     // order and under one lock. Doing it from here in three calls would leave a
     // window where the corpus holds the messages and the linker has not been told
     // where they belong — which the digest would render as an unassigned thread.
+    //
+    // An empty key is the other half of this flow: a chat kept with no ticket chosen.
+    // The pipeline then writes the corpus and rebuilds and writes no override, so none
+    // of the ticket-shaped fields may be filled in — a report naming a ticket nobody
+    // picked is exactly the claim this screen exists to prevent.
     const stored = await pasteChat(cfg, { chat: held.chat, title: held.title, day: held.day, linkKey: held.key, by: who });
     result.messages = stored.records.length;
-    result.overridesFile = shortPath(overridesPath());
-    result.overridesTotal = stored.linked;
-    result.itemKey = stored.item_key || undefined;
-    result.inItem = stored.in_item ?? 0;
+    result.title = stored.title || held.title;
+    result.day = stored.day || held.day;
+    quoted = stored.records;
+    if (held.key) {
+      result.overridesFile = shortPath(overridesPath());
+      result.overridesTotal = stored.linked;
+      result.itemKey = stored.item_key || undefined;
+      result.inItem = stored.in_item ?? 0;
+    } else {
+      result.corpusSize = stored.corpus_size;
+    }
     await reload();
+    // After the reload, because this is read out of the rebuilt ledger rather than
+    // predicted: the linker may have recognised a ticket key inside the chat and
+    // grouped some of it on its own, and that is worth saying — as its guess.
+    if (!held.key) result.placed = placementOf(stored.records.map((r) => r.id));
   } catch (err) {
     console.error('paste ingest failed', err);
     await respond({
@@ -1087,22 +1197,40 @@ app.action('paste_confirm', async ({ ack, respond, action, body }) => {
     return;
   }
 
+  // Built before the write, not after, because the comment wants the board link in it —
+  // and the board is the only place a reader of this ticket can see the conversation,
+  // there being no Slack permalink for a chat that arrived by paste.
+  if (result.itemKey) result.boardUrl = `${cfg.baseUrl}/item/${encodeURIComponent(result.itemKey)}`;
+
   if (held.key) {
+    const body = pasteComment({
+      key: held.key,
+      title: result.title ?? held.title,
+      day: result.day ?? held.day,
+      by: who,
+      at,
+      records: quoted,
+      itemKey: result.itemKey,
+      inItem: result.inItem,
+      boardUrl: sharableUrl(result.boardUrl),
+    });
+    result.commentBody = body;
     try {
-      const written = await addComment(
-        held.key,
-        `แนบบทสนทนาจาก Slack: “${held.title}” (${held.day}) — ${result.messages} ข้อความ\n` +
-          `เก็บเข้า corpus ของ Meowtam แล้ว โดย ${who} เมื่อ ${stamp()}`,
-      );
+      const written = await addComment(held.key, body);
       result.commentId = written.id;
+      result.commentUrl = written.commentUrl || written.url;
       result.ticketUrl = written.url;
     } catch (err) {
       result.commentError = err instanceof TrackerOff ? err.message : (err as Error).message;
+      result.commentBody = undefined;
     }
   }
-  if (result.itemKey) result.boardUrl = `${cfg.baseUrl}/item/${encodeURIComponent(result.itemKey)}`;
 
-  await respond({ replace_original: false, text: `แนบเข้า ${held.key} แล้ว`, blocks: linkResultBlocks(result) as any });
+  await respond({
+    replace_original: false,
+    text: held.key ? `แนบเข้า ${held.key} แล้ว` : 'เก็บเข้า corpus แล้ว (ยังไม่ผูก ticket)',
+    blocks: linkResultBlocks(result) as any,
+  });
 });
 
 /* ------------------------------------------------------------------ *
@@ -1129,6 +1257,44 @@ async function announceStale(client: any, opts: { channel: string; force?: boole
   // one message that mattered gets swallowed by a failed post.
   markAnnounced('stale', fresh.map((e) => staleKey(e, STALE_WORKDAYS)), stamp(), `${STALE_WORKDAYS} วันทำการ`);
   return `ประกาศ ${fresh.length} งานที่เงียบเกิน ${STALE_WORKDAYS} วันทำการแล้ว`;
+}
+
+/**
+ * The emoji a filed decision wears. Also one of `DECISION_EMOJI`'s own keys, so
+ * the mark the bot puts on and the mark a human puts on are the same mark.
+ */
+const DECISION_MARK = 'brain';
+
+/**
+ * Put the 🧠 back on the message a decision was filed from.
+ *
+ * The menu path used to leave no trace whatsoever: the filer got a DM, and the
+ * message in the channel looked like every other message. Nobody else in the room
+ * could tell it had been filed, the filer could not tell three months later, and
+ * the only way to find out was to guess a recall query. The emoji path has had
+ * this marker from the start — it *is* the reaction someone added — so this only
+ * makes the two paths end in the same visible place.
+ *
+ * Returns whether the mark is actually on the message, because the confirmation
+ * says so and must not say it about a reaction Slack refused. `already_reacted`
+ * counts as on: the claim is "the mark is there", not "I put it there".
+ */
+async function markDecisionOnMessage(client: any, channel?: string, ts?: string): Promise<boolean> {
+  if (!channel || !ts) return false;
+  try {
+    await client.reactions.add({ channel, timestamp: ts, name: DECISION_MARK });
+    return true;
+  } catch (err) {
+    const code = (err as any)?.data?.error;
+    if (code === 'already_reacted') return true;
+    // The decision is already on disk, so this never fails the handler — but a
+    // silent no-op is how an install stays one scope short for a month.
+    console.error(
+      `reactions.add failed (${code ?? err}) — ไม่ได้ปัก 🧠 ไว้ที่ข้อความ` +
+        (code === 'missing_scope' ? ' · เพิ่ม scope reactions:write แล้วติดตั้งแอปใหม่' : ''),
+    );
+    return false;
+  }
 }
 
 app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
@@ -1166,6 +1332,12 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
       source: 'slack',
       evidence_id: recordId,
       supersedes: prior?.id,
+      // `prior` is picked from the *merged* list, so it is often a decision that
+      // exists only in the generated ledger and has nowhere in this file to keep a
+      // `superseded_by`. `saveDecision` copies the record in when it is handed one;
+      // without it the chain a human just stated was never written, while the
+      // confirmation went on saying "recall จะเห็นเป็นสาย" over a file with no chain.
+      supersedes_record: prior,
       related_items: itemKey ? [itemKey] : undefined,
     });
   } catch (err) {
@@ -1185,7 +1357,15 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
   // file, so re-fetching every topic from the pipeline to observe a local write
   // was both wasteful and the thing that could throw past this handler — leaving
   // the decision on disk and the person who filed it told nothing at all.
-  ledger().decisions = readDecisions();
+  refreshDecisions();
+
+  // "แทน …" is a claim about the file, so it is read back out of the file rather
+  // than inferred from having asked for it.
+  const chained = Boolean(prior && readDecisions().some((d) => d.id === prior.id && d.superseded_by === saved.id));
+
+  // Marked before the confirmation is composed, so the confirmation reports what
+  // is on the message rather than what was intended for it.
+  const marked = await markDecisionOnMessage(client, s.channel?.id, msg?.ts);
 
   await client.chat.postMessage({
     channel: who,
@@ -1196,8 +1376,10 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
       context(
         `id \`${esc(saved.id)}\` · ลงวันที่ ${esc(saved.when)} (เวลาของข้อความ ไม่ใช่เวลาที่กด)` +
           ` · เขียนลง \`${esc(shortPath(decisionsPath()))}\` แล้ว` +
-          (prior ? ` · แทน \`${esc(prior.id)}\` — recall จะเห็นเป็นสาย` : '') +
-          ` · หาเจอด้วย \`${CMD} recall\``,
+          (chained ? ` · แทน \`${esc(prior!.id)}\` — recall จะเห็นเป็นสาย` : '') +
+          (prior && !chained ? ` · ⚠ ผูกเป็นสายกับ \`${esc(prior.id)}\` ไม่สำเร็จ — ดู log` : '') +
+          (marked ? ' · ปัก 🧠 ไว้ที่ข้อความแล้ว ทั้งห้องเห็น' : '') +
+          ` · หาเจอด้วย \`${CMD} recall\` และขึ้นบนการ์ดของงานนั้น`,
       ),
     ] as any,
   });
@@ -1211,7 +1393,7 @@ app.shortcut('mark_decision', async ({ ack, shortcut, client }) => {
 /** 📌 and 🧠 file a real decision. Everything else is a hint, and says so. */
 const DECISION_EMOJI: Record<string, string> = {
   pushpin: '📌 บันทึกเป็นการตัดสินใจ',
-  brain: '🧠 บันทึกเป็นการตัดสินใจ',
+  [DECISION_MARK]: '🧠 บันทึกเป็นการตัดสินใจ',
 };
 
 /**
@@ -1263,7 +1445,14 @@ async function reactedMessage(
   return undefined;
 }
 
-app.event('reaction_added', async ({ event, client }) => {
+app.event('reaction_added', async ({ event, client, context: botContext }) => {
+  // The bot's own 🧠 — the one `markDecisionOnMessage` just placed — arrives here
+  // as a reaction like any other. Acting on it would re-file the decision that
+  // triggered it, find *itself* as the prior, log a supersession that cannot be
+  // linked, and post a second confirmation into the channel. Bolt's `context` is
+  // aliased because this file's `context()` block helper is used further down.
+  if (event.user && event.user === botContext.botUserId) return;
+
   const label = DECISION_EMOJI[event.reaction];
   const hint = EMOJI_HINT[event.reaction];
   if (!label && !hint) return;
@@ -1307,6 +1496,12 @@ app.event('reaction_added', async ({ event, client }) => {
       source: 'slack',
       evidence_id: recordId,
       supersedes: prior?.id,
+      // `prior` is picked from the *merged* list, so it is often a decision that
+      // exists only in the generated ledger and has nowhere in this file to keep a
+      // `superseded_by`. `saveDecision` copies the record in when it is handed one;
+      // without it the chain a human just stated was never written, while the
+      // confirmation went on saying "recall จะเห็นเป็นสาย" over a file with no chain.
+      supersedes_record: prior,
       related_items: itemKey ? [itemKey] : undefined,
     });
   } catch (err) {
@@ -1321,14 +1516,16 @@ app.event('reaction_added', async ({ event, client }) => {
     return;
   }
 
-  ledger().decisions = readDecisions();
+  refreshDecisions();
+  const chained = Boolean(prior && readDecisions().some((d) => d.id === prior.id && d.superseded_by === saved.id));
 
   await reply(
     [
       section(`*${label} แล้ว*`),
       context(
         `id \`${esc(saved.id)}\` · ลงวันที่ ${esc(saved.when)} · เขียนลง \`${esc(shortPath(decisionsPath()))}\`` +
-          (prior ? ` · แทน \`${esc(prior.id)}\`` : '') +
+          (chained ? ` · แทน \`${esc(prior!.id)}\`` : '') +
+          (prior && !chained ? ` · ⚠ ผูกเป็นสายกับ \`${esc(prior.id)}\` ไม่สำเร็จ — ดู log` : '') +
           ` · หาเจอด้วย \`${CMD} recall\``,
       ),
     ],
@@ -1420,7 +1617,7 @@ const BEATS: Beat[] = [
   { title: '09:25 · digest ลงห้อง — ที่ติดขึ้นก่อน', real: `${CMD} digest`, when: 'ทุกเช้า 09:25', where: DIGEST_ROOM, fake: 'ไม่จำลอง — อ่านจาก pipeline ตรง ๆ ทั้งการ์ด' },
   { title: `09:30 · งานที่ไม่มีใครแตะเกิน ${STALE_WORKDAYS} วันทำการ → ประกาศในห้อง`, real: `${CMD} stale post (ดูเงียบ ๆ ก่อน: ${CMD} stale)`, when: 'ทุกเช้า 09:30 หลัง digest', where: DIGEST_ROOM, fake: 'ไม่จำลอง — นับจากวันที่ของข้อความล่าสุดจริง ไม่มีงานเงียบพอก็ไม่ประกาศ' },
   { title: `${hhmm(DAILY_SUMMARY_AT)} · สรุปเธรด + ประกาศเรื่องที่ค้างติดกัน ${PENDING_DAYS} เช้า`, real: `${CMD} daily summary`, when: `ทุกเช้า ${hhmm(DAILY_SUMMARY_AT)}`, where: `ในเธรด daily · ถ้ามีเรื่องค้างครบ ${PENDING_DAYS} เช้า ประกาศอีกข้อความใน ${DAILY_ROOM}`, fake: 'การสรุปกับการนับเป็นของจริง · สิ่งที่ถูกสรุปคือคำตอบจาก beat 1 กับ beat 4 บวกคำตอบจริงของใครก็ตามที่กดส่งจาก DM ใน beat 2' },
-  { title: 'แชทจาก DM → ผูกเข้า ticket → build ใหม่', real: `${CMD} paste (หรือเมนู ⋯ ที่ข้อความ → ผูกกับ ticket)`, when: 'ตอนไหนก็ได้ ที่มีบทสนทนาใน DM ต้องเก็บ', where: 'ฟอร์มกับผลลัพธ์เห็นคนเดียว · ของที่เขียนจริงคือ corpus + link override + คอมเมนต์บน ticket', fake: 'แชทที่ใส่มาให้ในฟอร์มเป็นตัวอย่าง (ลบแล้ววางของจริงได้) · การเก็บเข้า corpus เป็นของจริง' },
+  { title: 'แชทจาก DM → เก็บไว้ (ผูก ticket หรือไม่ผูกก็ได้) → build ใหม่', real: `${CMD} paste (หรือเมนู ⋯ ที่ข้อความ → ผูกกับ ticket)`, when: 'ตอนไหนก็ได้ ที่มีบทสนทนาใน DM ต้องเก็บ', where: 'ฟอร์มกับผลลัพธ์เห็นคนเดียว · เลือก ticket แล้วเขียน corpus + link override + คอมเมนต์บน ticket · ไม่เลือก เขียนแค่ corpus แล้วหาด้วย recall', fake: 'แชทที่ใส่มาให้ในฟอร์มเป็นตัวอย่าง (ลบแล้ววางของจริงได้) · การเก็บเข้า corpus เป็นของจริง' },
   { title: 'สโคปเปลี่ยนแต่ ticket ไม่เปลี่ยน → เขียนคอมเมนต์ลง ticket', real: `${CMD} drift แล้วกด “ดูร่างที่เสนอ” ในการ์ด`, when: 'ตอนไหนก็ได้ · ทุกครั้งที่เทียบ Slack กับ ticket', where: `${DIGEST_ROOM} · คอมเมนต์ไปโผล่บน ticket จริงเมื่อ YOUTRACK_WRITE=1`, fake: 'ไม่จำลอง — เทียบกับ ticket จริง (ถ้าเป็น drift จาก fixture การ์ดจะติดป้ายบอกเอง)' },
   { title: 'recall — ค้นด้วยความหมาย พร้อมสายการตัดสินใจ', real: `${CMD} recall <คำถาม> (พิมพ์อะไรที่ไม่ใช่คำสั่งก็ถือเป็น recall)`, when: 'ตอนไหนก็ได้ ตอนนึกไม่ออกว่าสรุปกันไว้ว่าอะไร', where: `${DIGEST_ROOM} (ถ้าพิมพ์เอง จะเห็นคนเดียว)`, fake: 'ไม่จำลอง — ค้นจาก corpus จริง คำถามเป็นตัวที่ตั้งไว้ให้' },
   { title: 'บอร์ดรวม', real: `${CMD} (ของตัวเอง) · ${CMD} @ชื่อ · ${CMD} <TICKET-123> · ${CMD} blocked`, when: 'ตอนไหนก็ได้', where: 'เห็นคนเดียว ไม่รบกวนห้อง', fake: 'ไม่จำลอง — งานจริงทั้งหมด' },
@@ -1738,8 +1935,9 @@ async function runDemo(
       await respond({
         text:
           '▶ beat 8 — เปิดฟอร์มแนบแชทให้แล้ว (ใส่ตัวอย่างแชทจาก DM ไว้ให้ ลบทิ้งแล้ววางของจริงได้)\n' +
-          'เลือก ticket → กด “อ่านให้ดูก่อน” → ผมจะอ่านให้ดูก่อนว่าแยกคนพูดถูกไหม แล้วค่อยกดเก็บ\n' +
-          'ตอนเก็บ: เข้า corpus → เขียน link override → build ใหม่ → บอกว่าตอนนี้อยู่ใต้ ticket ไหนจริง ๆ',
+          'เลือก ticket (หรือไม่เลือกก็ได้) → กด “อ่านให้ดูก่อน” → ผมจะอ่านให้ดูก่อนว่าแยกคนพูดถูกไหม แล้วค่อยกดเก็บ\n' +
+          'เลือก ticket: เข้า corpus → เขียน link override → build ใหม่ → บอกว่าตอนนี้อยู่ใต้ ticket ไหนจริง ๆ\n' +
+          'ไม่เลือก: เข้า corpus แล้ว build ใหม่เหมือนกัน แต่ไม่มี override ไม่มีคอมเมนต์บน ticket — หาด้วย recall',
       });
       return;
     }

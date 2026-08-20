@@ -34,6 +34,42 @@ export function sourceIcon(s: string): string {
 }
 
 /**
+ * A Markdown body — the thing we sent to YouTrack — rendered in Slack's dialect.
+ *
+ * This exists so the link report can show the comment it just wrote instead of only
+ * its id. Echoing the Markdown verbatim would put `### 📋 แนบบทสนทนา…` and
+ * `* **ที่มา:**` on screen as literal characters, which is a different way of being
+ * unreadable. So: headings and `**bold**` become Slack's single-asterisk bold,
+ * bullets become bullets, and `[text](url)` becomes Slack's `<url|text>`.
+ *
+ * Escaping happens first and the link brackets are inserted after, which is the only
+ * ordering that is safe: escaping afterwards would turn our own `<…|…>` into visible
+ * `&lt;`, and skipping it would let a pasted `<@here>` in somebody's chat log ping the
+ * channel from inside a preview.
+ */
+export function fromMarkdown(md: string, limit = 900): string {
+  const lines = esc(md ?? '')
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      if (/^-{3,}$/.test(trimmed)) return ''; // Slack has no horizontal rule
+      let out = line.replace(/^\s*#{1,6}\s+(.*)$/, (_m, text: string) => `*${text}*`);
+      // A quote marker that opens a line is structure and survives as Slack's own; the
+      // escape pass just turned it into `&gt;`, and one `&gt;` per line of an attached chat
+      // log is the single ugliest thing this function could ship. Anchored to the line
+      // start, so a `-&gt;` a developer typed inside a message stays escaped text.
+      out = out.replace(/^(\s*)&gt;/, '$1>');
+      out = out.replace(/^(\s*)[*-]\s+/, '$1•  ');
+      out = out.replace(/\*\*(.+?)\*\*/g, '*$1*');
+      out = out.replace(/\[([^\]]+)\]\(([^)\s]+)\)/g, '<$2|$1>');
+      return out;
+    });
+  // Collapse the runs of blank lines the dropped rules and headings leave behind.
+  const body = lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return clamp(body, limit);
+}
+
+/**
  * The registered slash commands. app.ts builds its command regex from this list
  * and the Block Kit copy interpolates `CMD`, so renaming the command cannot
  * leave a footer pointing at a command Slack does not know.

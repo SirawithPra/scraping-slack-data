@@ -126,7 +126,7 @@ autocomplete on `/me` can hesitate.
 | 5 | **09:25** digest in the channel | `/mt digest` · the 09:25 schedule · **ดูข้อความ** / **ที่มา** on any claim | "Blocked first. Every claim, one click from the message that proves it." |
 | 6 | **09:30** work nobody has touched for `TAM_STALE_WORKDAYS` working days | `/mt stale post` (`/mt stale` to look first) · the 09:30 schedule | "Nobody flagged these. Nobody mentioned them at all — that's a different illness, and only a count can find it." |
 | 7 | **10:45** thread summary **and** the pending escalation | `/mt daily summary` · the 10:45 schedule | "Third morning running. It says so once, to the channel, and never again for the same line." |
-| 8 | The paste modal, prefilled with a chat from a DM | `/mt paste` · ⋯ → **ผูกกับ ticket** on any message | "The decision happened in a DM no token can reach. Paste it, pick the ticket, and it lands in the corpus attached to that ticket." |
+| 8 | The paste modal, prefilled with a chat from a DM | `/mt paste` · ⋯ → **ผูกกับ ticket** on any message | "The decision happened in a DM no token can reach. Paste it, pick the ticket, and it lands in the corpus attached to that ticket. No ticket yet? Leave the picker empty — it is kept and searchable, and the screen says exactly what that costs." |
 | 9 | Scope-change message, then a threaded nudge | `/mt drift` → **ดูร่างที่เสนอ** in the card | "The requirement changed here. The ticket didn't. It noticed — and it writes a comment on the real ticket." |
 | 10 | Recall with the decision chain | `/mt recall <question>` — or any text that isn't a command | "May we said no BOM. August we changed it. The ticket still says May." |
 | 11 | The board | `/mt` · `/mt @someone` · `/mt PROJ-142` · `/mt blocked` | — |
@@ -157,13 +157,13 @@ product does not have. Everything with a `—` is real and simply does not need 
 | `/mt format` \| `help` \| `template` | — *the format the parser reads; send it to the team, don't demo it* |
 | `/mt reload` | — *operator command: re-read the ledger mid-demo without restarting* |
 | ⋯ → **ผูกกับ ticket** (any message) | 8 *(same write path: link override → YouTrack comment → rebuild)* |
-| ⋯ → **บันทึกเป็นการตัดสินใจ**, and 📌 / 🧠 | — *this is what fills the decision chain beat 10 reads* |
+| ⋯ → **บันทึกเป็นการตัดสินใจ**, and 📌 / 🧠 | — *this is what fills the decision chain beat 10 reads; either way the message ends up wearing 🧠, and the filed decision shows on that work item's card* |
 | 🎫 / 🚧 / ✅ reactions | — *hint only, they write nothing, and the ephemeral reply says so* |
 | **ส่ง** / **ข้ามวันนี้** in the standup DM | 2 |
 | **ดูข้อความ** / **ที่มา** on any claim, **เปิด** / **ดูงานนี้ในบอร์ด** on any card | 5, 11 |
 | **ดูร่างที่เสนอ** → the *อัปเดต ticket* modal → **บันทึกลง YouTrack** | 9 |
 | **ไม่ใช่การเปลี่ยนสโคป** on a drift card | 9 *(say out loud that dismissals are logged, not stored — the reply says so too)* |
-| **อ่านให้ดูก่อน** → **เก็บเข้า corpus แล้วผูกกับ …** / **ยกเลิก** in the paste flow | 8 |
+| **อ่านให้ดูก่อน** → **เก็บเข้า corpus แล้วผูกกับ …** (or **เก็บเข้า corpus (ยังไม่ผูก ticket)**) / **ยกเลิก** in the paste flow | 8 |
 | Schedules 08:45 · 09:00 · 09:25 · 09:30 · 10:45 (`ENABLE_SCHEDULE=1`) | 2 · 3 · 5 · 6 · 7 — the beats *are* these jobs, fired by hand |
 
 **Beat 6 will not invent anything.** If nothing has actually been quiet for `TAM_STALE_WORKDAYS`
@@ -227,7 +227,7 @@ leaderboards. Nudges go by DM, never to the channel. That is a design rule, not 
 | `/meowtam daily` | the form, privately · `daily post` posts today's · `daily summary` runs the 10:45 collection now |
 | `/meowtam blocked` | what is blocked right now |
 | `/meowtam stale` | work nobody has touched for `TAM_STALE_WORKDAYS` working days · `stale post` announces it in the channel |
-| `/meowtam paste` | attach a chat copied out of a DM to a ticket — parse preview first, then store, link and rebuild |
+| `/meowtam paste` | keep a chat copied out of a DM — parse preview first, then store and rebuild · with a ticket it also writes the override and a comment; the picker may be left empty, and then only the corpus is written |
 | `/meowtam projects` | which channels are which project, and what this one is mapped to |
 | `/meowtam digest` | the 09:25 screen on demand |
 | `/meowtam drift` \| `silent` | where Slack and the tracker disagree, and which tickets went quiet |

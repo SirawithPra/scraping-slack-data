@@ -97,6 +97,41 @@ test('supersession is stored in both directions so the chain can be walked', () 
   assert.equal(stored.find((d) => d.id === august.id)?.superseded_by, undefined);
 });
 
+/**
+ * The prior a caller found is usually *not* in this file.
+ *
+ * app.ts picks it out of the merged ledger — the generated decisions plus this
+ * file — so on a real workspace the record being superseded lives in the pipeline's
+ * output and has nowhere here to keep a `superseded_by`. That is the whole reason
+ * `supersedes_record` exists, and it went unused long enough for the confirmation
+ * to promise "recall จะเห็นเป็นสาย" over a file holding one unlinked decision.
+ */
+test('a prior that lives only in the ledger is carried in, so the chain survives the write', () => {
+  const ledgerOnly = {
+    id: 'dec_from_the_generated_ledger',
+    statement: 'export CSV ไม่ต้องมี BOM',
+    when: '2026-05-12 09:42',
+    user: 'Sam',
+    source: 'meeting' as const,
+    evidence_id: 'mtg_20260512-0930_1778000000.000',
+    related_items: ['WEB-097'],
+  };
+
+  const august = saveDecision({ ...A_DECISION, supersedes: ledgerOnly.id, supersedes_record: ledgerOnly });
+
+  const stored = readDecisions();
+  assert.equal(stored.length, 2, 'the prior was not copied into the file that stores the link');
+  assert.equal(stored.find((d) => d.id === ledgerOnly.id)?.superseded_by, august.id);
+});
+
+test('without the record there is nothing to link to, and the caller can tell', () => {
+  const august = saveDecision({ ...A_DECISION, supersedes: 'dec_that_is_nowhere' });
+  const stored = readDecisions();
+  assert.equal(stored.length, 1, 'a phantom prior must not be invented');
+  assert.equal(stored[0]?.id, august.id);
+  assert.ok(!stored.some((d) => d.superseded_by), 'nothing may claim a chain that was not written');
+});
+
 test('the plain {record_id: key} map the linker CLI writes still reads', () => {
   writeFileSync(overrides, JSON.stringify({ 'msg_C0DEMOCHAN1_1786699860.031': 'ticket:MOB-142' }), 'utf8');
   assert.deepEqual(readOverrides(), [

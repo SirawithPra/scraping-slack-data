@@ -203,7 +203,25 @@ export async function searchTickets(
 export interface WrittenComment {
   key: string;
   id: string;
+  /** The ticket. */
   url: string;
+  /**
+   * The comment itself, scrolled to and highlighted.
+   *
+   * The caller used to be handed the ticket url and the comment id as separate
+   * facts, and said so on screen: *"comment id `7-729` (เปิด ticket แล้วหาไอดีนี้เจอ)"*.
+   * That is a scavenger hunt — on a ticket with forty comments the id is not visible
+   * anywhere a reader can scan. YouTrack anchors a comment as
+   * `#focus=Comments-<id>.0-0`, so the id we already have is enough to send somebody
+   * to the exact comment, and the button can be the thing it claims to be.
+   */
+  commentUrl: string;
+}
+
+/** The ticket url with YouTrack's own comment anchor, or the ticket alone if we have no id. */
+export function commentAnchor(ticketUrl: string, commentId: string): string {
+  if (!ticketUrl) return '';
+  return commentId ? `${ticketUrl}#focus=Comments-${commentId}.0-0` : ticketUrl;
 }
 
 /**
@@ -242,7 +260,9 @@ export async function addComment(key: string, text: string, cfg = trackerConfig(
       // answer and belongs in front of the person as itself.
       throw new TrackerOff(err.message.replace(/^HTTP \d+ — /, ''));
     });
-    return { key: issue, id: String(res?.id ?? ''), url: String(res?.url ?? '') };
+    const id = String(res?.id ?? '');
+    const url = String(res?.url ?? '');
+    return { key: issue, id, url, commentUrl: commentAnchor(url, id) };
   }
 
   const res = await json(
@@ -258,7 +278,9 @@ export async function addComment(key: string, text: string, cfg = trackerConfig(
     },
     cfg.timeoutMs,
   );
-  return { key: issue, id: String(res?.id ?? ''), url: `${cfg.baseUrl}/issue/${issue}` };
+  const id = String(res?.id ?? '');
+  const url = `${cfg.baseUrl}/issue/${issue}`;
+  return { key: issue, id, url, commentUrl: commentAnchor(url, id) };
 }
 
 /** The boot line: which backend, which projects, and whether writing is on. */

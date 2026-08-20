@@ -27,6 +27,7 @@ import { recallBlocks } from '../src/blocks/recall.js';
 import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, dmAnswerBlocks, pendingEscalationBlocks } from '../src/blocks/daily.js';
 import { linkResultBlocks, pastePreviewBlocks, ticketOption } from '../src/blocks/link.js';
 import { staleBlocks } from '../src/blocks/stale.js';
+import { pasteComment } from '../src/comment.js';
 import { staleItems } from '../src/stale.js';
 import { todaysSimulatedAnswers } from '../src/demo.js';
 import type { PendingStreak } from '../src/daily.js';
@@ -113,13 +114,35 @@ const dailyRecord = {
 const quiet = staleItems(open, { workdays: 0 });
 const quietWorst = staleItems(manyItems(40), { workdays: 0 });
 
+const pastedChat = [
+  { user: 'U0DEMOUSER1', when: '2026-08-19 14:21', text: 'พี่ครับ หน้า redemption สรุปว่าใช้ voucher code เดิมใช่ไหมครับ' },
+  { user: 'U0DEMOUSER2', when: '2026-08-19 14:24', text: 'ใช้เดิมไปก่อนนะ\nPO ยังไม่ยืนยัน format ใหม่' },
+  { user: 'U0DEMOUSER1', when: '2026-08-19 14:26', text: 'โอเคครับ งั้นผมทำ REVERAPP-140 ต่อด้วยของเดิม' },
+];
+
+/** The full-success shape, comment body and all — this is the screen after `/mt paste`. */
 const linked = {
   key: 'REVERAPP-140',
   messages: 3,
+  sourceType: 'slack_paste' as const,
+  title: 'DM พี่ Natta เรื่อง redemption',
+  day: '2026-08-19',
+  at: '2026-08-20 08:08',
   overridesFile: 'link_overrides.json',
   overridesTotal: 12,
   commentId: '4-1234',
-  commentUrl: 'https://example.youtrack.cloud/issue/REVERAPP-140',
+  commentUrl: 'https://example.youtrack.cloud/issue/REVERAPP-140#focus=Comments-4-1234.0-0',
+  commentBody: pasteComment({
+    key: 'REVERAPP-140',
+    title: 'DM พี่ Natta เรื่อง redemption',
+    day: '2026-08-19',
+    by: 'U0DEMOUSER1',
+    at: '2026-08-20 08:08',
+    records: pastedChat,
+    itemKey: 'REVERAPP-140',
+    inItem: 3,
+    boardUrl: 'https://example.invalid/item/REVERAPP-140',
+  }),
   ticketUrl: 'https://example.youtrack.cloud/issue/REVERAPP-140',
   itemKey: 'REVERAPP-140',
   inItem: 3,
@@ -155,10 +178,33 @@ const payloads: Record<string, any[]> = {
   linkPartial: linkResultBlocks({
     key: 'REVERAPP-140',
     messages: 1,
+    sourceType: 'slack',
+    at: '2026-08-20 08:08',
     overridesFile: 'link_overrides.json',
     overridesTotal: 12,
     commentError: 'YOUTRACK_WRITE ยังไม่ได้เปิด — บอทจะไม่เขียนคอมเมนต์ลง ticket จริง',
     rebuildError: 'ยังไม่ได้ตั้ง TAM_API_URL',
+  }),
+  // The lake shape: kept in the corpus, no ticket chosen, so every ticket-shaped line
+  // has to be absent rather than blank — and the linker's own guess is on screen as a
+  // guess. This is the payload that would render a lie if the renderer forgot the case.
+  linkKept: linkResultBlocks({
+    key: '',
+    messages: 3,
+    sourceType: 'slack_paste',
+    title: 'DM พี่ Natta เรื่อง redemption',
+    day: '2026-08-19',
+    at: '2026-08-20 08:08',
+    corpusSize: 1495,
+    placed: [{ key: 'REVERAPP-140', count: 1 }],
+  }),
+  pasteKept: pastePreviewBlocks({
+    title: 'DM พี่ Natta เรื่อง redemption',
+    day: '2026-08-19',
+    key: '',
+    records: pastedChat.map((r) => ({ ...r })),
+    skipped: [],
+    actionValue: 'pdemo2',
   }),
   pastePreview: pastePreviewBlocks({
     title: 'DM พี่ Natta เรื่อง redemption',
