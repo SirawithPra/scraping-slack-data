@@ -10,15 +10,16 @@ import { apiConfig, fetchTracker } from './tam-api.js';
 import { PostRefused, describePolicy, guardPosting, readPolicy } from './postguard.js';
 import {
   dailyBefore, dailyFor, decisionsPath, markAnnounced, overridesPath, readDailies, readDecisions,
-  saveDaily, saveDecision, saveOverride, storeSummary, wasAnnounced,
+  saveDaily, saveDailyAnswer, saveDecision, saveOverride, storeSummary, wasAnnounced,
 } from './store.js';
 import {
-  DailyParse, formatDailyDate, newEscalations, parseDailyReply, parseHhMm, pendingStreaks,
-  streakKey, zonedNow,
+  DailyParse, formatDailyDate, mergeThreadAnswers, newEscalations, parseDailyReply, parseHhMm,
+  pendingStreaks, streakKey, zonedNow,
 } from './daily.js';
-import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, dailyTitle, pendingEscalationBlocks } from './blocks/daily.js';
+import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, dailyTitle, dmAnswerBlocks, pendingEscalationBlocks } from './blocks/daily.js';
 import { digestBlocks } from './blocks/digest.js';
-import { standupDmBlocks, standupPrefill } from './blocks/standupDm.js';
+import { standupDmBlocks } from './blocks/standupDm.js';
+import { standupAnswer, standupPrefill } from './standups.js';
 import { itemCardBlocks, boardBlocks } from './blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from './blocks/drift.js';
 import { recallBlocks } from './blocks/recall.js';
@@ -32,7 +33,7 @@ import { channelsOf, describeProjects, labelOf, projectMap, projectOf } from './
 import { TrackerOff, addComment, describeTracker, searchTickets, trackerConfig } from './youtrack.js';
 import { COMMANDS, CMD, bodyText, context, section, esc, clamp, who } from './blocks/common.js';
 import { describeNames, mentionOf, resetNames } from './names.js';
-import type { DailyAnswer } from './types.js';
+import type { DailyAnswer, DailyRecord } from './types.js';
 import { pasteChat, reindex } from './tam-api.js';
 
 const env = (k: string, fallback = '') => process.env[k]?.trim() || fallback;
@@ -456,18 +457,69 @@ app.view('drift_save', async ({ ack, view, client, body }) => {
 app.action('standup_submit', async ({ ack, body, client, respond }) => {
   await ack();
   const vals = (body as any).state?.values ?? {};
+  const done = vals['done']?.['value']?.value ?? '';
   const today = vals['today']?.['value']?.value ?? '';
   const blocker = vals['blocker']?.['value']?.value ?? '';
   const user = (body as any).user.id;
+  const draft = standupFor(user);
+
+  // Recorded as this morning's daily answer, not just acknowledged. Pressing ส่ง
+  // here and typing the same three sections into the thread are now the same act,
+  // which is what the DM promised by prefilling the boxes in the daily's format.
+  const answer = standupAnswer({ user, done, today, blocker });
+  let stored: DailyRecord | undefined;
+  let inThread = false;
+  if (answer) {
+    try {
+      stored = saveDailyAnswer({ date: localNow().date, channel: DAILY_CHANNEL, answer });
+    } catch (err) {
+      // The store refuses to write over a file it could not parse. Say so instead of
+      // showing a tick: this person is about to walk into standup believing the room
+      // already has their answer.
+      console.error('standup_submit — เก็บคำตอบลง daily ไม่ได้:', err);
+    }
+  }
+  // Into the thread now, not at 10:45. A colleague scrolling the channel at 09:10 has
+  // to be able to see that this person answered, or the thread reads as an empty
+  // morning and answering it again is the reasonable thing to do.
+  if (stored?.ts && answer) {
+    try {
+      await client.chat.postMessage({
+        channel: stored.channel,
+        thread_ts: stored.ts,
+        text: `${mentionOf(user)} ตอบ daily มาทาง DM`,
+        blocks: dmAnswerBlocks([answer]) as any,
+      });
+      inThread = true;
+    } catch (err) {
+      // Stored but not shown. Worth saying out loud in the reply below, because the
+      // person can fix it themselves by typing in the thread.
+      console.error('standup_submit — โพสต์คำตอบเข้าเธรด daily ไม่ได้:', err);
+    }
+  }
 
   await respond({
     replace_original: true,
     text: 'ส่งแล้ว',
     blocks: [
       section('*✅ ส่งแล้ว ขอบคุณครับ*'),
+      ...(answer?.done.length ? [section(`*เมื่อวาน:* ${esc(answer.done.join(' · '))}`)] : []),
       ...(today ? [section(`*วันนี้:* ${esc(today)}`)] : []),
       ...(blocker ? [section(`*⛔ ติด:* ${esc(blocker)}`)] : []),
-      context('จะไปโผล่ใน digest ตอน 09:25 — ไม่ต้องพูดซ้ำในห้องประชุม'),
+      context(
+        stored
+          ? `เก็บเป็นคำตอบ daily ของ ${formatDailyDate(stored.date)} แล้ว · ` +
+              (inThread
+                ? 'โพสต์ให้ทีมเห็นในเธรด daily ด้วยแล้ว'
+                : stored.ts
+                  ? '⚠️ แต่โพสต์เข้าเธรดไม่ได้ (ดู log) — ทีมจะเห็นตอนสรุป'
+                  : `ยังไม่มีเธรดของวันนี้ (ยังไม่ได้โพสต์ daily) — จะยกเข้าเธรดให้ตอนโพสต์ ${hhmm(DAILY_AT)}`) +
+              ` · สรุปรวมตอน ${hhmm(DAILY_SUMMARY_AT)} · ไม่ต้องพิมพ์ซ้ำในเธรด ` +
+              '(อยากแก้ พิมพ์ในเธรดได้เลย ของในเธรดชนะเสมอ)'
+          : answer
+            ? '⚠️ ยังไม่ได้เก็บลง daily — เปิด log ของบอทดู แล้วพิมพ์ในเธรด daily แทนไปก่อน'
+            : 'ไม่ได้กรอกอะไรมา เลยไม่ได้เก็บเป็นคำตอบ daily — ยังพิมพ์ในเธรดได้ตามปกติ',
+      ),
     ] as any,
   });
 
@@ -476,7 +528,6 @@ app.action('standup_submit', async ({ ack, body, client, respond }) => {
     // already said about an item that has not moved, so a blocker submitted exactly
     // as proposed is the same obstacle a day older — announcing it as news teaches
     // the channel to skim past the word.
-    const draft = standupFor(user);
     const asProposed = draft ? standupPrefill(draft).blocker === blocker : false;
     const label = asProposed ? 'ยังติดเรื่องเดิม' : 'blocker ใหม่';
     await client.chat.postMessage({
@@ -495,7 +546,17 @@ app.action('standup_skip', async ({ ack, respond }) => {
   await respond({
     replace_original: true,
     text: 'ข้ามแล้ว',
-    blocks: [section('ข้ามวันนี้แล้วครับ — ผมจะใช้ที่ดึงมาให้แทน ไม่มีใครโดนทวงในห้อง')] as any,
+    blocks: [
+      section('ข้ามวันนี้แล้วครับ — ไม่มีใครโดนแท็กทวงในห้อง'),
+      // Precise about what was and was not stored. Skipping records nothing, so the
+      // summary will name this person as not having answered — stated here rather
+      // than discovered at 10:45, and with the two ways out of it.
+      context(
+        `ไม่ได้เก็บเป็นคำตอบ daily นะครับ — ในสรุปตอน ${hhmm(DAILY_SUMMARY_AT)} ชื่อคุณจะอยู่ฝั่ง “ยังไม่ตอบ” ` +
+          '(เปลี่ยนใจได้ พิมพ์ในเธรด daily หรือ `' + CMD + ' daily` เอาฟอร์มมากรอก) · ' +
+          'งานของคุณยังขึ้นใน digest 09:25 ตามปกติ ผมอ่านจาก work item ไม่ได้อ่านจากที่คุณพิมพ์',
+      ),
+    ] as any,
   });
 });
 
@@ -1350,15 +1411,15 @@ const DIGEST_ROOM = roomOf(DIGEST_CHANNEL);
 
 const BEATS: Beat[] = [
   { title: 'เตรียมเช้าที่ผ่านมา — เขียนประวัติ daily ย้อนหลัง (จำลอง)', real: 'ไม่มี — ของจริงคือเช้าที่ผ่านไปเองจริง ๆ', when: 'ไม่ต้องยิง — เช้าพวกนั้นผ่านไปเองอยู่แล้ว', where: 'ไฟล์ dailies.json ไม่ได้ลง Slack', fake: 'ทั้ง beat นี้คือการจำลอง' },
-  { title: '08:45 · standup DM — ผมร่างของเมื่อวานให้ ไม่ได้ถาม', real: 'ยิงเอง 08:45 (ENABLE_SCHEDULE=1) · ในการ์ดกดปุ่ม “ส่ง” หรือ “ข้ามวันนี้”', when: 'ทุกเช้า 08:45', where: 'DM ของแต่ละคนใน STANDUP_USERS', fake: 'ไม่จำลอง — draft มาจาก work item จริงที่คนนั้นมีชื่ออยู่' },
+  { title: '08:45 · standup DM — ผมร่างของเมื่อวานให้ ไม่ได้ถาม', real: 'ยิงเอง 08:45 (ENABLE_SCHEDULE=1) · ในการ์ดกดปุ่ม “ส่ง” หรือ “ข้ามวันนี้”', when: 'ทุกเช้า 08:45', where: `DM ของแต่ละคนใน STANDUP_USERS · กด “ส่ง” แล้วคำตอบถูกเก็บเป็น daily ของวันนั้น (ขึ้นในสรุป ${hhmm(DAILY_SUMMARY_AT)} ไม่ต้องพิมพ์ในเธรดซ้ำ)`, fake: 'ไม่จำลอง — draft มาจาก work item จริงที่คนนั้นมีชื่ออยู่ และคำตอบที่กดส่งก็เป็นของจริง' },
   // The two configurable times are read, not typed: `TAM_DAILY_AT` moves the post
   // and the beat list has to move with it, or the demo announces a time the bot
   // does not keep.
   { title: `${hhmm(DAILY_AT)} · โพสต์ daily ในห้อง — ยกยอดที่ค้างขึ้นหัว`, real: `${CMD} daily post`, when: `ทุกเช้า ${hhmm(DAILY_AT)}`, where: DAILY_ROOM, fake: 'โพสต์เป็นของจริง · บรรทัด “ค้างจากเมื่อวาน” นับจากเช้าที่ beat 1 จำลองไว้' },
-  { title: 'ทีมตอบในเธรด daily (จำลอง)', real: `${CMD} daily → ได้ฟอร์มเห็นคนเดียว แล้วตอบในเธรด`, when: 'ระหว่างเช้า ทีมพิมพ์กันเอง', where: 'เธรดของโพสต์ daily', fake: 'คำตอบของวันนี้ทั้งหมด' },
+  { title: 'ทีมตอบในเธรด daily (จำลอง)', real: `${CMD} daily → ได้ฟอร์มเห็นคนเดียว แล้วตอบในเธรด · หรือกด “ส่ง” ในการ์ด DM ของ beat 2`, when: 'ระหว่างเช้า ทีมพิมพ์กันเอง', where: 'เธรดของโพสต์ daily', fake: 'คำตอบของวันนี้ทั้งหมด — ยกเว้นคนที่กดส่งจาก DM เอง คนนั้นเป็นของจริงและไม่ถูกทับ' },
   { title: '09:25 · digest ลงห้อง — ที่ติดขึ้นก่อน', real: `${CMD} digest`, when: 'ทุกเช้า 09:25', where: DIGEST_ROOM, fake: 'ไม่จำลอง — อ่านจาก pipeline ตรง ๆ ทั้งการ์ด' },
   { title: `09:30 · งานที่ไม่มีใครแตะเกิน ${STALE_WORKDAYS} วันทำการ → ประกาศในห้อง`, real: `${CMD} stale post (ดูเงียบ ๆ ก่อน: ${CMD} stale)`, when: 'ทุกเช้า 09:30 หลัง digest', where: DIGEST_ROOM, fake: 'ไม่จำลอง — นับจากวันที่ของข้อความล่าสุดจริง ไม่มีงานเงียบพอก็ไม่ประกาศ' },
-  { title: `${hhmm(DAILY_SUMMARY_AT)} · สรุปเธรด + ประกาศเรื่องที่ค้างติดกัน ${PENDING_DAYS} เช้า`, real: `${CMD} daily summary`, when: `ทุกเช้า ${hhmm(DAILY_SUMMARY_AT)}`, where: `ในเธรด daily · ถ้ามีเรื่องค้างครบ ${PENDING_DAYS} เช้า ประกาศอีกข้อความใน ${DAILY_ROOM}`, fake: 'การสรุปกับการนับเป็นของจริง · สิ่งที่ถูกสรุปคือคำตอบจาก beat 1 กับ beat 4' },
+  { title: `${hhmm(DAILY_SUMMARY_AT)} · สรุปเธรด + ประกาศเรื่องที่ค้างติดกัน ${PENDING_DAYS} เช้า`, real: `${CMD} daily summary`, when: `ทุกเช้า ${hhmm(DAILY_SUMMARY_AT)}`, where: `ในเธรด daily · ถ้ามีเรื่องค้างครบ ${PENDING_DAYS} เช้า ประกาศอีกข้อความใน ${DAILY_ROOM}`, fake: 'การสรุปกับการนับเป็นของจริง · สิ่งที่ถูกสรุปคือคำตอบจาก beat 1 กับ beat 4 บวกคำตอบจริงของใครก็ตามที่กดส่งจาก DM ใน beat 2' },
   { title: 'แชทจาก DM → ผูกเข้า ticket → build ใหม่', real: `${CMD} paste (หรือเมนู ⋯ ที่ข้อความ → ผูกกับ ticket)`, when: 'ตอนไหนก็ได้ ที่มีบทสนทนาใน DM ต้องเก็บ', where: 'ฟอร์มกับผลลัพธ์เห็นคนเดียว · ของที่เขียนจริงคือ corpus + link override + คอมเมนต์บน ticket', fake: 'แชทที่ใส่มาให้ในฟอร์มเป็นตัวอย่าง (ลบแล้ววางของจริงได้) · การเก็บเข้า corpus เป็นของจริง' },
   { title: 'สโคปเปลี่ยนแต่ ticket ไม่เปลี่ยน → เขียนคอมเมนต์ลง ticket', real: `${CMD} drift แล้วกด “ดูร่างที่เสนอ” ในการ์ด`, when: 'ตอนไหนก็ได้ · ทุกครั้งที่เทียบ Slack กับ ticket', where: `${DIGEST_ROOM} · คอมเมนต์ไปโผล่บน ticket จริงเมื่อ YOUTRACK_WRITE=1`, fake: 'ไม่จำลอง — เทียบกับ ticket จริง (ถ้าเป็น drift จาก fixture การ์ดจะติดป้ายบอกเอง)' },
   { title: 'recall — ค้นด้วยความหมาย พร้อมสายการตัดสินใจ', real: `${CMD} recall <คำถาม> (พิมพ์อะไรที่ไม่ใช่คำสั่งก็ถือเป็น recall)`, when: 'ตอนไหนก็ได้ ตอนนึกไม่ออกว่าสรุปกันไว้ว่าอะไร', where: `${DIGEST_ROOM} (ถ้าพิมพ์เอง จะเห็นคนเดียว)`, fake: 'ไม่จำลอง — ค้นจาก corpus จริง คำถามเป็นตัวที่ตั้งไว้ให้' },
@@ -1520,7 +1581,16 @@ async function runDemo(
         }
       }
       const lines = [`▶ beat 2 — ส่ง standup DM แล้ว ${sent.length}/${targets.length} คน`];
-      if (sent.length) lines.push(`ส่งแล้ว: ${sent.map((u) => mentionOf(u)).join(', ')}`);
+      if (sent.length) {
+        lines.push(`ส่งแล้ว: ${sent.map((u) => mentionOf(u)).join(', ')}`);
+        // The one thing about this beat that changes what later beats show. Somebody
+        // in the room who presses ส่ง has answered today's daily for real, and beat 4
+        // will then leave that person alone rather than seeding over them.
+        lines.push(
+          `ใครกด “ส่ง” ในการ์ด = ตอบ daily ของวันนี้เลย (ไม่ต้องพิมพ์ในเธรดอีก) · ` +
+            'beat 4 จะไม่จำลองทับคนนั้น และสรุปที่ beat 7 จะขึ้นว่า “ตอบจาก standup DM”',
+        );
+      }
       if (noDraft.length) {
         lines.push(
           `ไม่มี draft: ${noDraft.map((u) => mentionOf(u)).join(', ')} — draft สร้างจาก work item ` +
@@ -1544,11 +1614,26 @@ async function runDemo(
     case 4: {
       const today = localNow().date;
       const record = dailyFor(today);
-      if (!record) {
-        await respond({ text: 'ยังไม่มีโพสต์ daily ของวันนี้ — สั่ง beat 3 ก่อน' });
+      // `record.ts`, not `record`: somebody pressing ส่ง on their DM in beat 2 creates
+      // today's record before the post exists, and seeding answers into a morning with
+      // no thread would put them where beat 7 can read them but the room cannot see them.
+      if (!record?.ts) {
+        await respond({
+          text:
+            'ยังไม่มีโพสต์ daily ของวันนี้ — สั่ง beat 3 ก่อน' +
+            (record?.answers.length
+              ? ` (มีคำตอบจาก DM รออยู่ ${record.answers.length} คน · beat 3 จะยกไปให้เอง)`
+              : ''),
+        });
         return;
       }
-      const answers = todaysSimulatedAnswers(roster, today);
+      // Anybody who pressed ส่ง on their 08:45 DM in beat 2 already has a real answer
+      // for today. Seeding over it would replace what a person in the room actually
+      // sent with a script — the same forgery this beat refuses below, only quieter
+      // because nothing on screen would say a real answer had been discarded.
+      const real = new Set(record.answers.filter((a) => !a.simulated).map((a) => a.user));
+      const answers = todaysSimulatedAnswers(roster, today).filter((a) => !real.has(a.user));
+      const kept = [...real].filter((u) => roster.includes(u));
       // Stored, not posted as somebody else. The bot cannot post as a colleague and
       // must not try: a message that looks like it came from a real person is a
       // forgery whatever the intent. It goes in the record, labelled, and the
@@ -1557,34 +1642,43 @@ async function runDemo(
         ...record,
         answers: [...record.answers.filter((a) => !answers.some((sim) => sim.user === a.user)), ...answers],
       });
-      if (record.ts) {
-        // With labels on this block says what it is. With them off it says what a
-        // collected thread says, and the attribution to named people stays either
-        // way — which is the part `DEMO_SHOW_SIMULATED` costs, and the reason the
-        // ephemeral reply below still spells it out to whoever pressed the button.
-        const labelled = showSimulatedLabels();
-        await client.chat.postMessage({
-          channel: record.channel,
-          thread_ts: record.ts,
-          text: labelled ? 'คำตอบจำลองของเดโม' : 'คำตอบในเธรดตอนนี้',
-          blocks: [
-            section(
-              (labelled ? '*⚠️ คำตอบจำลองสำหรับเดโม* — ไม่ใช่ข้อความของใครจริง ๆ\n' : '*คำตอบที่เก็บได้ตอนนี้*\n') +
-                answers
-                  .map((a) => `*${mentionOf(a.user)}*: ${esc(a.focus[0] ?? '-')}${a.blockers.length ? `\n⛔ ${esc(a.blockers[0]?.text ?? '')}` : ''}`)
-                  .join('\n'),
-            ),
-            context(
-              labelled
-                ? 'ใครอยากตอบจริงพิมพ์ในเธรดนี้ได้เลย — ของจริงจะทับของจำลองของคนคนนั้นตอนสรุป'
-                : 'ตอบเพิ่มในเธรดนี้ได้เลย — ตอนสรุปผมอ่านของทุกคนที่พิมพ์ไว้',
-            ),
-          ] as any,
+      if (!answers.length) {
+        await respond({
+          text:
+            `▶ beat 4 — ไม่ได้จำลองอะไรเพิ่ม ทุกคนในลิสต์ตอบเองไปแล้ว ` +
+            `(${kept.map((u) => mentionOf(u)).join(', ')}) · สรุปที่ beat 7 จะอ่านของจริง`,
         });
+        return;
       }
+      // With labels on this block says what it is. With them off it says what a
+      // collected thread says, and the attribution to named people stays either
+      // way — which is the part `DEMO_SHOW_SIMULATED` costs, and the reason the
+      // ephemeral reply below still spells it out to whoever pressed the button.
+      const labelled = showSimulatedLabels();
+      await client.chat.postMessage({
+        channel: record.channel,
+        thread_ts: record.ts,
+        text: labelled ? 'คำตอบจำลองของเดโม' : 'คำตอบในเธรดตอนนี้',
+        blocks: [
+          section(
+            (labelled ? '*⚠️ คำตอบจำลองสำหรับเดโม* — ไม่ใช่ข้อความของใครจริง ๆ\n' : '*คำตอบที่เก็บได้ตอนนี้*\n') +
+              answers
+                .map((a) => `*${mentionOf(a.user)}*: ${esc(a.focus[0] ?? '-')}${a.blockers.length ? `\n⛔ ${esc(a.blockers[0]?.text ?? '')}` : ''}`)
+                .join('\n'),
+          ),
+          context(
+            labelled
+              ? 'ใครอยากตอบจริงพิมพ์ในเธรดนี้ได้เลย — ของจริงจะทับของจำลองของคนคนนั้นตอนสรุป'
+              : 'ตอบเพิ่มในเธรดนี้ได้เลย — ตอนสรุปผมอ่านของทุกคนที่พิมพ์ไว้',
+          ),
+        ] as any,
+      });
       // The lines themselves, not a count: the presenter is about to be asked what
       // exactly was made up, and reading it off the screen beats remembering it.
       seeded =
+        (kept.length
+          ? `ไม่ทับคำตอบจริงของ ${kept.map((u) => mentionOf(u)).join(', ')} ที่กดส่งจาก DM ไว้แล้ว · `
+          : '') +
         `คำตอบของวันนี้ ${answers.length} คน — ` +
         answers
           .map((a) => `${mentionOf(a.user)}: ${a.focus[0] ?? '-'}${a.blockers[0] ? ` ⛔ ${a.blockers[0].text}` : ''}`)
@@ -1827,8 +1921,12 @@ async function postDaily(client: any, opts: { force?: boolean } = {}): Promise<s
   }
   const today = localNow().date;
   const existing = dailyFor(today);
+  // `existing.ts`, not `existing`: a morning can already have a record without having
+  // been posted, because the 08:45 DM is answered before the 09:00 post exists. Only
+  // a record with a thread behind it means "already posted" — the other kind is the
+  // answers waiting for this post to give them one.
   // Two daily posts in one morning split the thread, and the answers with it.
-  if (existing && !opts.force) {
+  if (existing?.ts && !opts.force) {
     return (
       `วันนี้โพสต์ daily ไปแล้ว${existing.permalink ? ` → ${existing.permalink}` : ''}` +
       ` · ถ้าจะโพสต์ใหม่ (เธรดเดิมจะไม่ถูกอ่านอีก): \`${CMD} daily post again\``
@@ -1853,13 +1951,33 @@ async function postDaily(client: any, opts: { force?: boolean } = {}): Promise<s
 
   const ts = String(posted.ts ?? '');
   const permalink = await permalinkFor(client, DAILY_CHANNEL, ts);
-  // answers start empty even when re-posting: they belong to the thread that was
-  // read, and this is a different thread.
-  saveDaily({ date: today, channel: DAILY_CHANNEL, ts, permalink, posted_at: stamp(), answers: [] });
+  // Thread answers start empty even when re-posting: they belong to the thread that
+  // was read, and this is a different thread. DM answers are kept, because they never
+  // belonged to a thread — dropping them here would delete what somebody sent at 08:45
+  // for the crime of the post being late.
+  const waiting = (existing?.answers ?? []).filter((a) => a.via === 'dm');
+  saveDaily({ date: today, channel: DAILY_CHANNEL, ts, permalink, posted_at: stamp(), answers: waiting });
+
+  // Anyone who answered the 08:45 DM did so before this thread existed. Their answers
+  // go in as its first reply, so the thread the team reads is complete from the moment
+  // it opens rather than looking like nobody has answered yet.
+  if (waiting.length) {
+    try {
+      await client.chat.postMessage({
+        channel: DAILY_CHANNEL,
+        thread_ts: ts,
+        text: `${waiting.length} คนตอบ daily มาทาง DM แล้ว`,
+        blocks: dmAnswerBlocks(waiting) as any,
+      });
+    } catch (err) {
+      console.error('daily post — ยกคำตอบจาก DM เข้าเธรดไม่ได้:', err);
+    }
+  }
 
   return (
     `โพสต์ ${dailyTitle(today)} แล้ว` +
     (carried.length ? ` · ยกยอดที่ค้างจากเมื่อวาน ${carried.length} เรื่อง` : '') +
+    (waiting.length ? ` · ยกคำตอบที่ตอบจาก DM มาแล้ว ${waiting.length} คน` : '') +
     ` · จะสรุปในเธรดตอน ${hhmm(DAILY_SUMMARY_AT)}`
   );
 }
@@ -1868,6 +1986,16 @@ async function summariseDaily(client: any): Promise<string> {
   const today = localNow().date;
   const record = dailyFor(today);
   if (!record) return `ยังไม่มีโพสต์ daily ของวันนี้ — สั่ง \`${CMD} daily post\` ก่อน`;
+  // A record with no thread behind it: people answered the 08:45 DM and the post never
+  // went out. Their answers are safe on disk, and there is nowhere to post a summary —
+  // saying which is true beats reading a thread at `ts: ''` and showing Slack's error.
+  if (!record.ts) {
+    const waiting = record.answers.length;
+    return (
+      `วันนี้ยังไม่ได้โพสต์ daily${waiting ? ` — แต่มีคำตอบจาก standup DM รออยู่ ${waiting} คน` : ''} · ` +
+      `สั่ง \`${CMD} daily post\` ก่อน แล้วค่อยสรุป (คำตอบที่รออยู่จะถูกยกไปด้วย)`
+    );
+  }
 
   const replies = await client.conversations.replies({
     channel: record.channel,
@@ -1896,14 +2024,10 @@ async function summariseDaily(client: any): Promise<string> {
     }
   }
 
-  // Simulated answers survive a real collection, unless that person really replied.
-  // The demo seeds a morning and the people in the room type into the same thread;
-  // dropping the seeded ones here would silently reset the streak the demo is about,
-  // and overwriting a real reply with a seeded one would be worse still — so a real
-  // answer always wins, and only the seats nobody filled keep their placeholder.
-  const answered = new Set(answers.map((a) => a.user));
-  const kept = record.answers.filter((a) => a.simulated && !answered.has(a.user));
-  const merged = [...kept, ...answers];
+  // A thread reply wins; a DM answer and a seeded one survive only where nobody
+  // replied. The rule itself lives in daily.ts, next to the parser that produced
+  // both sides of it — see `mergeThreadAnswers`.
+  const { merged, kept } = mergeThreadAnswers(record.answers, answers);
   const updated = { ...record, answers: merged, summarised_at: stamp() };
   saveDaily(updated);
 
@@ -1943,9 +2067,12 @@ async function summariseDaily(client: any): Promise<string> {
     });
   }
 
+  const fromDm = kept.filter((a) => a.via === 'dm').length;
+  const seededKept = kept.length - fromDm;
   return (
-    `สรุปในเธรดแล้ว: ${answers.length} คนตอบ` +
-    (kept.length ? ` (+${kept.length} คำตอบจำลองของเดโม)` : '') +
+    `สรุปในเธรดแล้ว: ${answers.length} คนตอบในเธรด` +
+    (fromDm ? ` · ${fromDm} คนตอบจาก standup DM` : '') +
+    (seededKept ? ` (+${seededKept} คำตอบจำลองของเดโม)` : '') +
     (unfilled.length ? ` · ${unfilled.length} คนวางฟอร์มมาแต่ยังไม่กรอก` : '') +
     (stuck.length ? ` · ประกาศเรื่องที่ค้างเกิน ${PENDING_DAYS} วัน ${stuck.length} เรื่อง` : '')
   );

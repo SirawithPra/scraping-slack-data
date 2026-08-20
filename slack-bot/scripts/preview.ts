@@ -24,7 +24,7 @@ import { standupDmBlocks } from '../src/blocks/standupDm.js';
 import { itemCardBlocks, boardBlocks } from '../src/blocks/itemCard.js';
 import { driftNudgeBlocks, driftModal } from '../src/blocks/drift.js';
 import { recallBlocks } from '../src/blocks/recall.js';
-import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, pendingEscalationBlocks } from '../src/blocks/daily.js';
+import { dailyPostBlocks, dailySummaryBlocks, dailyTemplateBlocks, dmAnswerBlocks, pendingEscalationBlocks } from '../src/blocks/daily.js';
 import { linkResultBlocks, pastePreviewBlocks, ticketOption } from '../src/blocks/link.js';
 import { staleBlocks } from '../src/blocks/stale.js';
 import { staleItems } from '../src/stale.js';
@@ -145,6 +145,7 @@ const payloads: Record<string, any[]> = {
     streaks: [streak(3)],
     pendingDays: 3,
   }),
+  dmAnswer: dmAnswerBlocks([(dailyRecord as any).answers[0]]),
   pendingEscalation: pendingEscalationBlocks([streak(3)], 3),
   stale: staleBlocks(quiet, 5),
   staleEmpty: staleBlocks([], 5),
@@ -193,6 +194,18 @@ const payloads: Record<string, any[]> = {
     streaks: manyStreaks,
     pendingDays: 3,
   }),
+  // Every seat in the roster answering by DM before the post goes out, each with the
+  // longest line the store will hold — the shape `postDaily` carries into the thread.
+  dmAnswerWorst: dmAnswerBlocks(
+    Array.from({ length: 20 }, (_, i) => ({
+      user: `U0DEMOUSER${i}`,
+      ts: '',
+      done: ['ก'.repeat(400)],
+      focus: ['ก'.repeat(400)],
+      blockers: [{ text: 'ก'.repeat(400), tag: 'PO' }],
+      via: 'dm' as const,
+    })),
+  ),
   pendingEscalationWorst: pendingEscalationBlocks(manyStreaks, 3),
   staleWorst: staleBlocks(quietWorst, 5),
 };

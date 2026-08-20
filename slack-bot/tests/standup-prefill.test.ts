@@ -10,8 +10,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { standupPrefill, standupDmBlocks } from '../src/blocks/standupDm.js';
-import { buildStandups } from '../src/standups.js';
+import { standupDmBlocks } from '../src/blocks/standupDm.js';
+import { buildStandups, standupPrefill } from '../src/standups.js';
 import type { StandupDraft, WorkItem } from '../src/types.js';
 
 const draft = (over: Partial<StandupDraft> = {}): StandupDraft => ({

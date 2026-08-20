@@ -22,7 +22,8 @@
 import type { KnownBlock } from '@slack/types';
 
 import type { DailyAnswer, DailyRecord, StandupDraft } from '../types.js';
-import { DAILY_EXAMPLE, DAILY_TEMPLATE, formatDailyDate, type PendingStreak } from '../daily.js';
+import { DAILY_EXAMPLE, DAILY_TEMPLATE, composeDailyReply, formatDailyDate, type PendingStreak } from '../daily.js';
+import { standupDone, standupPrefill } from '../standups.js';
 import { isSimulatedTs, showSimulatedLabels } from '../demo.js';
 import { mentionOf } from '../names.js';
 import { CMD, clamp, context, divider, esc, header, section } from './common.js';
@@ -123,24 +124,25 @@ export function dailyTemplateBlocks(draft?: StandupDraft): KnownBlock[] {
   ];
 
   if (draft && (draft.yesterday.length || draft.carried_over.length)) {
-    const prefilled = [
-      'Done Yesterday:',
-      ...(draft.yesterday.length
-        ? draft.yesterday.slice(0, MAX_LINES).map((y) => `${y.key} — ${y.headline}`)
-        : ['-']),
-      '',
-      'Focus Today:',
-      ...(draft.carried_over.length
-        ? draft.carried_over.slice(0, MAX_LINES).map((c) => `${c.key} — ${c.headline}`)
-        : ['-']),
-      '',
-      'Blockers / Pending:',
-      '-',
-    ].join('\n');
+    // Built by the same two functions that fill the 08:45 DM's three boxes, not by a
+    // second list-and-slice written here. This block and that card are meant to be
+    // the same form offered two ways; two pieces of code deciding what "prefilled"
+    // means is how they stopped being that, one heading and one cap at a time.
+    const prefill = standupPrefill(draft);
+    const prefilled = composeDailyReply({
+      done: standupDone(draft),
+      focus: prefill.today ? [prefill.today] : [],
+      blockers: prefill.blocker ? [prefill.blocker] : [],
+      emptyAs: '-',
+    });
     blocks.push(
       section('*หรือเริ่มจากที่ผมเห็นในข้อมูลของคุณ* — แก้ให้ถูกแล้ววางได้เลย'),
       section('```' + prefilled + '```'),
       context('มาจาก Slack + ticket ที่คุณมีชื่ออยู่ — *ไม่ใช่คำพูดของคุณ* ตรวจก่อนวางครับ'),
+      context(
+        'อันนี้คือของเดียวกับที่อยู่ในสามช่องของ standup DM ตอน 08:45 — ' +
+          'ถ้าเช้านี้กด *ส่ง* ในการ์ดนั้นไปแล้ว ถือว่าตอบแล้ว ไม่ต้องวางซ้ำที่นี่',
+      ),
     );
   }
 
@@ -154,14 +156,20 @@ export function dailyTemplateBlocks(draft?: StandupDraft): KnownBlock[] {
 }
 
 /** One person's answer, folded to the lines that matter in a summary. */
-function answerLines(answer: DailyAnswer, permalinkBase?: string): string {
-  // A seeded answer has no Slack message behind it, so it gets no link — a
-  // permalink built from `sim.2026-08-18.0` would render as a button that goes
-  // nowhere, which is worse than no button.
-  const link = permalinkBase && !isSimulatedTs(answer.ts)
+function answerLines(answer: DailyAnswer, opts: { permalinkBase?: string; hideVia?: boolean } = {}): string {
+  const { permalinkBase } = opts;
+  // An answer with no Slack message behind it gets no link — a permalink built from
+  // `sim.2026-08-18.0`, or from the empty ts of a DM answer, would render as a button
+  // that goes nowhere, which is worse than no button.
+  const link = permalinkBase && answer.ts && !isSimulatedTs(answer.ts)
     ? `<${permalinkBase}${answer.ts.replace('.', '')}|ข้อความ>`
     : '';
-  const tag = answer.simulated && showSimulatedLabels() ? ' _(จำลอง)_' : '';
+  // Not behind `DEMO_SHOW_SIMULATED`: this one is never hidden. It is a true thing
+  // about a real answer — this person pressed ส่ง on boxes the bot filled in, in
+  // private, instead of writing in the thread — and it is also the honest reason
+  // there is no message to click through to.
+  const via = answer.via === 'dm' && !opts.hideVia ? ' _(ตอบจาก standup DM)_' : '';
+  const tag = (answer.simulated && showSimulatedLabels() ? ' _(จำลอง)_' : '') + via;
   const parts: string[] = [`*${mentionOf(answer.user)}*${tag}${link ? ` · ${link}` : ''}`];
   if (answer.done.length) parts.push(`เสร็จ: ${answer.done.slice(0, MAX_LINES).map((t) => esc(clamp(t, 120))).join(' · ')}`);
   if (answer.focus.length) parts.push(`วันนี้: ${answer.focus.slice(0, MAX_LINES).map((t) => esc(clamp(t, 120))).join(' · ')}`);
@@ -169,6 +177,37 @@ function answerLines(answer: DailyAnswer, permalinkBase?: string): string {
     parts.push(`⛔ ${esc(clamp(b.text, 160))} — รอ ${waitingOn(b.tag)}`);
   }
   return parts.join('\n');
+}
+
+/**
+ * A DM answer, put where colleagues can read it.
+ *
+ * Without this the DM is a private confession. The daily is a thread precisely
+ * because the value of a standup is that the team sees it, and an answer that only
+ * exists in `dailies.json` until 10:45 leaves the morning looking empty to everyone
+ * who scrolls the channel at 09:10 — which is most of the reason somebody would then
+ * type it again in the thread, the duplicate work this whole route removes.
+ *
+ * Posted by the bot, attributed, never as the person. The bot cannot post as a
+ * colleague and must not try: a message that looks like it came from a real person is
+ * a forgery whatever the intent. So it reads as a report *about* their answer, and
+ * whoever wants their own words in the thread can still type them — those win at 10:45.
+ */
+export function dmAnswerBlocks(answers: DailyAnswer[]): KnownBlock[] {
+  const shown = answers.slice(0, MAX_ANSWERS);
+  return [
+    section(
+      `*ตอบมาทาง standup DM${answers.length > 1 ? ` · ${answers.length} คน` : ''}*\n` +
+        // `hideVia`: the heading above already says where these came from, and
+        // repeating it on every line reads as a warning rather than a source note.
+        shown.map((a) => answerLines(a, { hideVia: true })).join('\n\n'),
+    ),
+    context(
+      answers.length > shown.length
+        ? `อีก ${answers.length - shown.length} คนอยู่ในสรุปตอนสาย · เพิ่มหรือแก้ได้ด้วยการพิมพ์ในเธรดนี้ ของในเธรดชนะเสมอ`
+        : 'เพิ่มหรือแก้ได้ด้วยการพิมพ์ในเธรดนี้ — ของที่พิมพ์ในเธรดชนะของที่ส่งมาทาง DM เสมอ',
+    ),
+  ];
 }
 
 /**

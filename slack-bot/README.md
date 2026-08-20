@@ -120,7 +120,7 @@ autocomplete on `/me` can hesitate.
 | # | Beat | The real thing it stands for | The line to say |
 | --- | --- | --- | --- |
 | 1 | Writes the previous working mornings into the daily history | — *(seeded; in real life those mornings simply happened)* | "Two mornings already happened. Same person, same blocker, worded differently each day." |
-| 2 | **08:45** standup DM, to everyone in `STANDUP_USERS` | the 08:45 schedule · the **ส่ง** / **ข้ามวันนี้** buttons in the DM | "It doesn't ask what I did. It tells me, and I correct it." |
+| 2 | **08:45** standup DM, to everyone in `STANDUP_USERS` — pressing **ส่ง** records that day's daily answer | the 08:45 schedule · the **ส่ง** / **ข้ามวันนี้** buttons in the DM | "It doesn't ask what I did. It tells me, I correct it — and the correction *is* my standup. Nobody types it twice." |
 | 3 | **09:00** daily post, carrying that blocker forward | `/mt daily post` · the 09:00 schedule | "It doesn't ask what's outstanding. It already knows and puts it at the top." |
 | 4 | Simulated answers into today's thread | `/mt daily` → the private form → reply in the thread | "Anyone can type a real answer in the same thread — a real one wins over the placeholder." |
 | 5 | **09:25** digest in the channel | `/mt digest` · the 09:25 schedule · **ดูข้อความ** / **ที่มา** on any claim | "Blocked first. Every claim, one click from the message that proves it." |

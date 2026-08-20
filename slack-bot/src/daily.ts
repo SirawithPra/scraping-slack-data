@@ -265,6 +265,77 @@ export function parseDailyReply(text: string, user: string, ts: string): DailyPa
   return { kind: 'answer', answer: { user, ts, done, focus, blockers } };
 }
 
+/**
+ * The inverse of `parseDailyReply`: lines in, the reply a person would have typed out.
+ *
+ * This exists so the 08:45 DM has no second format. Its two boxes and a thread reply
+ * describe the same three sections, and the way to keep them describing them the same
+ * way is to write the DM's answer in the daily's own template and read it back with
+ * the parser above — which is also what gives a DM blocker line its `@คน` / `PO` tag
+ * for free, from `tagOf`, rather than a second tag rule that can drift from this one.
+ *
+ * All three headings are emitted even when a section is empty. An empty section is a
+ * fact ("nothing blocking"), and a heading the parser can see is how it stays one:
+ * text with no heading at all parses as chatter and would be dropped silently.
+ */
+export function composeDailyReply(input: {
+  done?: string[];
+  focus?: string[];
+  blockers?: string[];
+  /**
+   * What an empty section becomes. Omitted, a section with nothing in it is a bare
+   * heading, which is what the DM's boxes produce and what the parser reads as
+   * "nothing here". The pasted form passes `-` instead, because a human copying a
+   * block needs to see that the line was left blank on purpose — `NOTHING` matches
+   * it and it parses to the same empty section.
+   */
+  emptyAs?: string;
+}): string {
+  // Split on newlines first: a DM box holds several lines in one string, and a
+  // caller passing that string whole would produce one very long answer line.
+  const lines = (values: string[] | undefined): string[] => {
+    const out = (values ?? [])
+      .flatMap((v) => String(v ?? '').split(/\r?\n/))
+      .map((v) => v.trim())
+      .filter(Boolean);
+    return out.length || !input.emptyAs ? out : [input.emptyAs];
+  };
+  return [
+    'Done Yesterday:',
+    ...lines(input.done),
+    '',
+    'Focus Today:',
+    ...lines(input.focus),
+    '',
+    'Blockers / Pending:',
+    ...lines(input.blockers),
+  ].join('\n');
+}
+
+/**
+ * Fold what the thread just said into what the day already held.
+ *
+ * Two kinds of answer are not in the thread and cannot be re-read from it, so their
+ * absence there is not evidence that they are gone: one sent through the 08:45
+ * standup DM, and one the demo seeded. Dropping either on every 10:45 pass would
+ * delete a real answer and silently reset the streak a demo is about.
+ *
+ * A thread reply always wins over both. It is the later statement and the public one,
+ * and somebody who typed it after answering the DM is correcting themselves — the
+ * same rule that makes the last reply in the thread win over their earlier ones.
+ *
+ * `kept` is returned alongside so a caller can report what it carried instead of
+ * re-deriving the rule, which is how the two would drift apart.
+ */
+export function mergeThreadAnswers(
+  existing: DailyAnswer[],
+  fromThread: DailyAnswer[],
+): { merged: DailyAnswer[]; kept: DailyAnswer[] } {
+  const answered = new Set(fromThread.map((a) => a.user));
+  const kept = existing.filter((a) => (a.simulated || a.via === 'dm') && !answered.has(a.user));
+  return { merged: [...kept, ...fromThread], kept };
+}
+
 /* ------------------------------------------------------------------ *
  * pending that will not go away
  * ------------------------------------------------------------------ */

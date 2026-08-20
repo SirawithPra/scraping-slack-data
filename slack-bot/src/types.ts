@@ -175,6 +175,19 @@ export interface DailyAnswer {
    * bigger audience.
    */
   simulated?: boolean;
+  /**
+   * Set when the answer arrived through the 08:45 standup DM instead of the thread.
+   *
+   * Kept because the two are not the same claim. A thread answer is a sentence the
+   * person typed where colleagues could read it; a DM answer is that person pressing
+   * *ส่ง* on boxes the bot had already filled in, in private. Both are theirs, and
+   * the summary shows both — but a reader deciding something off the summary should
+   * be able to tell which one they are reading, and there is no message to link to.
+   *
+   * It is also what lets the 10:45 pass merge the two safely: a DM answer survives
+   * only until that person writes in the thread, and never overwrites what they did.
+   */
+  via?: 'dm';
 }
 
 /** One morning's post and everything its thread produced. */

@@ -1,6 +1,10 @@
 import type { KnownBlock } from '@slack/types';
 import type { StandupDraft } from '../types.js';
 import { findMessage } from '../data.js';
+// The three boxes are rendered here and decided in `standups.ts`, next to the draft
+// they are filled from — the daily form reads the same two functions, which is the
+// only way the DM and the pasted form can stay the same form.
+import { MAX_YESTERDAY, standupDone, standupPrefill } from '../standups.js';
 import { CMD, clamp, context, divider, esc, header, section } from './common.js';
 
 /**
@@ -21,77 +25,7 @@ import { CMD, clamp, context, divider, esc, header, section } from './common.js'
  * all. The overflow is stated on screen rather than dropped quietly: a draft the
  * reader cannot tell is incomplete is worse than a short one.
  */
-const MAX_YESTERDAY = 5;
 const MAX_CARRIED = 5;
-/** Prefilled lines per box. Three fits without scrolling in a DM. */
-const MAX_PREFILL = 3;
-
-/**
- * What the two boxes start with.
- *
- * The header of this DM says the bot already knows and only wants corrections, and
- * for a year the boxes under it were empty — so the person read "you don't have to
- * retype it" and then retyped it. Prefilling is what that sentence promised.
- *
- * The shape is the daily template's, not a new one (`DAILY_TEMPLATE` in daily.ts):
- * `ต่อ KEY — headline` for today, `Pending …` for a blocker. Somebody who fills a
- * daily thread and somebody who answers this DM are then writing the same lines, and
- * `parseDailyReply` reads both — a second format would be a second thing to teach.
- *
- * Today's box may be a proposal ("carry on with what is still open"); the blocker box
- * may not. It is prefilled only from sentences this person typed, because pressing
- * *ส่ง* posts it into the channel under their name — see `blocked` in StandupDraft.
- */
-/** `REVERAPP-140` — a key a person can look up, as opposed to a cluster id like `c23053d`. */
-const TICKET_KEY = /^[A-Z][A-Z0-9]+-\d+$/;
-
-/**
- * One line of the "today" box, or nothing.
- *
- * A cluster id is not a name. `ต่อ c5a3d6b — (ยังไม่มีคำร่วมที่ชัดพอจะตั้งชื่อ)` is a
- * line nobody can act on or even look up, and offering it as a suggestion asks the
- * reader to delete it — which is more work than the empty box it replaced. So a
- * ticket keeps its key, a cluster is named by its keywords alone, and a cluster the
- * pipeline could not name at all is left out.
- */
-function todayLine(key: string, headline: string): string | undefined {
-  const name = clamp(headline.trim(), 60);
-  if (TICKET_KEY.test(key)) return `ต่อ ${key} — ${name}`;
-  if (!name || name.startsWith('(')) return undefined;
-  return `ต่อ ${name}`;
-}
-
-export function standupPrefill(draft: StandupDraft): { today?: string; blocker?: string } {
-  // Tickets before clusters, then stalest first: the lines a person can act on are
-  // the ones worth the three slots.
-  const open = [...draft.carried_over]
-    .sort((a, b) => {
-      const byKind = Number(TICKET_KEY.test(b.key)) - Number(TICKET_KEY.test(a.key));
-      return byKind || b.stale_days - a.stale_days;
-    })
-    .map((c) => todayLine(c.key, c.headline))
-    .filter((line): line is string => Boolean(line))
-    .slice(0, MAX_PREFILL);
-  // Nothing carried over: offer yesterday's work instead, which is the other honest
-  // guess at "today". Neither is offered when there is nothing at all — an empty box
-  // with its placeholder asks the question; a box holding `-` answers it wrongly.
-  const fallback = draft.yesterday
-    .map((y) => todayLine(y.key, y.headline))
-    .filter((line): line is string => Boolean(line))
-    .slice(0, MAX_PREFILL);
-  const today = open.length ? open : fallback;
-
-  const blocker = (draft.blocked ?? [])
-    .slice(0, MAX_PREFILL)
-    // Same reason as `todayLine`: a ticket key helps whoever reads it in the channel,
-    // a cluster id is noise nobody can look up.
-    .map((b) => `Pending ${clamp(b.text, 120)}${TICKET_KEY.test(b.key) ? ` (${b.key})` : ''}`);
-
-  return {
-    today: today.length ? today.join('\n') : undefined,
-    blocker: blocker.length ? blocker.join('\n') : undefined,
-  };
-}
 
 export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
   const blocks: KnownBlock[] = [
@@ -136,11 +70,40 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
 
   blocks.push(divider());
   const prefill = standupPrefill(draft);
+  const done = standupDone(draft).join('\n');
+  // Said before the boxes, because the boxes are the thing it explains. Three boxes,
+  // in the daily template's order, labelled with the daily template's headings: the
+  // two forms have to be recognisably one form or "answer either one" is a promise
+  // this DM cannot keep, and the person answers twice to be sure.
+  blocks.push(
+    section(`*กรอกสามช่องนี้ = ตอบ daily ของวันนี้* — หัวข้อเดียวกับฟอร์ม \`${CMD} daily\``),
+  );
+  blocks.push({
+    type: 'input',
+    block_id: 'done',
+    optional: true,
+    label: { type: 'plain_text', text: 'เมื่อวานทำอะไร · Done Yesterday' },
+    element: {
+      type: 'plain_text_input',
+      action_id: 'value',
+      multiline: true,
+      ...(done ? { initial_value: done } : {}),
+      placeholder: { type: 'plain_text', text: 'ที่ปิดไป ที่ review ให้คนอื่น ที่คุยจนได้ข้อสรุป' },
+    },
+  } as KnownBlock);
+  if (done) {
+    blocks.push(
+      context(
+        'เติมให้จากงานที่คุณขยับเมื่อวาน — *เป็นสิ่งที่ผมเห็น ไม่ใช่คำพูดของคุณ* ' +
+          'ที่ค้างในช่องนี้คือที่จะถูกบันทึกไว้ ไม่ถูกก็ลบหรือพิมพ์ทับเลย',
+      ),
+    );
+  }
   blocks.push({
     type: 'input',
     block_id: 'today',
     optional: true,
-    label: { type: 'plain_text', text: 'วันนี้ทำอะไร' },
+    label: { type: 'plain_text', text: 'วันนี้ทำอะไร · Focus Today' },
     element: {
       type: 'plain_text_input',
       action_id: 'value',
@@ -163,7 +126,7 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
     type: 'input',
     block_id: 'blocker',
     optional: true,
-    label: { type: 'plain_text', text: 'มีอะไรติดไหม' },
+    label: { type: 'plain_text', text: 'มีอะไรติดไหม · Blockers / Pending' },
     element: {
       type: 'plain_text_input',
       action_id: 'value',
@@ -200,6 +163,15 @@ export function standupDmBlocks(draft: StandupDraft): KnownBlock[] {
     ],
   } as KnownBlock);
 
-  blocks.push(context('ส่งภายใน 09:15 · ถ้าไม่ส่ง ผมจะใช้ที่ดึงมาให้ข้างบนแทน ไม่มีใครโดนทวงในห้อง'));
+  // What the button does, said where the thumb is. The boxes above are in the daily's
+  // format because pressing ส่ง *is* answering the daily — a person who does not know
+  // that types the same three sections into the thread an hour later, which is the
+  // duplicate work this DM was built to remove.
+  blocks.push(
+    context(
+      'กด “ส่ง” = ตอบ daily ของวันนี้เลย ไม่ต้องพิมพ์ในเธรดซ้ำ · ' +
+        'ส่งภายใน 09:15 · ไม่ส่งก็ไม่มีใครแท็กทวง แต่ชื่อจะขึ้นในสรุปว่ายังไม่ตอบ',
+    ),
+  );
   return blocks;
 }

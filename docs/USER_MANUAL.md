@@ -352,7 +352,7 @@ firewall** บอทต่อออกไปหา Slack เอง รันจ�
 | ผูกกับ ticket | เอาข้อความนั้นผูกเข้ากับ work item |
 | บันทึกเป็นการตัดสินใจ | เก็บเข้า decision log หาเจอด้วย `recall` ได้ตลอด |
 
-**อัตโนมัติ** — DM สรุป 08:45 และ digest เข้าช่อง 09:25
+**อัตโนมัติ** — DM สรุป 08:45 (กด *ส่ง* = ตอบ daily ของวันนั้นเลย) และ digest เข้าช่อง 09:25
 **ปิดไว้เป็นค่า default** เปิดด้วย `ENABLE_SCHEDULE=1` เท่านั้น
 (กันไว้ไม่ให้ `npm start` เผลอโพสต์ลงช่องจริง)
 
@@ -371,7 +371,7 @@ npm run ledger     # จัดเป็น work item + สถานะ + หล�
 
 ```bash
 npm run typecheck              # ตรวจ type ทั้งโปรเจกต์
-npm test                       # ชุดทดสอบฝั่งบอท — 120 ผ่าน (รวม tests/gate.test.ts)
+npm test                       # ชุดทดสอบฝั่งบอท — 133 ผ่าน (รวม tests/gate.test.ts)
 npm run preview                # เรนเดอร์ทุกหน้าจอออฟไลน์ + ตรวจ Slack limits
 npm run preview -- digest      # ดัมพ์ payload เดียวไปวางใน Block Kit Builder
 ```

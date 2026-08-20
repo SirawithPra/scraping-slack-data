@@ -20,7 +20,7 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Announcement, DailyRecord, Decision, Source } from './types.js';
+import type { Announcement, DailyAnswer, DailyRecord, Decision, Source } from './types.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -268,6 +268,30 @@ export function saveDaily(record: DailyRecord): DailyRecord[] {
   kept.sort((a, b) => a.date.localeCompare(b.date));
   writeJson(dailiesPath(), kept);
   return kept;
+}
+
+/**
+ * Merge one person's answer into a day, creating the day if the post has not gone out.
+ *
+ * The 08:45 standup DM is answered before the 09:00 post exists, so there is often no
+ * record to merge into yet. The day is created without a `ts` rather than the answer
+ * being dropped or held in memory until the post: a bot restarted at 08:50 must not
+ * lose what somebody already sent it. `postDaily` then fills the same date in with the
+ * channel, ts and permalink, and keeps the answers that were waiting there.
+ *
+ * One answer per person per day, last write winning — the same rule the 10:45 pass
+ * applies to a thread where somebody corrected themselves further down.
+ */
+export function saveDailyAnswer(input: { date: string; channel: string; answer: DailyAnswer }): DailyRecord {
+  const { date, channel, answer } = input;
+  const existing = dailyFor(date);
+  const answers = [...(existing?.answers ?? []).filter((a) => a.user !== answer.user), answer];
+  const record: DailyRecord = existing
+    ? { ...existing, answers }
+    // No post yet: no channel of its own, no ts, and no posted_at to claim one.
+    : { date, channel, ts: '', posted_at: '', answers };
+  saveDaily(record);
+  return record;
 }
 
 // ---------------------------------------------------------------------------
